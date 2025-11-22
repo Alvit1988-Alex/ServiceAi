@@ -46,6 +46,16 @@ class AIInstructionsService:
         await session.refresh(instruction)
         return instruction
 
+    async def get_instruction(
+        self, session: AsyncSession, bot_id: int, instruction_id: int
+    ) -> AIInstruction | None:
+        result = await session.execute(
+            select(AIInstruction).where(
+                AIInstruction.bot_id == bot_id, AIInstruction.id == instruction_id
+            )
+        )
+        return result.scalars().first()
+
     async def delete_instruction(self, session: AsyncSession, bot_id: int, instruction_id: int) -> None:
         result = await session.execute(
             select(AIInstruction).where(

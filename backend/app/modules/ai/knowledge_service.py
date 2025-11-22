@@ -62,6 +62,16 @@ class KnowledgeService:
         )
         return result.scalars().all()
 
+    async def get_file(
+        self, session: AsyncSession, bot_id: int, file_id: int
+    ) -> KnowledgeFile | None:
+        result = await session.execute(
+            select(KnowledgeFile).where(
+                KnowledgeFile.bot_id == bot_id, KnowledgeFile.id == file_id
+            )
+        )
+        return result.scalars().first()
+
     async def delete_file(self, session: AsyncSession, bot_id: int, file_id: int) -> None:
         result = await session.execute(
             select(KnowledgeFile).where(

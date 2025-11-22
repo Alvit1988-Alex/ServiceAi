@@ -61,6 +61,24 @@ class AIService:
             used_chunk_ids=used_chunk_ids,
         )
 
+    async def answer(
+        self,
+        session: AsyncSession,
+        bot_id: int,
+        dialog_id: int | None,
+        question: str,
+        hint_mode: bool = False,
+    ) -> AIAnswer:
+        """Public wrapper for generating an answer to a user's question."""
+
+        return await self.generate_answer(
+            session=session,
+            bot_id=bot_id,
+            dialog_id=dialog_id,
+            user_message=question,
+            hint_mode=hint_mode,
+        )
+
     async def _load_history(
         self, session: AsyncSession, dialog_id: int | None, limit: int = 10
     ) -> list[dict[str, str]]:
