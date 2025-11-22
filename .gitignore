@@ -1,0 +1,125 @@
+# ======================
+# GLOBAL
+# ======================
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+
+# Env files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# ======================
+# PYTHON / BACKEND
+# ======================
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+*.db
+
+# Virtual environments (даже если мы их не используем)
+venv/
+.venv/
+env/
+ENV/
+
+# FastAPI / Uvicorn temp
+*.pid
+
+# Migrations cache
+backend/migrations/__pycache__/
+backend/migrations/*.pyc
+
+# Static/uploads
+backend/app/static/*
+backend/app/uploads/*
+
+# Poetry / pip cache
+poetry.lock
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+
+# ======================
+# NODE / FRONTEND
+# ======================
+
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Next.js build
+.next/
+out/
+.next-cache/
+
+# Typescript
+*.tsbuildinfo
+
+# local dev temp
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+
+# ======================
+# DOCKER / COMPOSE
+# ======================
+
+docker-data/
+db_data/
+postgres-data/
+
+# ======================
+# CUSTOM PROJECT FILES
+# ======================
+
+# Knowledge base uploaded files
+knowledge_storage/
+
+# Uploaded files via webchat
+uploads/
+
+# Compiled artifacts
+*.zip
+*.tar
+*.gz
+
+# Debug dumps
+*.dump
+*.bak
+
+
+# ======================
+# SECURITY
+# ======================
+
+# Токены
+secret.key
+private.key
+public.key
+
+# Любые конфиги с доступами
+**/config.local.json
+**/secrets.json
