@@ -5,15 +5,17 @@ services:
     environment:
       POSTGRES_DB: serviceai
       POSTGRES_USER: serviceai
-      POSTGRES_PASSWORD: serviceai
+      POSTGRES_PASSWORD: serviceai_password
     ports:
       - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
   backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://serviceai:serviceai@db:5432/serviceai
+      DATABASE_URL: postgresql+asyncpg://serviceai:serviceai_password@db:5432/serviceai
     depends_on:
       - db
     ports:
@@ -35,3 +37,6 @@ services:
     depends_on:
       - frontend
       - backend
+
+volumes:
+  db_data:

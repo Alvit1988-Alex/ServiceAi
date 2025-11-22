@@ -1,11 +1,13 @@
-"""Password hashing helpers."""
+"""Password hashing helpers using bcrypt."""
 
-import hashlib
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return pwd_context.hash(password)
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return hash_password(plain) == hashed
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
