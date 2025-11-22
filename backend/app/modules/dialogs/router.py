@@ -118,7 +118,7 @@ async def create_dialog_message(
     if dialog.closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dialog is closed")
 
-    message = await service.add_message(
+    message, updated_dialog, dialog_created = await service.add_message(
         session=session,
         bot_id=dialog.bot_id,
         user_external_id=dialog.user_external_id,
@@ -127,30 +127,29 @@ async def create_dialog_message(
         payload=data.payload,
     )
 
-    updated_dialog = await service.get(
-        session=session, bot_id=None, dialog_id=message.dialog_id
-    )
-
     message_payload = DialogMessageOut.model_validate(message).model_dump()
-    if updated_dialog:
-        dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
-    else:
-        dialog_payload = None
+    dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
+
+    if dialog_created:
+        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
+        await manager.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["user_external_id"],
+            message={"event": "dialog_created", "data": dialog_payload},
+        )
 
     await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
-    if dialog_payload:
-        await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
 
-    if dialog_payload:
-        await manager.broadcast_to_webchat(
-            bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
-            message={"event": "message_created", "data": message_payload},
-        )
-        await manager.broadcast_to_webchat(
-            bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
-            message={"event": "dialog_updated", "data": dialog_payload},
-        )
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["user_external_id"],
+        message={"event": "message_created", "data": message_payload},
+    )
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["user_external_id"],
+        message={"event": "dialog_updated", "data": dialog_payload},
+    )
 
     return DialogMessageOut.model_validate(message)
