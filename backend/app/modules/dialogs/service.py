@@ -79,23 +79,7 @@ class DialogsService:
         await session.refresh(db_obj)
         return db_obj
 
-    async def close_dialog(
-        self, session: AsyncSession, bot_id: int, user_external_id: str
-    ) -> Dialog | None:
-        stmt = (
-            select(Dialog)
-            .where(
-                Dialog.bot_id == bot_id,
-                Dialog.user_external_id == user_external_id,
-                Dialog.closed.is_(False),
-            )
-            .order_by(Dialog.updated_at.desc())
-        )
-        result = await session.execute(stmt)
-        dialog = result.scalars().first()
-        if not dialog:
-            return None
-
+    async def close_dialog(self, session: AsyncSession, dialog: Dialog) -> Dialog:
         dialog.closed = True
         dialog.updated_at = datetime.utcnow()
 
