@@ -76,3 +76,9 @@ class AskAIResponse(BaseModel):
     answer_text: str | None = None
     confidence: float
     used_chunk_ids: list[int] = Field(default_factory=list)
+
+
+class AIAnswer(AskAIResponse):
+    """Internal schema mirroring :class:`AskAIResponse` for service returns."""
+
+    model_config = ConfigDict(from_attributes=True)
