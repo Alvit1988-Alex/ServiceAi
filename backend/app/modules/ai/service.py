@@ -55,7 +55,7 @@ class AIService:
         can_answer = bool(answer_text)
         return AIAnswer(
             can_answer=can_answer,
-            answer_text=answer_text or None,
+            answer=answer_text or None,
             confidence=confidence,
             used_chunk_ids=used_chunk_ids,
         )
