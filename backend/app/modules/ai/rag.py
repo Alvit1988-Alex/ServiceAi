@@ -2,22 +2,29 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Callable, Sequence
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.database import async_session_factory
 from app.modules.ai.embeddings import EmbeddingsClient, GigaChatEmbeddingsClient
 from app.modules.ai.models import KnowledgeChunk
 
 
 class RAGService:
-    def __init__(self, embeddings_client: EmbeddingsClient | None = None):
+    def __init__(
+        self,
+        db_session_factory: Callable[[], AsyncSession]
+        | async_sessionmaker[AsyncSession]
+        | None = None,
+        embeddings_client: EmbeddingsClient | None = None,
+    ):
+        self._session_factory = db_session_factory or async_session_factory
         self._embeddings = embeddings_client or GigaChatEmbeddingsClient()
 
     async def find_relevant_chunks(
         self,
-        session: AsyncSession,
         bot_id: int,
         question: str,
         top_k: int = 5,
@@ -29,12 +36,13 @@ class RAGService:
         if not query_embedding:
             return []
 
-        result = await session.execute(
-            select(KnowledgeChunk).where(
-                KnowledgeChunk.bot_id == bot_id, KnowledgeChunk.embedding.isnot(None)
+        async with self._session() as session:
+            result = await session.execute(
+                select(KnowledgeChunk).where(
+                    KnowledgeChunk.bot_id == bot_id, KnowledgeChunk.embedding.isnot(None)
+                )
             )
-        )
-        chunks: Sequence[KnowledgeChunk] = result.scalars().all()
+            chunks: Sequence[KnowledgeChunk] = result.scalars().all()
 
         scored: list[tuple[KnowledgeChunk, float]] = []
         for chunk in chunks:
@@ -57,3 +65,6 @@ class RAGService:
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return dot / (norm_a * norm_b)
+
+    def _session(self) -> AsyncSession:
+        return self._session_factory()

@@ -1,9 +1,12 @@
 """AI service integrating instructions, RAG and LLM."""
 from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Callable
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.database import async_session_factory
 from app.modules.ai.instructions_service import AIInstructionsService
 from app.modules.ai.models import AIInstructions
 from app.modules.ai.llm import GigaChatLLMClient, LLMClient
@@ -15,31 +18,37 @@ from app.modules.dialogs.models import DialogMessage, MessageSender
 class AIService:
     def __init__(
         self,
+        db_session_factory: Callable[[], AsyncSession]
+        | async_sessionmaker[AsyncSession]
+        | None = None,
         instructions_service: AIInstructionsService | None = None,
         rag_service: RAGService | None = None,
         llm_client: LLMClient | None = None,
     ):
-        self._instructions_service = instructions_service or AIInstructionsService()
-        self._rag_service = rag_service or RAGService()
+        self._session_factory = db_session_factory or async_session_factory
+        self._instructions_service = instructions_service or AIInstructionsService(
+            db_session_factory=self._session_factory
+        )
+        self._rag_service = rag_service or RAGService(
+            db_session_factory=self._session_factory
+        )
         self._llm_client = llm_client or GigaChatLLMClient()
+        self._confidence_threshold = 0.35
 
     async def generate_answer(
         self,
-        session: AsyncSession,
         bot_id: int,
         dialog_id: int | None,
         user_message: str,
         hint_mode: bool = False,
     ) -> AIAnswer:
-        instructions = await self._instructions_service.get_instructions(
-            session=session, bot_id=bot_id
-        )
+        instructions = await self._instructions_service.get_instructions(bot_id=bot_id)
         system_prompt = self._build_system_prompt(instructions, hint_mode)
 
-        history = await self._load_history(session=session, dialog_id=dialog_id)
+        history = await self._load_history(dialog_id=dialog_id)
 
         relevant_chunks = await self._rag_service.find_relevant_chunks(
-            session=session, bot_id=bot_id, question=user_message
+            bot_id=bot_id, question=user_message
         )
         chunk_texts = [chunk.text for chunk, _ in relevant_chunks]
         used_chunk_ids = [chunk.id for chunk, _ in relevant_chunks]
@@ -52,17 +61,18 @@ class AIService:
             context_chunks=chunk_texts,
         )
 
-        can_answer = bool(answer_text)
+        can_answer = bool(answer_text) and (
+            confidence >= self._confidence_threshold or not used_chunk_ids
+        )
         return AIAnswer(
             can_answer=can_answer,
-            answer=answer_text or None,
+            answer=answer_text if can_answer else None,
             confidence=confidence,
             used_chunk_ids=used_chunk_ids,
         )
 
     async def answer(
         self,
-        session: AsyncSession,
         bot_id: int,
         dialog_id: int | None,
         question: str,
@@ -71,7 +81,6 @@ class AIService:
         """Public wrapper for generating an answer to a user's question."""
 
         return await self.generate_answer(
-            session=session,
             bot_id=bot_id,
             dialog_id=dialog_id,
             user_message=question,
@@ -79,18 +88,21 @@ class AIService:
         )
 
     async def _load_history(
-        self, session: AsyncSession, dialog_id: int | None, limit: int = 10
+        self, dialog_id: int | None, limit: int = 10
     ) -> list[dict[str, str]]:
         if dialog_id is None:
             return []
 
-        result = await session.execute(
-            select(DialogMessage)
-            .where(DialogMessage.dialog_id == dialog_id, DialogMessage.text.isnot(None))
-            .order_by(DialogMessage.created_at.desc())
-            .limit(limit)
-        )
-        messages: list[DialogMessage] = list(result.scalars().all())
+        async with self._session() as session:
+            result = await session.execute(
+                select(DialogMessage)
+                .where(
+                    DialogMessage.dialog_id == dialog_id, DialogMessage.text.isnot(None)
+                )
+                .order_by(DialogMessage.created_at.desc())
+                .limit(limit)
+            )
+            messages: list[DialogMessage] = list(result.scalars().all())
         messages.reverse()
 
         history: list[dict[str, str]] = []
@@ -109,6 +121,9 @@ class AIService:
         if hint_mode:
             base_prompt = f"{base_prompt}\nRespond with short hints rather than full answers."
         return base_prompt
+
+    def _session(self) -> AsyncSession:
+        return self._session_factory()
 
 
 def get_ai_service() -> AIService:
