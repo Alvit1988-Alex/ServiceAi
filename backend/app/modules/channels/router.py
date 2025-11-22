@@ -1,14 +1,62 @@
 """Channels router."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
 from app.modules.channels.schemas import BotChannelCreate, BotChannelOut, BotChannelUpdate, ListResponse
 from app.modules.channels.service import ChannelsService
+from app.modules.channels.telegram_handler import normalize_telegram_update
+from app.modules.channels.avito_handler import normalize_avito_update
+from app.modules.channels.max_handler import normalize_max_webhook
+from app.modules.channels.webchat_handler import normalize_webchat_message
+from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
+from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
+from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
+from app.modules.dialogs.models import MessageSender
+from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
+from app.modules.dialogs.service import DialogsService
+from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
 
 router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
+
+
+def _ensure_channel_available(channel) -> None:
+    if not channel or not channel.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+
+
+def _validate_secret(expected: str | None, provided: str | None, detail: str) -> None:
+    if expected and expected != provided:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+async def _broadcast_message_events(message, dialog, dialog_created: bool) -> None:
+    message_payload = DialogMessageOut.model_validate(message).model_dump()
+    dialog_payload = DialogOut.model_validate(dialog).model_dump()
+
+    if dialog_created:
+        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
+        await manager.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["user_external_id"],
+            message={"event": "dialog_created", "data": dialog_payload},
+        )
+
+    await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["user_external_id"],
+        message={"event": "message_created", "data": message_payload},
+    )
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["user_external_id"],
+        message={"event": "dialog_updated", "data": dialog_payload},
+    )
 
 
 @router.post("", response_model=BotChannelOut, status_code=status.HTTP_201_CREATED)
@@ -76,3 +124,244 @@ async def delete_channel(
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     await service.delete(session=session, bot_id=bot_id, channel_id=channel_id)
+
+
+@router.post("/webhooks/telegram/{channel_id}")
+async def telegram_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret_token") or channel.config.get("token")
+    provided_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    _validate_secret(expected_secret, provided_secret, "Invalid Telegram secret token")
+
+    normalized = normalize_telegram_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"ok": True}
+
+
+def _extract_provided_secret(request: Request, payload: dict, header_name: str = "X-Webhook-Secret") -> str | None:
+    return request.headers.get(header_name) or payload.get("secret") or payload.get("token")
+
+
+@router.post("/webhooks/whatsapp/green/{channel_id}")
+async def whatsapp_green_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+    provided_secret = _extract_provided_secret(request=request, payload=payload)
+    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp Green secret")
+
+    normalized = normalize_whatsapp_green_notification(
+        bot_id=bot_id, channel_id=channel_id, notification=payload
+    )
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"status": "ok"}
+
+
+@router.post("/webhooks/whatsapp/360/{channel_id}")
+async def whatsapp_360_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+    provided_secret = _extract_provided_secret(request=request, payload=payload)
+    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp 360 secret")
+
+    normalized = normalize_whatsapp_360_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"status": "ok"}
+
+
+@router.post("/webhooks/whatsapp/custom/{channel_id}")
+async def whatsapp_custom_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+    provided_secret = _extract_provided_secret(request=request, payload=payload)
+    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp custom secret")
+
+    normalized = normalize_whatsapp_custom_webhook(
+        bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
+    )
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"status": "ok"}
+
+
+@router.post("/webhooks/avito/{channel_id}")
+async def avito_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("token")
+    provided_secret = _extract_provided_secret(request=request, payload=payload, header_name="X-Avito-Secret")
+    _validate_secret(expected_secret, provided_secret, "Invalid Avito secret")
+
+    normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"result": "ok"}
+
+
+@router.post("/webhooks/max/{channel_id}")
+async def max_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("token")
+    provided_secret = _extract_provided_secret(request=request, payload=payload)
+    _validate_secret(expected_secret, provided_secret, "Invalid Max webhook secret")
+
+    normalized = normalize_max_webhook(
+        bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
+    )
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"status": "ok"}
+
+
+@router.post("/webhooks/webchat/{channel_id}")
+async def webchat_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+) -> dict:
+    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    _ensure_channel_available(channel)
+    channel = channels_service.decrypt(channel)
+
+    expected_secret = channel.config.get("secret") or channel.config.get("token")
+    provided_secret = _extract_provided_secret(request=request, payload=payload, header_name="X-Webchat-Secret")
+    _validate_secret(expected_secret, provided_secret, "Invalid webchat secret")
+
+    normalized = normalize_webchat_message(bot_id=bot_id, channel_id=channel_id, payload=payload)
+
+    message, dialog, dialog_created = await dialogs_service.add_message(
+        session=session,
+        bot_id=normalized.bot_id,
+        user_external_id=normalized.external_user_id,
+        sender=MessageSender.USER,
+        text=normalized.text,
+        payload=normalized.payload,
+    )
+
+    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
+    return {"status": "ok"}
