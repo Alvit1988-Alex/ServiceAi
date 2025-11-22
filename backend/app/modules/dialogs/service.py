@@ -1,12 +1,13 @@
 """Dialog service implementing CRUD operations."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.dialogs.models import Dialog, DialogMessage
+from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, DialogUpdate
 
 
@@ -32,6 +33,34 @@ class DialogsService:
         result = await session.execute(stmt)
         return result.scalars().first()
 
+    async def get_or_create_dialog(
+        self, session: AsyncSession, bot_id: int, user_external_id: str
+    ) -> Dialog:
+        stmt = (
+            select(Dialog)
+            .where(
+                Dialog.bot_id == bot_id,
+                Dialog.user_external_id == user_external_id,
+                Dialog.closed.is_(False),
+            )
+            .order_by(Dialog.updated_at.desc())
+        )
+        result = await session.execute(stmt)
+        dialog = result.scalars().first()
+        if dialog:
+            return dialog
+
+        dialog = Dialog(
+            bot_id=bot_id,
+            user_external_id=user_external_id,
+            status=DialogStatus.AUTO,
+            closed=False,
+        )
+        session.add(dialog)
+        await session.commit()
+        await session.refresh(dialog)
+        return dialog
+
     async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[Dialog]:
         stmt = select(Dialog)
         if filters:
@@ -49,6 +78,63 @@ class DialogsService:
         await session.commit()
         await session.refresh(db_obj)
         return db_obj
+
+    async def close_dialog(
+        self, session: AsyncSession, bot_id: int, user_external_id: str
+    ) -> Dialog | None:
+        stmt = (
+            select(Dialog)
+            .where(
+                Dialog.bot_id == bot_id,
+                Dialog.user_external_id == user_external_id,
+                Dialog.closed.is_(False),
+            )
+            .order_by(Dialog.updated_at.desc())
+        )
+        result = await session.execute(stmt)
+        dialog = result.scalars().first()
+        if not dialog:
+            return None
+
+        dialog.closed = True
+        dialog.updated_at = datetime.utcnow()
+
+        session.add(dialog)
+        await session.commit()
+        await session.refresh(dialog)
+        return dialog
+
+    async def add_message(
+        self,
+        session: AsyncSession,
+        bot_id: int,
+        user_external_id: str,
+        sender: MessageSender,
+        text: str | None = None,
+        payload: dict | None = None,
+    ) -> DialogMessage:
+        dialog = await self.get_or_create_dialog(
+            session=session, bot_id=bot_id, user_external_id=user_external_id
+        )
+
+        dialog.closed = False
+        if sender == MessageSender.USER:
+            dialog.status = DialogStatus.WAIT_OPERATOR
+        else:
+            dialog.status = DialogStatus.WAIT_USER
+        dialog.updated_at = datetime.utcnow()
+
+        message = DialogMessage(
+            dialog_id=dialog.id,
+            sender=sender,
+            text=text,
+            payload=payload,
+        )
+        session.add_all([dialog, message])
+        await session.commit()
+        await session.refresh(dialog)
+        await session.refresh(message)
+        return message
 
     async def delete(self, session: AsyncSession, bot_id: int, dialog_id: int) -> None:
         obj = await self.get(session, bot_id, dialog_id)
