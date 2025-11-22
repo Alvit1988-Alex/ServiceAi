@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.accounts.models import User
 from app.modules.channels.schemas import BotChannelCreate, BotChannelOut, BotChannelUpdate, ListResponse
 from app.modules.channels.service import ChannelsService
+from app.security.auth import get_current_user
 
 router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
 
@@ -13,6 +15,7 @@ router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
 async def create_channel(
     bot_id: int,
     data: BotChannelCreate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
@@ -23,6 +26,7 @@ async def create_channel(
 @router.get("", response_model=ListResponse[BotChannelOut])
 async def list_channels(
     bot_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> ListResponse[BotChannelOut]:
@@ -34,6 +38,7 @@ async def list_channels(
 async def get_channel(
     bot_id: int,
     channel_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
@@ -48,6 +53,7 @@ async def update_channel(
     bot_id: int,
     channel_id: int,
     data: BotChannelUpdate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
@@ -62,6 +68,7 @@ async def update_channel(
 async def delete_channel(
     bot_id: int,
     channel_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> None:
