@@ -6,11 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
 from app.modules.ai.schemas import (
-    AIInstructionsCreate,
+    AIAnswer,
+    AIInstructionsIn,
     AIInstructionsOut,
-    AIInstructionsUpdate,
     AskAIRequest,
-    AskAIResponse,
     KnowledgeFileOut,
     ListResponse,
 )
@@ -40,7 +39,7 @@ async def get_instructions(
 )
 async def create_instruction(
     bot_id: int,
-    data: AIInstructionsCreate,
+    data: AIInstructionsIn,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
@@ -55,7 +54,7 @@ async def create_instruction(
 @router.patch("/instructions", response_model=AIInstructionsOut)
 async def update_instruction(
     bot_id: int,
-    data: AIInstructionsUpdate,
+    data: AIInstructionsIn,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
@@ -126,14 +125,14 @@ async def delete_knowledge_file(
     await service.delete_file(session=session, bot_id=bot_id, file_id=file_id)
 
 
-@router.post("/ask", response_model=AskAIResponse)
+@router.post("/ask", response_model=AIAnswer)
 async def ask_ai(
     bot_id: int,
     data: AskAIRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     ai_service: AIService = Depends(get_ai_service),
-) -> AskAIResponse:
+) -> AIAnswer:
     return await ai_service.answer(
         session=session,
         bot_id=bot_id,

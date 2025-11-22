@@ -15,21 +15,14 @@ class ListResponse(BaseModel, Generic[T]):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AIInstructionsBase(BaseModel):
+class AIInstructionsIn(BaseModel):
     system_prompt: str
 
 
-class AIInstructionsCreate(AIInstructionsBase):
-    pass
-
-
-class AIInstructionsUpdate(BaseModel):
-    system_prompt: str | None = None
-
-
-class AIInstructionsOut(AIInstructionsBase):
+class AIInstructionsOut(BaseModel):
     id: int
     bot_id: int
+    system_prompt: str
     created_at: datetime
     updated_at: datetime
 
@@ -40,9 +33,6 @@ class KnowledgeFileOut(BaseModel):
     id: int
     bot_id: int
     file_name: str
-    original_name: str
-    mime_type: str | None
-    size_bytes: int
     chunks_count: int
     created_at: datetime
 
@@ -66,14 +56,8 @@ class AskAIRequest(BaseModel):
     dialog_id: int | None = None
 
 
-class AskAIResponse(BaseModel):
+class AIAnswer(BaseModel):
     can_answer: bool
-    answer_text: str | None = None
+    answer: str | None = None
     confidence: float
     used_chunk_ids: list[int] = Field(default_factory=list)
-
-
-class AIAnswer(AskAIResponse):
-    """Internal schema mirroring :class:`AskAIResponse` for service returns."""
-
-    model_config = ConfigDict(from_attributes=True)
