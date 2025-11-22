@@ -1,41 +1,92 @@
-"""Dialog service placeholder implementing minimal flow."""
+"""Dialog service implementing CRUD operations."""
+from __future__ import annotations
 
-from datetime import datetime
+from typing import Any
 
-from app.modules.channels.schemas import NormalizedMessage
-from app.modules.dialogs.schemas import DialogStatus
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-
-class Dialog:
-    """In-memory dialog stub."""
-
-    def __init__(self, bot_id: int, external_channel: str, external_chat_id: str, external_user_id: str):
-        self.id = 0
-        self.bot_id = bot_id
-        self.external_channel = external_channel
-        self.external_chat_id = external_chat_id
-        self.external_user_id = external_user_id
-        self.status = DialogStatus.AUTO
-        self.last_message_at = datetime.utcnow()
+from app.modules.dialogs.models import Dialog, DialogMessage
+from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, DialogUpdate
 
 
-class DialogService:
-    def __init__(self, ai_service, channel_sender_registry):
-        self._ai_service = ai_service
-        self._channel_sender_registry = channel_sender_registry
+class DialogsService:
+    model = Dialog
 
-    async def process_incoming_message(self, msg: NormalizedMessage) -> None:
-        # Placeholder: echo behaviour only.
-        dialog = Dialog(
-            bot_id=msg.bot_id,
-            external_channel=msg.channel_type,
-            external_chat_id=msg.external_chat_id,
-            external_user_id=msg.external_user_id,
+    async def create(self, session: AsyncSession, obj_in: DialogCreate) -> Dialog:
+        db_obj = Dialog(
+            bot_id=obj_in.bot_id,
+            user_external_id=obj_in.user_external_id,
+            status=obj_in.status,
+            closed=obj_in.closed,
         )
-        dialog.last_message_at = datetime.utcnow()
-        await self._reply_auto(dialog, msg)
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        return db_obj
 
-    async def _reply_auto(self, dialog: Dialog, msg: NormalizedMessage) -> None:
-        sender = self._channel_sender_registry.get_sender(msg.channel_type) if self._channel_sender_registry._map else None
-        if sender:
-            await sender.send_message(dialog.bot_id, dialog.external_chat_id, msg.text or "")
+    async def get(self, session: AsyncSession, bot_id: int | None, dialog_id: int) -> Dialog | None:
+        stmt = select(Dialog).where(Dialog.id == dialog_id)
+        if bot_id is not None:
+            stmt = stmt.where(Dialog.bot_id == bot_id)
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+    async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[Dialog]:
+        stmt = select(Dialog)
+        if filters:
+            for field, value in filters.items():
+                if value is not None:
+                    stmt = stmt.where(getattr(Dialog, field) == value)
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def update(self, session: AsyncSession, db_obj: Dialog, obj_in: DialogUpdate) -> Dialog:
+        data = obj_in.model_dump(exclude_unset=True)
+        for field, value in data.items():
+            setattr(db_obj, field, value)
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        return db_obj
+
+    async def delete(self, session: AsyncSession, bot_id: int, dialog_id: int) -> None:
+        obj = await self.get(session, bot_id, dialog_id)
+        if obj:
+            await session.delete(obj)
+            await session.commit()
+
+
+class DialogMessagesService:
+    model = DialogMessage
+
+    async def create(self, session: AsyncSession, obj_in: DialogMessageCreate) -> DialogMessage:
+        db_obj = DialogMessage(
+            dialog_id=obj_in.dialog_id,
+            sender=obj_in.sender,
+            text=obj_in.text,
+            payload=obj_in.payload,
+        )
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        return db_obj
+
+    async def get(self, session: AsyncSession, message_id: int) -> DialogMessage | None:
+        result = await session.execute(select(DialogMessage).where(DialogMessage.id == message_id))
+        return result.scalars().first()
+
+    async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[DialogMessage]:
+        stmt = select(DialogMessage)
+        if filters:
+            for field, value in filters.items():
+                if value is not None:
+                    stmt = stmt.where(getattr(DialogMessage, field) == value)
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def delete(self, session: AsyncSession, message_id: int) -> None:
+        obj = await self.get(session, message_id)
+        if obj:
+            await session.delete(obj)
+            await session.commit()

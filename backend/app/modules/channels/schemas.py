@@ -1,34 +1,24 @@
 """Channel shared schemas and message normalisation."""
-
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.channels.models import ChannelType
 
-class ChannelType(str, Enum):
-    TELEGRAM = "telegram"
-    WHATSAPP_GREEN = "whatsapp_green"
-    WHATSAPP_360 = "whatsapp_360"
-    WHATSAPP_CUSTOM = "whatsapp_custom"
-    AVITO = "avito"
-    MAX = "max"
-    WEBCHAT = "webchat"
+T = TypeVar("T")
 
 
-class AttachmentType(str, Enum):
-    IMAGE = "image"
-    DOCUMENT = "document"
-    VIDEO = "video"
-    AUDIO = "audio"
-    OTHER = "other"
+class ListResponse(BaseModel, Generic[T]):
+    items: list[T]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Attachment(BaseModel):
-    type: AttachmentType
+    type: Literal["image", "document", "video", "audio", "other"]
     url: str | None = None
     file_id: str | None = None
     file_name: str | None = None
@@ -43,19 +33,33 @@ class NormalizedMessage(BaseModel):
     external_chat_id: str
     external_user_id: str
     text: str | None = None
-    attachments: list[Attachment] = []
-    timestamp: datetime
+    attachments: list[Attachment] = Field(default_factory=list)
+    timestamp: datetime | None = None
     raw_update: dict[str, Any]
 
 
-class BotChannelConfigIn(BaseModel):
+class BotChannelBase(BaseModel):
+    channel_type: ChannelType
     config: dict[str, Any]
+    is_active: bool = True
+
+
+class BotChannelCreate(BotChannelBase):
+    pass
+
+
+class BotChannelUpdate(BaseModel):
+    config: dict[str, Any] | None = None
+    is_active: bool | None = None
 
 
 class BotChannelOut(BaseModel):
+    id: int
     bot_id: int
-    type: ChannelType
-    is_enabled: bool
+    channel_type: ChannelType
+    config: dict[str, Any]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
