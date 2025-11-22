@@ -45,6 +45,33 @@ async def get_dialog(
     return dialog
 
 
+@router.post("/bots/{bot_id}/dialogs/{dialog_id}/close", response_model=DialogOut)
+async def close_dialog(
+    bot_id: int,
+    dialog_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+) -> DialogOut:
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id)
+    if not dialog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
+    if dialog.closed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dialog is already closed")
+
+    dialog = await service.close_dialog(session=session, dialog=dialog)
+    dialog_payload = DialogOut.model_validate(dialog).model_dump()
+
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["user_external_id"],
+        message={"event": "dialog_updated", "data": dialog_payload},
+    )
+
+    return DialogOut.model_validate(dialog)
+
+
 @router.delete("/bots/{bot_id}/dialogs/{dialog_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_dialog(
     bot_id: int,
