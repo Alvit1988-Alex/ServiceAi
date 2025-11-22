@@ -1,8 +1,6 @@
 """WhatsApp Green API handler stub."""
 
-from datetime import datetime
-
-from app.modules.channels.schemas import ChannelType, NormalizedMessage
+from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
 class WhatsAppGreenHandler:
@@ -11,15 +9,16 @@ class WhatsAppGreenHandler:
         self._dialog_service = dialog_service
 
     async def handle_notification(self, bot_id: int, notification: dict) -> None:
-        normalized = NormalizedMessage(
+        normalized = NormalizedIncomingMessage(
             bot_id=bot_id,
+            channel_id=int(notification.get("channel_id", 0)),
             channel_type=ChannelType.WHATSAPP_GREEN,
-            external_chat_id=str(notification.get("chat", "0")),
             external_user_id=str(notification.get("user", "0")),
+            external_message_id=str(notification.get("message_id"))
+            if notification.get("message_id")
+            else None,
             text=str(notification.get("text", "")),
-            attachments=[],
-            timestamp=datetime.utcnow(),
-            raw_update=notification,
+            payload=notification,
         )
         await self._dialog_service.process_incoming_message(normalized)
 

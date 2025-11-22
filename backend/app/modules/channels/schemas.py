@@ -38,6 +38,18 @@ class NormalizedMessage(BaseModel):
     raw_update: dict[str, Any]
 
 
+class NormalizedIncomingMessage(BaseModel):
+    bot_id: int
+    channel_id: int
+    channel_type: ChannelType
+    external_user_id: str
+    external_message_id: str | None = None
+    text: str | None = None
+    payload: dict[str, Any] | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BotChannelBase(BaseModel):
     channel_type: ChannelType
     config: dict[str, Any]

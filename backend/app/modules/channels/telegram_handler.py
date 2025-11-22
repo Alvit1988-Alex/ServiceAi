@@ -1,6 +1,6 @@
 """Telegram handler placeholder."""
 
-from app.modules.channels.schemas import ChannelType, NormalizedMessage
+from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
 class TelegramHandler:
@@ -9,15 +9,14 @@ class TelegramHandler:
         self._dialog_service = dialog_service
 
     async def handle_update(self, bot_id: int, update: dict) -> None:
-        normalized = NormalizedMessage(
+        normalized = NormalizedIncomingMessage(
             bot_id=bot_id,
+            channel_id=int(update.get("channel_id", 0)),
             channel_type=ChannelType.TELEGRAM,
-            external_chat_id=str(update.get("chat", "0")),
             external_user_id=str(update.get("user", "0")),
+            external_message_id=str(update.get("message_id")) if update.get("message_id") else None,
             text=str(update.get("text", "")),
-            attachments=[],
-            timestamp=None,
-            raw_update=update,
+            payload=update,
         )
         await self._dialog_service.process_incoming_message(normalized)
 
