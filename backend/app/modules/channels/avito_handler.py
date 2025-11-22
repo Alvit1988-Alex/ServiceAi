@@ -1,24 +1,23 @@
-"""Avito handler stub."""
+"""Normalization helpers for Avito updates."""
+
+from __future__ import annotations
 
 from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
-class AvitoHandler:
-    def __init__(self, channels_service, dialog_service):
-        self._channels_service = channels_service
-        self._dialog_service = dialog_service
+def normalize_avito_update(bot_id: int, channel_id: int, update: dict) -> NormalizedIncomingMessage:
+    """Convert an Avito webhook update into a NormalizedIncomingMessage."""
 
-    async def handle_update(self, bot_id: int, update: dict) -> None:
-        normalized = NormalizedIncomingMessage(
-            bot_id=bot_id,
-            channel_id=int(update.get("channel_id", 0)),
-            channel_type=ChannelType.AVITO,
-            external_user_id=str(update.get("user", "0")),
-            external_message_id=str(update.get("message_id")) if update.get("message_id") else None,
-            text=str(update.get("text", "")),
-            payload=update,
-        )
-        await self._dialog_service.process_incoming_message(normalized)
+    external_user_id = update.get("user_id") or update.get("user") or ""
+    external_message_id = update.get("message_id") or update.get("id")
+    text = update.get("text") or update.get("message") or ""
 
-    async def send_message(self, bot_id: int, external_chat_id: str, text: str, attachments=None) -> None:
-        return None
+    return NormalizedIncomingMessage(
+        bot_id=bot_id,
+        channel_id=channel_id,
+        channel_type=ChannelType.AVITO,
+        external_user_id=str(external_user_id),
+        external_message_id=str(external_message_id) if external_message_id is not None else None,
+        text=text,
+        payload={"raw_update": update},
+    )

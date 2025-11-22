@@ -1,24 +1,31 @@
-"""Custom WhatsApp handler stub."""
+"""Normalization helpers for custom WhatsApp webhooks."""
+
+from __future__ import annotations
 
 from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
-class WhatsAppCustomHandler:
-    def __init__(self, channels_service, dialog_service):
-        self._channels_service = channels_service
-        self._dialog_service = dialog_service
+def normalize_whatsapp_custom_webhook(
+    bot_id: int, channel_id: int, payload: dict, headers: dict | None = None
+) -> NormalizedIncomingMessage:
+    """Convert a custom WhatsApp webhook payload into a normalized message."""
 
-    async def handle_webhook(self, bot_id: int, payload: dict, headers: dict | None = None) -> None:
-        normalized = NormalizedIncomingMessage(
-            bot_id=bot_id,
-            channel_id=int(payload.get("channel_id", 0)),
-            channel_type=ChannelType.WHATSAPP_CUSTOM,
-            external_user_id=str(payload.get("user", "0")),
-            external_message_id=str(payload.get("message_id")) if payload.get("message_id") else None,
-            text=str(payload.get("text", "")),
-            payload=payload,
-        )
-        await self._dialog_service.process_incoming_message(normalized)
+    headers = headers or {}
+    message = payload.get("message") or payload
 
-    async def send_message(self, bot_id: int, external_chat_id: str, text: str, attachments=None) -> None:
-        return None
+    external_user_id = message.get("from") or payload.get("user") or headers.get("X-User-Id") or ""
+    external_message_id = message.get("id") or payload.get("message_id")
+    text = message.get("text") or payload.get("text") or ""
+
+    if isinstance(text, dict):
+        text = text.get("body") or ""
+
+    return NormalizedIncomingMessage(
+        bot_id=bot_id,
+        channel_id=channel_id,
+        channel_type=ChannelType.WHATSAPP_CUSTOM,
+        external_user_id=str(external_user_id),
+        external_message_id=str(external_message_id) if external_message_id is not None else None,
+        text=text,
+        payload={"raw_update": payload, "headers": headers},
+    )
