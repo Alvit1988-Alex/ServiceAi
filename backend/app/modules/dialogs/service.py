@@ -35,7 +35,7 @@ class DialogsService:
 
     async def get_or_create_dialog(
         self, session: AsyncSession, bot_id: int, user_external_id: str
-    ) -> Dialog:
+    ) -> tuple[Dialog, bool]:
         stmt = (
             select(Dialog)
             .where(
@@ -48,7 +48,7 @@ class DialogsService:
         result = await session.execute(stmt)
         dialog = result.scalars().first()
         if dialog:
-            return dialog
+            return dialog, False
 
         dialog = Dialog(
             bot_id=bot_id,
@@ -59,7 +59,7 @@ class DialogsService:
         session.add(dialog)
         await session.commit()
         await session.refresh(dialog)
-        return dialog
+        return dialog, True
 
     async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[Dialog]:
         stmt = select(Dialog)
@@ -112,8 +112,8 @@ class DialogsService:
         sender: MessageSender,
         text: str | None = None,
         payload: dict | None = None,
-    ) -> DialogMessage:
-        dialog = await self.get_or_create_dialog(
+    ) -> tuple[DialogMessage, Dialog, bool]:
+        dialog, dialog_created = await self.get_or_create_dialog(
             session=session, bot_id=bot_id, user_external_id=user_external_id
         )
 
@@ -134,7 +134,7 @@ class DialogsService:
         await session.commit()
         await session.refresh(dialog)
         await session.refresh(message)
-        return message
+        return message, dialog, dialog_created
 
     async def delete(self, session: AsyncSession, bot_id: int, dialog_id: int) -> None:
         obj = await self.get(session, bot_id, dialog_id)
