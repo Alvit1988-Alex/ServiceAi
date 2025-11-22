@@ -69,7 +69,7 @@ async def close_dialog(
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 
-    return DialogOut.model_validate(dialog)
+    return dialog
 
 
 @router.delete("/bots/{bot_id}/dialogs/{dialog_id}", status_code=status.HTTP_204_NO_CONTENT)
