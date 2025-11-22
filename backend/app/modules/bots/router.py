@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.accounts.models import User
 from app.modules.bots.schemas import BotCreate, BotOut, BotUpdate, ListResponse
 from app.modules.bots.service import BotsService
+from app.security.auth import get_current_user
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
@@ -12,6 +14,7 @@ router = APIRouter(prefix="/bots", tags=["bots"])
 @router.post("", response_model=BotOut, status_code=status.HTTP_201_CREATED)
 async def create_bot(
     data: BotCreate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> BotOut:
@@ -20,6 +23,7 @@ async def create_bot(
 
 @router.get("", response_model=ListResponse[BotOut])
 async def list_bots(
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> ListResponse[BotOut]:
@@ -30,6 +34,7 @@ async def list_bots(
 @router.get("/{bot_id}", response_model=BotOut)
 async def get_bot(
     bot_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> BotOut:
@@ -43,6 +48,7 @@ async def get_bot(
 async def update_bot(
     bot_id: int,
     data: BotUpdate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> BotOut:
@@ -55,6 +61,7 @@ async def update_bot(
 @router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bot(
     bot_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> None:

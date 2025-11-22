@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.accounts.models import User
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut, ListResponse
 from app.modules.dialogs.service import DialogMessagesService, DialogsService
+from app.security.auth import get_current_user
 
 router = APIRouter(tags=["dialogs"])
 
@@ -12,6 +14,7 @@ router = APIRouter(tags=["dialogs"])
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogOut])
 async def list_dialogs(
     bot_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> ListResponse[DialogOut]:
@@ -23,6 +26,7 @@ async def list_dialogs(
 async def get_dialog(
     bot_id: int,
     dialog_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogOut:
@@ -36,6 +40,7 @@ async def get_dialog(
 async def delete_dialog(
     bot_id: int,
     dialog_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> None:
@@ -48,6 +53,7 @@ async def delete_dialog(
 @router.get("/dialogs/{dialog_id}/messages", response_model=ListResponse[DialogMessageOut])
 async def list_messages(
     dialog_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogMessagesService = Depends(DialogMessagesService),
     dialogs_service: DialogsService = Depends(DialogsService),
