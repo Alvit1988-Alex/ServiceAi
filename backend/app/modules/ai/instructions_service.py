@@ -78,3 +78,9 @@ class AIInstructionsService:
         if self._session_factory is None:
             raise RuntimeError("Database session factory is not configured")
         return self._session_factory()
+
+
+def get_ai_instructions_service() -> AIInstructionsService:
+    """Dependency injection helper for AIInstructionsService."""
+
+    return AIInstructionsService()

@@ -159,3 +159,9 @@ class KnowledgeService:
 
     def _session(self) -> AsyncSession:
         return self._session_factory()
+
+
+def get_knowledge_service() -> KnowledgeService:
+    """Dependency injection helper for KnowledgeService."""
+
+    return KnowledgeService()
