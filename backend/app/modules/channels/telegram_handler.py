@@ -1,24 +1,54 @@
-"""Telegram handler placeholder."""
+"""Normalization helpers for Telegram updates."""
+
+from __future__ import annotations
 
 from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
-class TelegramHandler:
-    def __init__(self, channels_service, dialog_service):
-        self._channels_service = channels_service
-        self._dialog_service = dialog_service
+def _extract_telegram_message(update: dict) -> tuple[dict | None, dict | None]:
+    """Return the message-like object and user source from a Telegram update."""
 
-    async def handle_update(self, bot_id: int, update: dict) -> None:
-        normalized = NormalizedIncomingMessage(
-            bot_id=bot_id,
-            channel_id=int(update.get("channel_id", 0)),
-            channel_type=ChannelType.TELEGRAM,
-            external_user_id=str(update.get("user", "0")),
-            external_message_id=str(update.get("message_id")) if update.get("message_id") else None,
-            text=str(update.get("text", "")),
-            payload=update,
-        )
-        await self._dialog_service.process_incoming_message(normalized)
+    message = update.get("message") or update.get("edited_message")
+    if message:
+        return message, message.get("from")
 
-    async def send_message(self, bot_id: int, external_chat_id: str, text: str, attachments=None) -> None:
-        return None
+    callback = update.get("callback_query")
+    if callback:
+        return callback.get("message"), callback.get("from")
+
+    return None, update.get("from")
+
+
+def normalize_telegram_update(bot_id: int, channel_id: int, update: dict) -> NormalizedIncomingMessage:
+    """Convert a raw Telegram webhook update into a NormalizedIncomingMessage."""
+
+    message, user = _extract_telegram_message(update)
+    text = None
+    external_message_id = None
+
+    if message:
+        text = message.get("text") or message.get("caption")
+        external_message_id = message.get("message_id")
+    elif update.get("callback_query"):
+        callback = update["callback_query"]
+        text = callback.get("data")
+        external_message_id = callback.get("id")
+    else:
+        text = update.get("text")
+        external_message_id = update.get("message_id") or update.get("id")
+
+    external_user_id = None
+    if user and user.get("id") is not None:
+        external_user_id = str(user.get("id"))
+    elif update.get("user") is not None:
+        external_user_id = str(update.get("user"))
+
+    return NormalizedIncomingMessage(
+        bot_id=bot_id,
+        channel_id=channel_id,
+        channel_type=ChannelType.TELEGRAM,
+        external_user_id=external_user_id or "",
+        external_message_id=str(external_message_id) if external_message_id is not None else None,
+        text=text if text is not None else "",
+        payload={"raw_update": update},
+    )
