@@ -1,0 +1,37 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: serviceai
+      POSTGRES_USER: serviceai
+      POSTGRES_PASSWORD: serviceai
+    ports:
+      - "5432:5432"
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://serviceai:serviceai@db:5432/serviceai
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+  nginx:
+    image: nginx:1.25
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
