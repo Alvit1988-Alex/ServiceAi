@@ -6,14 +6,20 @@ from typing import List
 from pydantic import BaseModel
 
 
-class AIInstructionsIn(BaseModel):
-    system_prompt: str
+class AIInstructionIn(BaseModel):
+    title: str
+    content: str
+    is_active: bool = True
 
 
-class AIInstructionsOut(BaseModel):
+class AIInstructionOut(BaseModel):
+    id: int
     bot_id: int
-    system_prompt: str
-    updated_at: datetime | None = None
+    title: str
+    content: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -21,11 +27,12 @@ class AIInstructionsOut(BaseModel):
 
 class KnowledgeFileOut(BaseModel):
     id: int
-    file_name: str
+    filename: str
     original_name: str
+    mime_type: str
     size_bytes: int
-    chunks_count: int
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
