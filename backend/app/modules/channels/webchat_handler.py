@@ -1,8 +1,6 @@
 """Webchat handler stub using websocket manager."""
 
-from datetime import datetime
-
-from app.modules.channels.schemas import ChannelType, NormalizedMessage
+from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
 
 
 class WebchatHandler:
@@ -11,15 +9,14 @@ class WebchatHandler:
         self._ws = websocket_manager
 
     async def handle_user_message(self, bot_id: int, session_id: str, text: str) -> None:
-        normalized = NormalizedMessage(
+        normalized = NormalizedIncomingMessage(
             bot_id=bot_id,
+            channel_id=0,
             channel_type=ChannelType.WEBCHAT,
-            external_chat_id=session_id,
             external_user_id=session_id,
+            external_message_id=None,
             text=text,
-            attachments=[],
-            timestamp=datetime.utcnow(),
-            raw_update={"source": "webchat"},
+            payload={"source": "webchat"},
         )
         await self._dialog_service.process_incoming_message(normalized)
 
