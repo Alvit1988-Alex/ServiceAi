@@ -1,17 +1,13 @@
-"""Simple reversible encryption placeholder."""
-
-import base64
-import json
+from typing import Any, Dict
 
 
-def encrypt_config(config: dict) -> dict:
-    encoded = base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
-    return {"data": encoded}
+def encrypt_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Placeholder for channel configuration encryption."""
+
+    return config
 
 
-def decrypt_config(payload: dict) -> dict:
-    data = payload.get("data", "")
-    try:
-        return json.loads(base64.b64decode(data.encode("utf-8")).decode("utf-8"))
-    except Exception:
-        return {}
+def decrypt_config(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Placeholder for channel configuration decryption."""
+
+    return data
