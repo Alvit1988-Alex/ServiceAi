@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.modules.accounts import router as accounts_router
 from app.modules.ai import router as ai_router
 from app.modules.bots import router as bots_router
 from app.modules.channels import router as channels_router
@@ -22,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(accounts_router.router)
 app.include_router(bots_router.router)
 app.include_router(channels_router.router)
 app.include_router(dialogs_router.router)

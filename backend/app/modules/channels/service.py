@@ -1,44 +1,65 @@
-"""Channel management and sender registry stubs."""
+"""Channel management CRUD operations."""
+from __future__ import annotations
 
-from typing import Protocol
+from typing import Any
 
-from app.modules.channels.schemas import ChannelType, NormalizedMessage
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.schemas import BotChannelCreate, BotChannelUpdate
+from app.utils.encryption import decrypt_config, encrypt_config
 
 
 class ChannelsService:
-    """CRUD operations for bot channels (placeholder)."""
+    model = BotChannel
 
-    async def list_channels(self, bot_id: int) -> list:
-        return []
+    async def create(self, session: AsyncSession, bot_id: int, obj_in: BotChannelCreate) -> BotChannel:
+        db_obj = BotChannel(
+            bot_id=bot_id,
+            channel_type=obj_in.channel_type,
+            config=encrypt_config(obj_in.config),
+            is_active=obj_in.is_active,
+        )
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        return db_obj
 
-    async def get_channel_by_type(self, bot_id: int, channel_type: ChannelType):
-        return None
+    async def get(self, session: AsyncSession, bot_id: int, channel_id: int) -> BotChannel | None:
+        stmt = select(BotChannel).where(BotChannel.id == channel_id, BotChannel.bot_id == bot_id)
+        result = await session.execute(stmt)
+        return result.scalars().first()
 
-    async def upsert_channel_config(self, bot_id: int, channel_type: ChannelType, config: dict):
-        return {"bot_id": bot_id, "type": channel_type, "config": config}
+    async def list(self, session: AsyncSession, bot_id: int) -> list[BotChannel]:
+        result = await session.execute(select(BotChannel).where(BotChannel.bot_id == bot_id))
+        return result.scalars().all()
 
-    async def enable_channel(self, bot_id: int, channel_type: ChannelType) -> None:
-        return None
+    async def update(
+        self,
+        session: AsyncSession,
+        db_obj: BotChannel,
+        obj_in: BotChannelUpdate,
+    ) -> BotChannel:
+        data = obj_in.model_dump(exclude_unset=True)
+        if "config" in data:
+            data["config"] = encrypt_config(data["config"])
+        for field, value in data.items():
+            setattr(db_obj, field, value)
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        return db_obj
 
-    async def disable_channel(self, bot_id: int, channel_type: ChannelType) -> None:
-        return None
+    async def delete(self, session: AsyncSession, bot_id: int, channel_id: int) -> None:
+        obj = await self.get(session, bot_id, channel_id)
+        if obj:
+            await session.delete(obj)
+            await session.commit()
 
-    async def get_decrypted_config(self, channel) -> dict:
-        return {}
+    def decrypt(self, channel: BotChannel) -> BotChannel:
+        channel.config = decrypt_config(channel.config)
+        return channel
 
-
-class ChannelSender(Protocol):
-    async def send_message(self, bot_id: int, external_chat_id: str, text: str, attachments=None) -> None: ...
-
-
-class ChannelSenderRegistry:
-    def __init__(self, channels_service: ChannelsService, websocket_manager):
-        self._channels_service = channels_service
-        self._ws = websocket_manager
-        self._map: dict[ChannelType, ChannelSender] = {}
-
-    def register_sender(self, channel_type: ChannelType, sender: ChannelSender) -> None:
-        self._map[channel_type] = sender
-
-    def get_sender(self, channel_type: ChannelType) -> ChannelSender:
-        return self._map[channel_type]
+    def decrypt_many(self, channels: list[BotChannel]) -> list[BotChannel]:
+        return [self.decrypt(ch) for ch in channels]
