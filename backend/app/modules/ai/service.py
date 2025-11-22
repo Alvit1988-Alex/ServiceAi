@@ -1,12 +1,11 @@
 """AI service integrating instructions, RAG and LLM."""
 from __future__ import annotations
 
-from typing import Iterable
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.instructions_service import AIInstructionsService
+from app.modules.ai.models import AIInstructions
 from app.modules.ai.llm import GigaChatLLMClient, LLMClient
 from app.modules.ai.rag import RAGService
 from app.modules.ai.schemas import AIAnswer
@@ -33,7 +32,7 @@ class AIService:
         hint_mode: bool = False,
     ) -> AIAnswer:
         instructions = await self._instructions_service.get_instructions(
-            session=session, bot_id=bot_id, active_only=True
+            session=session, bot_id=bot_id
         )
         system_prompt = self._build_system_prompt(instructions, hint_mode)
 
@@ -42,7 +41,7 @@ class AIService:
         relevant_chunks = await self._rag_service.find_relevant_chunks(
             session=session, bot_id=bot_id, question=user_message
         )
-        chunk_texts = [chunk.content for chunk, _ in relevant_chunks]
+        chunk_texts = [chunk.text for chunk, _ in relevant_chunks]
         used_chunk_ids = [chunk.id for chunk, _ in relevant_chunks]
         confidence = max((score for _, score in relevant_chunks), default=0.0)
 
@@ -103,13 +102,10 @@ class AIService:
         return history
 
     @staticmethod
-    def _build_system_prompt(instructions: Iterable, hint_mode: bool) -> str:
-        instructions_text = "\n".join(
-            f"- {instr.title}: {instr.content}" for instr in instructions if instr.is_active
-        )
+    def _build_system_prompt(instructions: AIInstructions | None, hint_mode: bool) -> str:
         base_prompt = "You are a helpful assistant. Use provided instructions and context to answer."
-        if instructions_text:
-            base_prompt = f"{base_prompt}\nInstructions:\n{instructions_text}"
+        if instructions and instructions.system_prompt:
+            base_prompt = instructions.system_prompt
         if hint_mode:
             base_prompt = f"{base_prompt}\nRespond with short hints rather than full answers."
         return base_prompt

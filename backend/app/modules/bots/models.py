@@ -40,11 +40,12 @@ class Bot(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    ai_instructions: Mapped[list["AIInstruction"]] = relationship(
-        "AIInstruction",
+    ai_instructions: Mapped["AIInstructions" | None] = relationship(
+        "AIInstructions",
         back_populates="bot",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        uselist=False,
     )
     knowledge_files: Mapped[list["KnowledgeFile"]] = relationship(
         "KnowledgeFile",
