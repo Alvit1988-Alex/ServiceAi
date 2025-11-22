@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -36,6 +36,24 @@ class Bot(Base):
     )
     dialogs: Mapped[list["Dialog"]] = relationship(
         "Dialog",
+        back_populates="bot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    ai_instructions: Mapped[list["AIInstruction"]] = relationship(
+        "AIInstruction",
+        back_populates="bot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    knowledge_files: Mapped[list["KnowledgeFile"]] = relationship(
+        "KnowledgeFile",
+        back_populates="bot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    knowledge_chunks: Mapped[list["KnowledgeChunk"]] = relationship(
+        "KnowledgeChunk",
         back_populates="bot",
         cascade="all, delete-orphan",
         passive_deletes=True,
