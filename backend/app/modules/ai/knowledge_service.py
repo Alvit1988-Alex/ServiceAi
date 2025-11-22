@@ -30,10 +30,11 @@ class KnowledgeService:
 
         knowledge_file = KnowledgeFile(
             bot_id=bot_id,
-            filename=filename,
+            file_name=filename,
             original_name=file.filename or "file",
-            mime_type=file.content_type or "application/octet-stream",
+            mime_type=file.content_type,
             size_bytes=len(content_bytes),
+            chunks_count=len(chunks),
         )
         session.add(knowledge_file)
         await session.flush()
@@ -45,8 +46,8 @@ class KnowledgeService:
                 KnowledgeChunk(
                     file_id=knowledge_file.id,
                     bot_id=bot_id,
-                    content=chunk_text,
-                    metadata_={"chunk_index": idx},
+                    chunk_index=idx,
+                    text=chunk_text,
                     embedding=embedding,
                 )
             )
@@ -85,7 +86,7 @@ class KnowledgeService:
         await session.delete(knowledge_file)
         await session.commit()
 
-        stored_path = self._storage_dir / knowledge_file.filename
+        stored_path = self._storage_dir / knowledge_file.file_name
         if stored_path.exists():
             stored_path.unlink()
 

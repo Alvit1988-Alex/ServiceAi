@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
 from app.modules.ai.schemas import (
-    AIInstructionCreate,
-    AIInstructionOut,
-    AIInstructionUpdate,
+    AIInstructionsCreate,
+    AIInstructionsOut,
+    AIInstructionsUpdate,
     AskAIRequest,
     AskAIResponse,
     KnowledgeFileOut,
@@ -22,50 +22,47 @@ from app.security.auth import get_current_user
 router = APIRouter(prefix="/bots/{bot_id}/ai", tags=["ai"])
 
 
-@router.get("/instructions", response_model=ListResponse[AIInstructionOut])
+@router.get("/instructions", response_model=AIInstructionsOut)
 async def get_instructions(
     bot_id: int,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
-) -> ListResponse[AIInstructionOut]:
-    items = await service.get_instructions(session=session, bot_id=bot_id)
-    return ListResponse[AIInstructionOut](items=items)
+) -> AIInstructionsOut:
+    instructions = await service.get_instructions(session=session, bot_id=bot_id)
+    if not instructions:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instructions not found")
+    return instructions
 
 
 @router.post(
-    "/instructions", response_model=AIInstructionOut, status_code=status.HTTP_201_CREATED
+    "/instructions", response_model=AIInstructionsOut, status_code=status.HTTP_201_CREATED
 )
 async def create_instruction(
     bot_id: int,
-    data: AIInstructionCreate,
+    data: AIInstructionsCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
-) -> AIInstructionOut:
+) -> AIInstructionsOut:
     return await service.upsert_instructions(
         session=session,
         bot_id=bot_id,
-        title=data.title,
-        content=data.content,
-        is_active=data.is_active,
+        system_prompt=data.system_prompt,
     )
 
 
-@router.patch("/instructions/{instruction_id}", response_model=AIInstructionOut)
+@router.patch("/instructions", response_model=AIInstructionsOut)
 async def update_instruction(
     bot_id: int,
-    instruction_id: int,
-    data: AIInstructionUpdate,
+    data: AIInstructionsUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
-) -> AIInstructionOut:
-    instruction = await service.get_instruction(
-        session=session, bot_id=bot_id, instruction_id=instruction_id
-    )
+) -> AIInstructionsOut:
+    instruction = await service.get_instructions(session=session, bot_id=bot_id)
     if not instruction:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instruction not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instructions not found")
 
     update_data = data.model_dump(exclude_unset=True)
     if not update_data:
@@ -76,23 +73,18 @@ async def update_instruction(
     )
 
 
-@router.delete("/instructions/{instruction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/instructions", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_instruction(
     bot_id: int,
-    instruction_id: int,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: AIInstructionsService = Depends(AIInstructionsService),
 ) -> None:
-    instruction = await service.get_instruction(
-        session=session, bot_id=bot_id, instruction_id=instruction_id
-    )
+    instruction = await service.get_instructions(session=session, bot_id=bot_id)
     if not instruction:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instruction not found")
 
-    await service.delete_instruction(
-        session=session, bot_id=bot_id, instruction_id=instruction_id
-    )
+    await service.delete_instruction(session=session, bot_id=bot_id)
 
 
 @router.get("/knowledge", response_model=ListResponse[KnowledgeFileOut])

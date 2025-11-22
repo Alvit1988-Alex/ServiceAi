@@ -15,23 +15,19 @@ class ListResponse(BaseModel, Generic[T]):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AIInstructionBase(BaseModel):
-    title: str
-    content: str
-    is_active: bool = True
+class AIInstructionsBase(BaseModel):
+    system_prompt: str
 
 
-class AIInstructionCreate(AIInstructionBase):
+class AIInstructionsCreate(AIInstructionsBase):
     pass
 
 
-class AIInstructionUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
-    is_active: bool | None = None
+class AIInstructionsUpdate(BaseModel):
+    system_prompt: str | None = None
 
 
-class AIInstructionOut(AIInstructionBase):
+class AIInstructionsOut(AIInstructionsBase):
     id: int
     bot_id: int
     created_at: datetime
@@ -43,12 +39,12 @@ class AIInstructionOut(AIInstructionBase):
 class KnowledgeFileOut(BaseModel):
     id: int
     bot_id: int
-    filename: str
+    file_name: str
     original_name: str
-    mime_type: str
+    mime_type: str | None
     size_bytes: int
+    chunks_count: int
     created_at: datetime
-    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,13 +53,12 @@ class KnowledgeChunkOut(BaseModel):
     id: int
     file_id: int
     bot_id: int
-    content: str
-    metadata: dict | None = Field(default=None, validation_alias="metadata_", serialization_alias="metadata")
-    embedding: list | None = None
+    chunk_index: int
+    text: str
+    embedding: list
     created_at: datetime
-    updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AskAIRequest(BaseModel):

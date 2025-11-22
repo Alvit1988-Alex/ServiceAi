@@ -6,61 +6,41 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import AIInstruction
+from app.modules.ai.models import AIInstructions
 
 
 class AIInstructionsService:
-    model = AIInstruction
+    model = AIInstructions
 
     async def get_instructions(
-        self, session: AsyncSession, bot_id: int, active_only: bool = True
-    ) -> list[AIInstruction]:
-        stmt = select(AIInstruction).where(AIInstruction.bot_id == bot_id)
-        if active_only:
-            stmt = stmt.where(AIInstruction.is_active.is_(True))
-        result = await session.execute(stmt)
-        return result.scalars().all()
+        self, session: AsyncSession, bot_id: int
+    ) -> AIInstructions | None:
+        result = await session.execute(
+            select(AIInstructions).where(AIInstructions.bot_id == bot_id)
+        )
+        return result.scalars().first()
 
     async def upsert_instructions(
-        self, session: AsyncSession, bot_id: int, title: str, content: str, is_active: bool
-    ) -> AIInstruction:
-        stmt = select(AIInstruction).where(
-            AIInstruction.bot_id == bot_id, AIInstruction.title == title
+        self, session: AsyncSession, bot_id: int, system_prompt: str
+    ) -> AIInstructions:
+        result = await session.execute(
+            select(AIInstructions).where(AIInstructions.bot_id == bot_id)
         )
-        result = await session.execute(stmt)
         instruction = result.scalars().first()
 
         if instruction:
-            instruction.content = content
-            instruction.is_active = is_active
+            instruction.system_prompt = system_prompt
         else:
-            instruction = AIInstruction(
-                bot_id=bot_id,
-                title=title,
-                content=content,
-                is_active=is_active,
-            )
+            instruction = AIInstructions(bot_id=bot_id, system_prompt=system_prompt)
             session.add(instruction)
 
         await session.commit()
         await session.refresh(instruction)
         return instruction
 
-    async def get_instruction(
-        self, session: AsyncSession, bot_id: int, instruction_id: int
-    ) -> AIInstruction | None:
+    async def delete_instruction(self, session: AsyncSession, bot_id: int) -> None:
         result = await session.execute(
-            select(AIInstruction).where(
-                AIInstruction.bot_id == bot_id, AIInstruction.id == instruction_id
-            )
-        )
-        return result.scalars().first()
-
-    async def delete_instruction(self, session: AsyncSession, bot_id: int, instruction_id: int) -> None:
-        result = await session.execute(
-            select(AIInstruction).where(
-                AIInstruction.bot_id == bot_id, AIInstruction.id == instruction_id
-            )
+            select(AIInstructions).where(AIInstructions.bot_id == bot_id)
         )
         instruction = result.scalars().first()
         if instruction:
@@ -68,8 +48,8 @@ class AIInstructionsService:
             await session.commit()
 
     async def update_instruction_fields(
-        self, session: AsyncSession, instruction: AIInstruction, fields: dict[str, Any]
-    ) -> AIInstruction:
+        self, session: AsyncSession, instruction: AIInstructions, fields: dict[str, Any]
+    ) -> AIInstructions:
         for field, value in fields.items():
             setattr(instruction, field, value)
         session.add(instruction)

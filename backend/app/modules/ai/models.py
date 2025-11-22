@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,16 +13,17 @@ def utcnow() -> datetime:
     return datetime.utcnow()
 
 
-class AIInstruction(Base):
+class AIInstructions(Base):
     __tablename__ = "ai_instructions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bot_id: Mapped[int] = mapped_column(
-        ForeignKey("bots.id", ondelete="CASCADE"), index=True, nullable=False
+        ForeignKey("bots.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
     )
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
@@ -40,14 +41,12 @@ class KnowledgeFile(Base):
     bot_id: Mapped[int] = mapped_column(
         ForeignKey("bots.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunks_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
-    )
 
     bot: Mapped["Bot"] = relationship(
         "Bot", back_populates="knowledge_files", passive_deletes=True
@@ -72,13 +71,10 @@ class KnowledgeChunk(Base):
     bot_id: Mapped[int] = mapped_column(
         ForeignKey("bots.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
-    embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
-    )
 
     bot: Mapped["Bot"] = relationship(
         "Bot", back_populates="knowledge_chunks", passive_deletes=True
