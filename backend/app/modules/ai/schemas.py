@@ -33,6 +33,9 @@ class KnowledgeFileOut(BaseModel):
     id: int
     bot_id: int
     file_name: str
+    original_name: str
+    size_bytes: int
+    mime_type: str | None
     chunks_count: int
     created_at: datetime
 

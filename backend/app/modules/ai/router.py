@@ -30,8 +30,9 @@ async def get_instructions(
 ) -> AIInstructionsOut:
     instructions = await service.get_instructions(bot_id=bot_id)
     if not instructions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Instructions not found"
+        instructions = await service.upsert_instructions(
+            bot_id=bot_id,
+            system_prompt="",
         )
     return instructions
 
