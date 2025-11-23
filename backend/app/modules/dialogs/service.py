@@ -7,6 +7,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.ai.service import AIService
+from app.modules.channels.schemas import NormalizedIncomingMessage
+from app.modules.channels.sender_registry import get_sender
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, DialogUpdate
 
@@ -125,6 +128,70 @@ class DialogsService:
         if obj:
             await session.delete(obj)
             await session.commit()
+
+    async def process_incoming_message(
+        self,
+        session: AsyncSession,
+        incoming_message: NormalizedIncomingMessage,
+        ai_service: AIService,
+    ) -> tuple[DialogMessage, DialogMessage | None, Dialog, bool]:
+        dialog, dialog_created = await self.get_or_create_dialog(
+            session=session,
+            bot_id=incoming_message.bot_id,
+            user_external_id=incoming_message.external_user_id,
+        )
+
+        dialog.closed = False
+        dialog.status = DialogStatus.WAIT_OPERATOR
+        dialog.updated_at = datetime.utcnow()
+
+        user_message = DialogMessage(
+            dialog_id=dialog.id,
+            sender=MessageSender.USER,
+            text=incoming_message.text,
+            payload=incoming_message.payload,
+        )
+        session.add_all([dialog, user_message])
+        await session.commit()
+        await session.refresh(dialog)
+        await session.refresh(user_message)
+
+        bot_message: DialogMessage | None = None
+        answer = await ai_service.answer(
+            bot_id=incoming_message.bot_id,
+            dialog_id=dialog.id,
+            question=incoming_message.text or "",
+        )
+
+        if answer.can_answer and answer.answer:
+            bot_message = DialogMessage(
+                dialog_id=dialog.id,
+                sender=MessageSender.BOT,
+                text=answer.answer,
+            )
+
+            dialog.status = DialogStatus.WAIT_USER
+            dialog.updated_at = datetime.utcnow()
+
+            session.add_all([dialog, bot_message])
+            await session.commit()
+            await session.refresh(dialog)
+            await session.refresh(bot_message)
+
+            sender_cls = get_sender(incoming_message.channel_type)
+            await sender_cls().send_text(
+                bot_id=incoming_message.bot_id,
+                external_chat_id=incoming_message.external_user_id,
+                text=answer.answer,
+            )
+        else:
+            dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.updated_at = datetime.utcnow()
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
+        return user_message, bot_message, dialog, dialog_created
 
 
 class DialogMessagesService:

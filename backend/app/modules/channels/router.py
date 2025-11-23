@@ -4,7 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
-from app.modules.channels.schemas import BotChannelCreate, BotChannelOut, BotChannelUpdate, ListResponse
+from app.modules.ai.service import AIService, get_ai_service
+from app.modules.channels.schemas import (
+    BotChannelCreate,
+    BotChannelOut,
+    BotChannelUpdate,
+    ListResponse,
+    NormalizedIncomingMessage,
+)
 from app.modules.channels.service import ChannelsService
 from app.modules.channels.telegram_handler import normalize_telegram_update
 from app.modules.channels.avito_handler import normalize_avito_update
@@ -13,7 +20,6 @@ from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
 from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
-from app.modules.dialogs.models import MessageSender
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
 from app.modules.dialogs.service import DialogsService
 from app.modules.dialogs.websocket_manager import manager
@@ -32,8 +38,25 @@ def _validate_secret(expected: str | None, provided: str | None, detail: str) ->
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-async def _broadcast_message_events(message, dialog, dialog_created: bool) -> None:
-    message_payload = DialogMessageOut.model_validate(message).model_dump()
+async def _process_and_broadcast(
+    *,
+    normalized: NormalizedIncomingMessage,
+    dialogs_service: DialogsService,
+    ai_service: AIService,
+    session: AsyncSession,
+) -> None:
+    user_message, bot_message, dialog, dialog_created = await dialogs_service.process_incoming_message(
+        session=session, incoming_message=normalized, ai_service=ai_service
+    )
+
+    messages = [user_message]
+    if bot_message:
+        messages.append(bot_message)
+
+    await _broadcast_message_events(messages=messages, dialog=dialog, dialog_created=dialog_created)
+
+
+async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
     dialog_payload = DialogOut.model_validate(dialog).model_dump()
 
     if dialog_created:
@@ -44,19 +67,21 @@ async def _broadcast_message_events(message, dialog, dialog_created: bool) -> No
             message={"event": "dialog_created", "data": dialog_payload},
         )
 
-    await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
-    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+    for message in messages:
+        message_payload = DialogMessageOut.model_validate(message).model_dump()
+        await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
+        await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
 
-    await manager.broadcast_to_webchat(
-        bot_id=dialog_payload["bot_id"],
-        session_id=dialog_payload["user_external_id"],
-        message={"event": "message_created", "data": message_payload},
-    )
-    await manager.broadcast_to_webchat(
-        bot_id=dialog_payload["bot_id"],
-        session_id=dialog_payload["user_external_id"],
-        message={"event": "dialog_updated", "data": dialog_payload},
-    )
+        await manager.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["user_external_id"],
+            message={"event": "message_created", "data": message_payload},
+        )
+        await manager.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["user_external_id"],
+            message={"event": "dialog_updated", "data": dialog_payload},
+        )
 
 
 @router.post("", response_model=BotChannelOut, status_code=status.HTTP_201_CREATED)
@@ -135,6 +160,7 @@ async def telegram_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -146,16 +172,12 @@ async def telegram_webhook(
 
     normalized = normalize_telegram_update(bot_id=bot_id, channel_id=channel_id, update=payload)
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"ok": True}
 
 
@@ -172,6 +194,7 @@ async def whatsapp_green_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -185,16 +208,12 @@ async def whatsapp_green_webhook(
         bot_id=bot_id, channel_id=channel_id, notification=payload
     )
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"status": "ok"}
 
 
@@ -207,6 +226,7 @@ async def whatsapp_360_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -218,16 +238,12 @@ async def whatsapp_360_webhook(
 
     normalized = normalize_whatsapp_360_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"status": "ok"}
 
 
@@ -240,6 +256,7 @@ async def whatsapp_custom_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -253,16 +270,12 @@ async def whatsapp_custom_webhook(
         bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
     )
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"status": "ok"}
 
 
@@ -275,6 +288,7 @@ async def avito_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -286,16 +300,12 @@ async def avito_webhook(
 
     normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"result": "ok"}
 
 
@@ -308,6 +318,7 @@ async def max_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -321,16 +332,12 @@ async def max_webhook(
         bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
     )
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"status": "ok"}
 
 
@@ -343,6 +350,7 @@ async def webchat_webhook(
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
@@ -354,14 +362,10 @@ async def webchat_webhook(
 
     normalized = normalize_webchat_message(bot_id=bot_id, channel_id=channel_id, payload=payload)
 
-    message, dialog, dialog_created = await dialogs_service.add_message(
+    await _process_and_broadcast(
+        normalized=normalized,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
         session=session,
-        bot_id=normalized.bot_id,
-        user_external_id=normalized.external_user_id,
-        sender=MessageSender.USER,
-        text=normalized.text,
-        payload=normalized.payload,
     )
-
-    await _broadcast_message_events(message=message, dialog=dialog, dialog_created=dialog_created)
     return {"status": "ok"}
