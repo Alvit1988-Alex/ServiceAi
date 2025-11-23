@@ -228,13 +228,99 @@ class WhatsappGreenSender(BaseChannelSender):
 
 
 class Whatsapp360Sender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.WHATSAPP_360,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
+    async def _resolve_user_id(self, bot_id: int, external_chat_id: str) -> str | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Dialog.external_user_id)
+                .where(
+                    Dialog.bot_id == bot_id,
+                    Dialog.channel_type == ChannelType.WHATSAPP_360,
+                    Dialog.external_chat_id == external_chat_id,
+                )
+                .order_by(Dialog.updated_at.desc())
+            )
+            return result.scalars().first()
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "WhatsApp 360 sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning(
+                "No WhatsApp 360 channel configured for bot",
+                extra={"bot_id": bot_id, "chat_id": external_chat_id},
+            )
+            return
+
+        if attachments:
+            logger.info(
+                "WhatsApp 360 attachments are not supported yet; ignoring",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "attachments_count": len(attachments),
+                },
+            )
+
+        config = channel.config or {}
+        auth_token = config.get("auth_token") or config.get("token")
+        send_message_url = config.get("send_message_url")
+        if not send_message_url:
+            api_base_url = config.get("api_base_url")
+            send_message_path = config.get("send_message_path")
+            if api_base_url and send_message_path:
+                send_message_url = f"{api_base_url.rstrip('/')}/{send_message_path.lstrip('/')}"
+
+        if not auth_token or not send_message_url:
+            logger.error(
+                "WhatsApp 360 channel config missing API url or token",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        resolved_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        to_value = resolved_user_id or external_chat_id
+
+        payload = {"to": to_value, "type": "text", "text": {"body": text}}
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(send_message_url, json=payload, headers=headers)
+                if not response.is_success:
+                    logger.error(
+                        "WhatsApp 360 API returned unsuccessful response",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "chat_id": external_chat_id,
+                            "status": response.status_code,
+                            "response": response.text,
+                        },
+                    )
+        except httpx.HTTPError as exc:
+            logger.error(
+                "Failed to send WhatsApp 360 message",
+                exc_info=exc,
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
 
 
 class WhatsappCustomSender(BaseChannelSender):
