@@ -4,8 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.modules.ai.service import AIService
 from app.modules.channels.models import ChannelType
@@ -13,6 +14,7 @@ from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, DialogUpdate
+from app.utils.validators import validate_pagination
 
 
 class DialogsService:
@@ -32,12 +34,16 @@ class DialogsService:
         await session.refresh(db_obj)
         return db_obj
 
-    async def get(self, session: AsyncSession, bot_id: int | None, dialog_id: int) -> Dialog | None:
+    async def get(
+        self, session: AsyncSession, bot_id: int | None, dialog_id: int, include_messages: bool = False
+    ) -> Dialog | None:
         stmt = select(Dialog).where(Dialog.id == dialog_id)
         if bot_id is not None:
             stmt = stmt.where(Dialog.bot_id == bot_id)
+        if include_messages:
+            stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
         result = await session.execute(stmt)
-        return result.scalars().first()
+        return result.scalars().unique().first()
 
     async def get_or_create_dialog(
         self,
@@ -75,14 +81,35 @@ class DialogsService:
         await session.refresh(dialog)
         return dialog, True
 
-    async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[Dialog]:
-        stmt = select(Dialog)
+    async def list(
+        self,
+        session: AsyncSession,
+        filters: dict[str, Any] | None = None,
+        page: int = 1,
+        per_page: int = 20,
+        include_messages: bool = False,
+    ) -> tuple[list[Dialog], int, bool]:
+        validate_pagination(page, per_page)
+
+        conditions: list[Any] = []
         if filters:
             for field, value in filters.items():
                 if value is not None:
-                    stmt = stmt.where(getattr(Dialog, field) == value)
-        result = await session.execute(stmt)
-        return result.scalars().all()
+                    conditions.append(getattr(Dialog, field) == value)
+
+        stmt = select(Dialog).where(*conditions).order_by(Dialog.updated_at.desc())
+        if include_messages:
+            stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
+
+        total_result = await session.execute(
+            select(func.count()).select_from(select(Dialog.id).where(*conditions).subquery())
+        )
+        total = total_result.scalar_one()
+
+        result = await session.execute(stmt.offset((page - 1) * per_page).limit(per_page))
+        items = result.scalars().unique().all()
+        has_next = page * per_page < total
+        return items, total, has_next
 
     async def update(self, session: AsyncSession, db_obj: Dialog, obj_in: DialogUpdate) -> Dialog:
         data = obj_in.model_dump(exclude_unset=True)
@@ -235,14 +262,31 @@ class DialogMessagesService:
         result = await session.execute(select(DialogMessage).where(DialogMessage.id == message_id))
         return result.scalars().first()
 
-    async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[DialogMessage]:
-        stmt = select(DialogMessage)
+    async def list(
+        self,
+        session: AsyncSession,
+        filters: dict[str, Any] | None = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list[DialogMessage], int, bool]:
+        validate_pagination(page, per_page)
+
+        conditions: list[Any] = []
         if filters:
             for field, value in filters.items():
                 if value is not None:
-                    stmt = stmt.where(getattr(DialogMessage, field) == value)
-        result = await session.execute(stmt)
-        return result.scalars().all()
+                    conditions.append(getattr(DialogMessage, field) == value)
+
+        stmt = select(DialogMessage).where(*conditions).order_by(DialogMessage.created_at.asc())
+        total_result = await session.execute(
+            select(func.count()).select_from(select(DialogMessage.id).where(*conditions).subquery())
+        )
+        total = total_result.scalar_one()
+
+        result = await session.execute(stmt.offset((page - 1) * per_page).limit(per_page))
+        items = result.scalars().all()
+        has_next = page * per_page < total
+        return items, total, has_next
 
     async def delete(self, session: AsyncSession, message_id: int) -> None:
         obj = await self.get(session, message_id)

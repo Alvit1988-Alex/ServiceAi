@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
-from app.modules.dialogs.models import MessageSender
-from app.modules.dialogs.schemas import DialogMessageOut, DialogOut, ListResponse
+from app.modules.channels.models import ChannelType
+from app.modules.dialogs.models import DialogStatus, MessageSender
+from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
 from app.modules.dialogs.service import DialogMessagesService, DialogsService
 from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
 from app.security.jwt import decode_access_token
+from app.utils.validators import validate_pagination
 
 router = APIRouter(tags=["dialogs"])
 
@@ -20,47 +22,88 @@ class OperatorMessageIn(BaseModel):
     payload: dict | None = None
 
 
-@router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogOut])
+@router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])
 async def list_dialogs(
     bot_id: int,
+    status: DialogStatus | None = None,
+    channel_type: ChannelType | None = None,
+    assigned_admin_id: int | None = None,
+    external_user_id: str | None = None,
+    closed: bool | None = None,
+    is_locked: bool | None = None,
+    page: int = 1,
+    per_page: int = 20,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
-) -> ListResponse[DialogOut]:
-    items = await service.list(session=session, filters={"bot_id": bot_id})
-    return ListResponse[DialogOut](items=items)
+) -> ListResponse[DialogShort]:
+    validate_pagination(page, per_page)
+
+    dialogs, total, has_next = await service.list(
+        session=session,
+        filters={
+            "bot_id": bot_id,
+            "status": status,
+            "channel_type": channel_type,
+            "assigned_admin_id": assigned_admin_id,
+            "external_user_id": external_user_id,
+            "closed": closed,
+            "is_locked": is_locked,
+        },
+        page=page,
+        per_page=per_page,
+        include_messages=True,
+    )
+
+    items = [
+        DialogShort.model_validate(dialog, update={"last_message": dialog.messages[-1] if dialog.messages else None})
+        for dialog in dialogs
+    ]
+
+    return ListResponse[DialogShort](
+        items=items,
+        page=page,
+        per_page=per_page,
+        total=total,
+        has_next=has_next,
+    )
 
 
-@router.get("/bots/{bot_id}/dialogs/{dialog_id}", response_model=DialogOut)
+@router.get("/bots/{bot_id}/dialogs/{dialog_id}", response_model=DialogDetail)
 async def get_dialog(
     bot_id: int,
     dialog_id: int,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
-) -> DialogOut:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id)
+) -> DialogDetail:
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
-    return dialog
+    messages = sorted(dialog.messages, key=lambda m: m.created_at) if dialog.messages else []
+    return DialogDetail.model_validate(dialog, update={"messages": messages})
 
 
-@router.post("/bots/{bot_id}/dialogs/{dialog_id}/close", response_model=DialogOut)
+@router.post("/bots/{bot_id}/dialogs/{dialog_id}/close", response_model=DialogDetail)
 async def close_dialog(
     bot_id: int,
     dialog_id: int,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
-) -> DialogOut:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id)
+) -> DialogDetail:
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
     if dialog.closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dialog is already closed")
 
     dialog = await service.close_dialog(session=session, dialog=dialog)
-    dialog_payload = DialogOut.model_validate(dialog).model_dump()
+
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog_payload = DialogDetail.model_validate(
+        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
+    ).model_dump()
 
     await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
     await manager.broadcast_to_webchat(
@@ -69,7 +112,7 @@ async def close_dialog(
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 
-    return dialog
+    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
 
 
 @router.delete("/bots/{bot_id}/dialogs/{dialog_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -89,16 +132,29 @@ async def delete_dialog(
 @router.get("/dialogs/{dialog_id}/messages", response_model=ListResponse[DialogMessageOut])
 async def list_messages(
     dialog_id: int,
+    sender: MessageSender | None = None,
+    page: int = 1,
+    per_page: int = 20,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogMessagesService = Depends(DialogMessagesService),
     dialogs_service: DialogsService = Depends(DialogsService),
 ) -> ListResponse[DialogMessageOut]:
+    validate_pagination(page, per_page)
+
     dialog = await dialogs_service.get(session=session, bot_id=None, dialog_id=dialog_id)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
-    items = await service.list(session=session, filters={"dialog_id": dialog_id})
-    return ListResponse[DialogMessageOut](items=items)
+    items, total, has_next = await service.list(
+        session=session, filters={"dialog_id": dialog_id, "sender": sender}, page=page, per_page=per_page
+    )
+    return ListResponse[DialogMessageOut](
+        items=items,
+        page=page,
+        per_page=per_page,
+        total=total,
+        has_next=has_next,
+    )
 
 
 @router.websocket("/ws/admin")
@@ -145,7 +201,7 @@ async def create_dialog_message(
     if dialog.closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dialog is closed")
 
-    message, updated_dialog, dialog_created = await service.add_message(
+    message, _updated_dialog, dialog_created = await service.add_message(
         session=session,
         bot_id=dialog.bot_id,
         channel_type=dialog.channel_type,
@@ -156,8 +212,11 @@ async def create_dialog_message(
         payload=data.payload,
     )
 
+    dialog_detail = await service.get(session=session, bot_id=None, dialog_id=dialog_id, include_messages=True)
     message_payload = DialogMessageOut.model_validate(message).model_dump()
-    dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
+    dialog_payload = DialogDetail.model_validate(
+        dialog_detail, update={"messages": sorted(dialog_detail.messages, key=lambda m: m.created_at)}
+    ).model_dump()
 
     if dialog_created:
         await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
