@@ -229,13 +229,86 @@ class AvitoSender(BaseChannelSender):
 
 
 class MaxSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.MAX,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
+    async def _resolve_user_id(self, bot_id: int, external_chat_id: str) -> str | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Dialog.external_user_id)
+                .where(
+                    Dialog.bot_id == bot_id,
+                    Dialog.channel_type == ChannelType.MAX,
+                    Dialog.external_chat_id == external_chat_id,
+                )
+                .order_by(Dialog.updated_at.desc())
+            )
+            return result.scalars().first()
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "Max sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning("No Max channel configured for bot", extra={"bot_id": bot_id})
+            return
+
+        config = channel.config or {}
+        token = config.get("auth_token") or config.get("token")
+        send_message_url = config.get("send_message_url")
+        if not send_message_url:
+            api_base_url = config.get("api_base_url")
+            send_message_path = config.get("send_message_path")
+            if api_base_url and send_message_path:
+                send_message_url = f"{api_base_url.rstrip('/')}/{send_message_path.lstrip('/')}"
+
+        if not token or not send_message_url:
+            logger.error(
+                "Max channel config missing API url or token",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        resolved_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        payload = {"chat_id": external_chat_id, "message": {"text": text}}
+        if resolved_user_id:
+            payload["user_id"] = resolved_user_id
+
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(send_message_url, json=payload, headers=headers)
+                if not response.is_success:
+                    logger.error(
+                        "Max API returned unsuccessful response",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "chat_id": external_chat_id,
+                            "status": response.status_code,
+                            "response": response.text,
+                        },
+                    )
+        except httpx.HTTPError as exc:
+            logger.error(
+                "Failed to send Max message",
+                exc_info=exc,
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
 
 
 class WebchatSender(BaseChannelSender):
