@@ -43,10 +43,18 @@ def normalize_telegram_update(bot_id: int, channel_id: int, update: dict) -> Nor
     elif update.get("user") is not None:
         external_user_id = str(update.get("user"))
 
+    chat = message.get("chat") if message else None
+    external_chat_id = None
+    if chat and chat.get("id") is not None:
+        external_chat_id = str(chat.get("id"))
+    elif update.get("chat_id") is not None:
+        external_chat_id = str(update.get("chat_id"))
+
     return NormalizedIncomingMessage(
         bot_id=bot_id,
         channel_id=channel_id,
         channel_type=ChannelType.TELEGRAM,
+        external_chat_id=external_chat_id or external_user_id or "",
         external_user_id=external_user_id or "",
         external_message_id=str(external_message_id) if external_message_id is not None else None,
         text=text if text is not None else "",

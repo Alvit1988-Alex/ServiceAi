@@ -15,6 +15,7 @@ def normalize_webchat_message(bot_id: int, channel_id: int, payload: dict) -> No
         bot_id=bot_id,
         channel_id=channel_id,
         channel_type=ChannelType.WEBCHAT,
+        external_chat_id=session_id,
         external_user_id=session_id,
         external_message_id=str(payload.get("message_id")) if payload.get("message_id") else None,
         text=text,

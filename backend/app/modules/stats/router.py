@@ -47,9 +47,9 @@ async def get_summary(
         status_counts[status] = count
 
     dialog_status_breakdown = DialogStatusBreakdown(
-        AUTO=status_counts.get(DialogStatus.AUTO, 0),
-        WAIT_OPERATOR=status_counts.get(DialogStatus.WAIT_OPERATOR, 0),
-        WAIT_USER=status_counts.get(DialogStatus.WAIT_USER, 0),
+        auto=status_counts.get(DialogStatus.AUTO, 0),
+        wait_operator=status_counts.get(DialogStatus.WAIT_OPERATOR, 0),
+        wait_user=status_counts.get(DialogStatus.WAIT_USER, 0),
     )
 
     message_stats_rows = await session.execute(

@@ -5,9 +5,9 @@ from pydantic import BaseModel
 
 
 class DialogStatusBreakdown(BaseModel):
-    AUTO: int = 0
-    WAIT_OPERATOR: int = 0
-    WAIT_USER: int = 0
+    auto: int = 0
+    wait_operator: int = 0
+    wait_user: int = 0
 
 
 class TimingMetrics(BaseModel):

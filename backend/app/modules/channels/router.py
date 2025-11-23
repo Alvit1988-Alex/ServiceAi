@@ -63,7 +63,7 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
         await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
+            session_id=dialog_payload["external_chat_id"],
             message={"event": "dialog_created", "data": dialog_payload},
         )
 
@@ -74,12 +74,12 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
 
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
+            session_id=dialog_payload["external_chat_id"],
             message={"event": "message_created", "data": message_payload},
         )
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
+            session_id=dialog_payload["external_chat_id"],
             message={"event": "dialog_updated", "data": dialog_payload},
         )
 

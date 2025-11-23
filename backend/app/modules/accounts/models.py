@@ -3,11 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.modules.dialogs.models import Dialog
 
 
 class UserRole(str, Enum):
@@ -50,6 +54,10 @@ class User(Base):
         "Account",
         secondary=account_operators,
         back_populates="operators",
+    )
+    assigned_dialogs: Mapped[list["Dialog"]] = relationship(
+        "Dialog",
+        back_populates="assigned_admin",
     )
 
 

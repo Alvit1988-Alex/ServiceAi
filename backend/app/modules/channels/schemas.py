@@ -42,6 +42,7 @@ class NormalizedIncomingMessage(BaseModel):
     bot_id: int
     channel_id: int
     channel_type: ChannelType
+    external_chat_id: str
     external_user_id: str
     external_message_id: str | None = None
     text: str | None = None
