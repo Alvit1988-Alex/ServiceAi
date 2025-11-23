@@ -7,6 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.modules.ai.models import AIInstructions, KnowledgeChunk, KnowledgeFile
 
 
 def utcnow() -> datetime:
@@ -40,20 +41,20 @@ class Bot(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    ai_instructions: Mapped["AIInstructions" | None] = relationship(
+    ai_instructions: Mapped[AIInstructions | None] = relationship(
         "AIInstructions",
         back_populates="bot",
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
     )
-    knowledge_files: Mapped[list["KnowledgeFile"]] = relationship(
+    knowledge_files: Mapped[list[KnowledgeFile]] = relationship(
         "KnowledgeFile",
         back_populates="bot",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    knowledge_chunks: Mapped[list["KnowledgeChunk"]] = relationship(
+    knowledge_chunks: Mapped[list[KnowledgeChunk]] = relationship(
         "KnowledgeChunk",
         back_populates="bot",
         cascade="all, delete-orphan",

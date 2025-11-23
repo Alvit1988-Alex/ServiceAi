@@ -17,6 +17,10 @@ from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, Dialo
 from app.utils.validators import validate_pagination
 
 
+class DialogLockError(Exception):
+    """Raised when a dialog lock or unlock operation cannot be completed."""
+
+
 class DialogsService:
     model = Dialog
 
@@ -122,6 +126,37 @@ class DialogsService:
 
     async def close_dialog(self, session: AsyncSession, dialog: Dialog) -> Dialog:
         dialog.closed = True
+        dialog.updated_at = datetime.utcnow()
+
+        session.add(dialog)
+        await session.commit()
+        await session.refresh(dialog)
+        return dialog
+
+    async def lock_dialog(self, session: AsyncSession, dialog: Dialog, admin_id: int) -> Dialog:
+        if dialog.assigned_admin_id not in (None, admin_id):
+            raise DialogLockError("Dialog is assigned to another operator")
+
+        if dialog.is_locked and dialog.assigned_admin_id != admin_id:
+            raise DialogLockError("Dialog is already locked by another operator")
+
+        dialog.is_locked = True
+        dialog.assigned_admin_id = admin_id
+        dialog.locked_until = None
+        dialog.updated_at = datetime.utcnow()
+
+        session.add(dialog)
+        await session.commit()
+        await session.refresh(dialog)
+        return dialog
+
+    async def unlock_dialog(self, session: AsyncSession, dialog: Dialog, admin_id: int) -> Dialog:
+        if dialog.assigned_admin_id not in (None, admin_id):
+            raise DialogLockError("Dialog is locked by another operator")
+
+        dialog.is_locked = False
+        dialog.locked_until = None
+        dialog.assigned_admin_id = dialog.assigned_admin_id or admin_id
         dialog.updated_at = datetime.utcnow()
 
         session.add(dialog)
