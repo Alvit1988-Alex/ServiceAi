@@ -196,7 +196,7 @@ def test_unlock_dialog_requires_owner(db_sessionmaker: Callable[[], AsyncSession
 
     unlocked = run(_unlock_flow())
     assert unlocked.is_locked is False
-    assert unlocked.assigned_admin_id == operator.id
+    assert unlocked.assigned_admin_id is None
 
 
 def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
