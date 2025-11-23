@@ -155,6 +155,7 @@ class DialogsService:
             dialog.status = DialogStatus.WAIT_OPERATOR
             dialog.last_user_message_at = now
             dialog.waiting_time_seconds = 0
+            dialog.unread_messages_count += 1
         else:
             dialog.status = DialogStatus.WAIT_USER
             dialog.waiting_time_seconds = (
@@ -162,6 +163,7 @@ class DialogsService:
                 if dialog.last_user_message_at
                 else 0
             )
+            dialog.unread_messages_count = 0
         dialog.updated_at = now
         dialog.last_message_at = now
 
@@ -205,6 +207,7 @@ class DialogsService:
         dialog.last_message_at = now
         dialog.last_user_message_at = now
         dialog.waiting_time_seconds = 0
+        dialog.unread_messages_count += 1
 
         user_message = DialogMessage(
             dialog_id=dialog.id,
@@ -240,6 +243,7 @@ class DialogsService:
             dialog.updated_at = datetime.utcnow()
             dialog.last_message_at = datetime.utcnow()
             dialog.waiting_time_seconds = bot_response_time_seconds
+            dialog.unread_messages_count = 0
 
             session.add_all([dialog, bot_message])
             await session.commit()
