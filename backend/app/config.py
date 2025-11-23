@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("REFRESH_TOKEN_EXPIRES_DAYS", "refresh_token_expires_days"),
     )
 
+    channel_config_secret_key: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("CHANNEL_CONFIG_SECRET_KEY", "channel_config_secret_key"),
+    )
+
     gigachat_client_id: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CLIENT_ID", "gigachat_client_id"))
     gigachat_client_secret: str | None = Field(
         default=None,

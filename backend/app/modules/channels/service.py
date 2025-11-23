@@ -24,7 +24,7 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)
-        return db_obj
+        return self.decrypt(db_obj)
 
     async def get(self, session: AsyncSession, bot_id: int, channel_id: int) -> BotChannel | None:
         stmt = select(BotChannel).where(BotChannel.id == channel_id, BotChannel.bot_id == bot_id)
@@ -49,7 +49,7 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)
-        return db_obj
+        return self.decrypt(db_obj)
 
     async def delete(self, session: AsyncSession, bot_id: int, channel_id: int) -> None:
         obj = await self.get(session, bot_id, channel_id)
