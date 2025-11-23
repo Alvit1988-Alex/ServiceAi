@@ -42,12 +42,14 @@ class DialogUpdate(BaseModel):
     locked_until: datetime | None = None
     unread_messages_count: int | None = None
     waiting_time_seconds: int | None = None
+    last_user_message_at: datetime | None = None
 
 
 class DialogOut(DialogBase):
     id: int
     bot_id: int
     last_message_at: datetime
+    last_user_message_at: datetime | None
     unread_messages_count: int
     is_locked: bool
     locked_until: datetime | None

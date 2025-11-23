@@ -148,13 +148,22 @@ class DialogsService:
             external_user_id=external_user_id,
         )
 
+        now = datetime.utcnow()
+
         dialog.closed = False
         if sender == MessageSender.USER:
             dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.last_user_message_at = now
+            dialog.waiting_time_seconds = 0
         else:
             dialog.status = DialogStatus.WAIT_USER
-        dialog.updated_at = datetime.utcnow()
-        dialog.last_message_at = datetime.utcnow()
+            dialog.waiting_time_seconds = (
+                int((now - dialog.last_user_message_at).total_seconds())
+                if dialog.last_user_message_at
+                else 0
+            )
+        dialog.updated_at = now
+        dialog.last_message_at = now
 
         message = DialogMessage(
             dialog_id=dialog.id,
@@ -188,10 +197,14 @@ class DialogsService:
             external_user_id=incoming_message.external_user_id,
         )
 
+        now = datetime.utcnow()
+
         dialog.closed = False
         dialog.status = DialogStatus.WAIT_OPERATOR
-        dialog.updated_at = datetime.utcnow()
-        dialog.last_message_at = datetime.utcnow()
+        dialog.updated_at = now
+        dialog.last_message_at = now
+        dialog.last_user_message_at = now
+        dialog.waiting_time_seconds = 0
 
         user_message = DialogMessage(
             dialog_id=dialog.id,
@@ -218,9 +231,15 @@ class DialogsService:
                 text=answer.answer,
             )
 
+            bot_response_time_seconds = (
+                int((datetime.utcnow() - dialog.last_user_message_at).total_seconds())
+                if dialog.last_user_message_at
+                else 0
+            )
             dialog.status = DialogStatus.WAIT_USER
             dialog.updated_at = datetime.utcnow()
             dialog.last_message_at = datetime.utcnow()
+            dialog.waiting_time_seconds = bot_response_time_seconds
 
             session.add_all([dialog, bot_message])
             await session.commit()

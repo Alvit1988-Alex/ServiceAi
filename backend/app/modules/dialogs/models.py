@@ -39,6 +39,7 @@ class Dialog(Base):
     status: Mapped[DialogStatus] = mapped_column(SQLEnum(DialogStatus, name="dialog_status"), nullable=False)
     closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_message_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    last_user_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     unread_messages_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
