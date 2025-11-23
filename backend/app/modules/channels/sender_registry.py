@@ -1,9 +1,17 @@
 """Channel sender registry and base class definitions."""
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
-from app.modules.channels.models import ChannelType
+import httpx
+from sqlalchemy import select
+
+from app.database import async_session_factory
+from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.service import ChannelsService
+
+logger = logging.getLogger(__name__)
 
 
 class BaseChannelSender(ABC):
@@ -32,52 +40,137 @@ def get_sender(channel_type: ChannelType) -> type[BaseChannelSender]:
 
 
 class TelegramSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.TELEGRAM,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning("No Telegram channel configured for bot", extra={"bot_id": bot_id})
+            return
+
+        token = channel.config.get("token") or channel.config.get("bot_token")
+        if not token:
+            logger.error(
+                "Telegram channel config missing bot token",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        payload = {"chat_id": external_chat_id, "text": text}
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                if not data.get("ok", False):
+                    logger.error(
+                        "Telegram API returned unsuccessful response",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "status": response.status_code,
+                            "response": data,
+                        },
+                    )
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Telegram API responded with HTTP error",
+                exc_info=exc,
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "status": exc.response.status_code if exc.response else None,
+                },
+            )
+        except httpx.RequestError as exc:
+            logger.error(
+                "Failed to reach Telegram API",
+                exc_info=exc,
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+        except Exception:  # pragma: no cover - safeguard for unexpected errors
+            logger.exception(
+                "Unexpected error while sending Telegram message",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
 
 
 class WhatsappGreenSender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "WhatsApp Green sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 class Whatsapp360Sender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "WhatsApp 360 sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 class WhatsappCustomSender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "Custom WhatsApp sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 class AvitoSender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "Avito sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 class MaxSender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "Max sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 class WebchatSender(BaseChannelSender):
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        raise NotImplementedError
+        logger.info(
+            "Webchat sender is not configured; skipping send",
+            extra={"bot_id": bot_id, "chat_id": external_chat_id},
+        )
 
 
 register_sender(ChannelType.TELEGRAM, TelegramSender)
