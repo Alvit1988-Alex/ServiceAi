@@ -14,6 +14,10 @@ T = TypeVar("T")
 
 class ListResponse(BaseModel, Generic[T]):
     items: list[T]
+    page: int
+    per_page: int
+    total: int
+    has_next: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,6 +55,18 @@ class DialogOut(DialogBase):
     waiting_time_seconds: int
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DialogShort(DialogOut):
+    last_message: "DialogMessageOut | None" = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DialogDetail(DialogOut):
+    messages: list["DialogMessageOut"]
 
     model_config = ConfigDict(from_attributes=True)
 
