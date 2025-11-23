@@ -1,7 +1,7 @@
 """WebSocket connection manager."""
 
 from collections import defaultdict
-from typing import DefaultDict, Set, Tuple
+from typing import DefaultDict, Iterable, Set, Tuple
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
@@ -9,35 +9,35 @@ from starlette.websockets import WebSocketState
 
 class WebSocketManager:
     def __init__(self) -> None:
-        self._admin_connections: Set[WebSocket] = set()
+        self._admin_connections: DefaultDict[int, Set[WebSocket]] = defaultdict(set)
         self._webchat_connections: DefaultDict[Tuple[int, str], Set[WebSocket]] = defaultdict(set)
 
-    async def connect_admin(self, ws: WebSocket) -> None:
+    async def register_admin(self, admin_id: int, ws: WebSocket) -> None:
         await ws.accept()
-        self._admin_connections.add(ws)
+        self._admin_connections[admin_id].add(ws)
 
-    async def disconnect_admin(self, ws: WebSocket) -> None:
-        self._admin_connections.discard(ws)
+    async def unregister_admin(self, admin_id: int, ws: WebSocket) -> None:
+        connections = self._admin_connections.get(admin_id)
+        if not connections:
+            return
 
-    async def broadcast_to_admins(self, message: dict) -> None:
-        disconnected: Set[WebSocket] = set()
-        for ws in self._admin_connections:
-            if ws.application_state != WebSocketState.CONNECTED:
-                disconnected.add(ws)
-                continue
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected.add(ws)
+        connections.discard(ws)
+        if not connections:
+            self._admin_connections.pop(admin_id, None)
 
-        for ws in disconnected:
-            self._admin_connections.discard(ws)
+    async def broadcast_to_admin(self, admin_id: int, message: dict) -> None:
+        await self.broadcast_to_admins(admin_ids=[admin_id], message=message)
 
-    async def connect_webchat(self, bot_id: int, session_id: str, ws: WebSocket) -> None:
+    async def broadcast_to_admins(self, message: dict, admin_ids: Iterable[int] | None = None) -> None:
+        target_admins = set(admin_ids) if admin_ids is not None else set(self._admin_connections.keys())
+        for admin_id in target_admins:
+            await self._broadcast_to_connections(self._admin_connections.get(admin_id, set()), message)
+
+    async def register_webchat(self, bot_id: int, session_id: str, ws: WebSocket) -> None:
         await ws.accept()
         self._webchat_connections[(bot_id, session_id)].add(ws)
 
-    async def disconnect_webchat(self, bot_id: int, session_id: str, ws: WebSocket) -> None:
+    async def unregister_webchat(self, bot_id: int, session_id: str, ws: WebSocket) -> None:
         key = (bot_id, session_id)
         connections = self._webchat_connections.get(key)
         if not connections:
@@ -50,6 +50,11 @@ class WebSocketManager:
     async def broadcast_to_webchat(self, bot_id: int, session_id: str, message: dict) -> None:
         key = (bot_id, session_id)
         connections = self._webchat_connections.get(key, set())
+        await self._broadcast_to_connections(connections, message)
+        if not connections:
+            self._webchat_connections.pop(key, None)
+
+    async def _broadcast_to_connections(self, connections: Set[WebSocket], message: dict) -> None:
         disconnected: Set[WebSocket] = set()
 
         for ws in connections:
@@ -63,9 +68,6 @@ class WebSocketManager:
 
         for ws in disconnected:
             connections.discard(ws)
-
-        if not connections:
-            self._webchat_connections.pop(key, None)
 
 
 manager = WebSocketManager()

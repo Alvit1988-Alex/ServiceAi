@@ -22,6 +22,11 @@ class OperatorMessageIn(BaseModel):
     payload: dict | None = None
 
 
+def _resolve_admin_targets(dialog_payload: dict) -> list[int] | None:
+    admin_id = dialog_payload.get("assigned_admin_id")
+    return [admin_id] if admin_id is not None else None
+
+
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])
 async def list_dialogs(
     bot_id: int,
@@ -105,7 +110,9 @@ async def close_dialog(
         dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
     ).model_dump()
 
-    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+    admin_targets = _resolve_admin_targets(dialog_payload)
+
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
     await manager.broadcast_to_webchat(
         bot_id=dialog_payload["bot_id"],
         session_id=dialog_payload["external_chat_id"],
@@ -160,27 +167,28 @@ async def list_messages(
 @router.websocket("/ws/admin")
 async def ws_admin(websocket: WebSocket, token: str) -> None:
     try:
-        decode_access_token(token)
+        payload = decode_access_token(token)
+        admin_id = int(payload.get("sub"))
     except Exception:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    await manager.connect_admin(websocket)
+    await manager.register_admin(admin_id=admin_id, ws=websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await manager.disconnect_admin(websocket)
+        await manager.unregister_admin(admin_id=admin_id, ws=websocket)
 
 
 @router.websocket("/ws/webchat/{bot_id}/{session_id}")
 async def ws_webchat(websocket: WebSocket, bot_id: int, session_id: str) -> None:
-    await manager.connect_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
+    await manager.register_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await manager.disconnect_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
+        await manager.unregister_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
 
 
 @router.post(
@@ -218,16 +226,18 @@ async def create_dialog_message(
         dialog_detail, update={"messages": sorted(dialog_detail.messages, key=lambda m: m.created_at)}
     ).model_dump()
 
+    admin_targets = _resolve_admin_targets(dialog_payload)
+
     if dialog_created:
-        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
+        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload}, admin_ids=admin_targets)
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
             session_id=dialog_payload["external_chat_id"],
             message={"event": "dialog_created", "data": dialog_payload},
         )
 
-    await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
-    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+    await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
 
     await manager.broadcast_to_webchat(
         bot_id=dialog_payload["bot_id"],
