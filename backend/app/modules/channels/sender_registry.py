@@ -115,13 +115,116 @@ class TelegramSender(BaseChannelSender):
 
 
 class WhatsappGreenSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.WHATSAPP_GREEN,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "WhatsApp Green sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning(
+                "No WhatsApp Green channel configured for bot",
+                extra={"bot_id": bot_id, "chat_id": external_chat_id},
+            )
+            return
+
+        if attachments:
+            logger.info(
+                "WhatsApp Green attachments are not supported yet; ignoring",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "attachments_count": len(attachments),
+                },
+            )
+
+        config = channel.config or {}
+        send_message_url = config.get("send_message_url")
+        if not send_message_url:
+            api_base_url = config.get("api_base_url")
+            send_message_path = config.get("send_message_path")
+            instance_id = config.get("instance_id")
+            api_token = config.get("api_token")
+
+            if send_message_path and (instance_id or api_token):
+                try:
+                    send_message_path = send_message_path.format(
+                        instance_id=instance_id or "", api_token=api_token or ""
+                    )
+                except Exception:  # pragma: no cover - defensive formatting guard
+                    logger.exception(
+                        "Failed to format WhatsApp Green send_message_path",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "chat_id": external_chat_id,
+                        },
+                    )
+
+            if api_base_url and send_message_path:
+                send_message_url = (
+                    f"{api_base_url.rstrip('/')}/{send_message_path.lstrip('/')}"
+                )
+
+        if not send_message_url:
+            logger.error(
+                "WhatsApp Green channel config missing send message URL",
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
+            return
+
+        payload = {"chatId": external_chat_id, "message": text}
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(send_message_url, json=payload)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "WhatsApp Green API responded with HTTP error",
+                exc_info=exc,
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "status": exc.response.status_code if exc.response else None,
+                    "response": exc.response.text if exc.response else None,
+                },
+            )
+        except httpx.RequestError as exc:
+            logger.error(
+                "Failed to reach WhatsApp Green API",
+                exc_info=exc,
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                },
+            )
+        except Exception:  # pragma: no cover - safeguard for unexpected errors
+            logger.exception(
+                "Unexpected error while sending WhatsApp Green message",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                },
+            )
 
 
 class Whatsapp360Sender(BaseChannelSender):
