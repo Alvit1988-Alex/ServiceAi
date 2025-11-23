@@ -156,7 +156,7 @@ class DialogsService:
 
         dialog.is_locked = False
         dialog.locked_until = None
-        dialog.assigned_admin_id = dialog.assigned_admin_id or admin_id
+        dialog.assigned_admin_id = None
         dialog.updated_at = datetime.utcnow()
 
         session.add(dialog)
