@@ -39,17 +39,18 @@ async def get_summary(
         select(func.count(Dialog.id)).where(Dialog.bot_id == bot_id, Dialog.closed.is_(False))
     )
 
-    status_counts: dict[DialogStatus, int] = defaultdict(int)
+    status_counts: dict[str, int] = defaultdict(int)
     status_rows = await session.execute(
         select(Dialog.status, func.count(Dialog.id)).where(Dialog.bot_id == bot_id).group_by(Dialog.status)
     )
     for status, count in status_rows.all():
-        status_counts[status] = count
+        status_value = status.value if isinstance(status, DialogStatus) else str(status)
+        status_counts[status_value] = count
 
     dialog_status_breakdown = DialogStatusBreakdown(
-        auto=status_counts.get(DialogStatus.AUTO, 0),
-        wait_operator=status_counts.get(DialogStatus.WAIT_OPERATOR, 0),
-        wait_user=status_counts.get(DialogStatus.WAIT_USER, 0),
+        auto=status_counts.get(DialogStatus.AUTO.value, 0),
+        wait_operator=status_counts.get(DialogStatus.WAIT_OPERATOR.value, 0),
+        wait_user=status_counts.get(DialogStatus.WAIT_USER.value, 0),
     )
 
     message_stats_rows = await session.execute(
