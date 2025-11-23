@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.database import async_session_factory
 from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.dialogs.models import Dialog
 from app.modules.channels.service import ChannelsService
 
 logger = logging.getLogger(__name__)
@@ -144,13 +145,87 @@ class WhatsappCustomSender(BaseChannelSender):
 
 
 class AvitoSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.AVITO,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
+    async def _resolve_user_id(self, bot_id: int, external_chat_id: str) -> str:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Dialog.external_user_id)
+                    .where(
+                        Dialog.bot_id == bot_id,
+                        Dialog.channel_type == ChannelType.AVITO,
+                        Dialog.external_chat_id == external_chat_id,
+                    )
+                    .order_by(Dialog.updated_at.desc())
+            )
+            existing_user_id = result.scalars().first()
+            return existing_user_id or external_chat_id
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "Avito sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning("No Avito channel configured for bot", extra={"bot_id": bot_id})
+            return
+
+        config = channel.config or {}
+        token = config.get("auth_token") or config.get("token")
+        send_message_url = config.get("send_message_url")
+        if not send_message_url:
+            api_base_url = config.get("api_base_url")
+            send_message_path = config.get("send_message_path")
+            if api_base_url and send_message_path:
+                send_message_url = f"{api_base_url.rstrip('/')}/{send_message_path.lstrip('/')}"
+
+        if not token or not send_message_url:
+            logger.error(
+                "Avito channel config missing API url or token",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        resolved_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        payload = {
+            "chat_id": external_chat_id,
+            "user_id": resolved_user_id,
+            "message": {"text": text},
+        }
+        headers = {"Authorization": f"Bearer {token}"}
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(send_message_url, json=payload, headers=headers)
+                if not response.is_success:
+                    logger.error(
+                        "Avito API returned unsuccessful response",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "status": response.status_code,
+                            "response": response.text,
+                        },
+                    )
+        except httpx.HTTPError as exc:
+            logger.error(
+                "Failed to send Avito message",
+                exc_info=exc,
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
 
 
 class MaxSender(BaseChannelSender):
