@@ -324,13 +324,98 @@ class Whatsapp360Sender(BaseChannelSender):
 
 
 class WhatsappCustomSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.WHATSAPP_CUSTOM,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
+    async def _resolve_user_id(self, bot_id: int, external_chat_id: str) -> str:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Dialog.external_user_id)
+                .where(
+                    Dialog.bot_id == bot_id,
+                    Dialog.channel_type == ChannelType.WHATSAPP_CUSTOM,
+                    Dialog.external_chat_id == external_chat_id,
+                )
+                .order_by(Dialog.updated_at.desc())
+            )
+            resolved_user_id = result.scalars().first()
+            return resolved_user_id or external_chat_id
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "Custom WhatsApp sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning(
+                "No WhatsApp custom channel configured for bot",
+                extra={"bot_id": bot_id, "chat_id": external_chat_id},
+            )
+            return
+
+        config = channel.config or {}
+        send_message_url = config.get("send_message_url")
+        token = config.get("auth_token") or config.get("token")
+        api_key_header = config.get("api_key_header")
+        api_key = config.get("api_key")
+        extra_headers = config.get("extra_headers") or {}
+
+        if not send_message_url:
+            logger.error(
+                "WhatsApp custom channel config missing send_message_url",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        external_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        payload = {
+            "chat_id": external_chat_id,
+            "user_id": external_user_id,
+            "text": text,
+        }
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        if api_key and api_key_header:
+            headers[api_key_header] = api_key
+        if isinstance(extra_headers, dict):
+            headers.update(extra_headers)
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    send_message_url, json=payload, headers=headers
+                )
+                if not response.is_success:
+                    logger.error(
+                        "WhatsApp custom API returned unsuccessful response",
+                        extra={
+                            "bot_id": bot_id,
+                            "channel_id": channel.id,
+                            "chat_id": external_chat_id,
+                            "status": response.status_code,
+                            "response": response.text,
+                        },
+                    )
+        except httpx.HTTPError as exc:
+            logger.error(
+                "Failed to send WhatsApp custom message",
+                exc_info=exc,
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
 
 
 class AvitoSender(BaseChannelSender):
