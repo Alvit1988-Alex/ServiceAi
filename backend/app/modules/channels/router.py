@@ -58,9 +58,10 @@ async def _process_and_broadcast(
 
 async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
     dialog_payload = DialogOut.model_validate(dialog).model_dump()
+    admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
 
     if dialog_created:
-        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
+        await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload}, admin_ids=admin_targets)
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
             session_id=dialog_payload["external_chat_id"],
@@ -69,8 +70,8 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
 
     for message in messages:
         message_payload = DialogMessageOut.model_validate(message).model_dump()
-        await manager.broadcast_to_admins({"event": "message_created", "data": message_payload})
-        await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
+        await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
+        await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
 
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
