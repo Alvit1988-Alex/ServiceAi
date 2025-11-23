@@ -26,13 +26,21 @@ def normalize_whatsapp_360_webhook(bot_id: int, channel_id: int, payload: dict) 
         text = str(payload.get("text"))
 
     external_user_id = message.get("from") or payload.get("from") or payload.get("user") or ""
+    external_chat_id = (
+        message.get("chat_id")
+        or payload.get("chat_id")
+        or message.get("from")
+        or payload.get("from")
+        or payload.get("user")
+        or ""
+    )
     external_message_id = message.get("id") or payload.get("message_id")
 
     return NormalizedIncomingMessage(
         bot_id=bot_id,
         channel_id=channel_id,
         channel_type=ChannelType.WHATSAPP_360,
-        external_chat_id=str(external_user_id),
+        external_chat_id=str(external_chat_id),
         external_user_id=str(external_user_id),
         external_message_id=str(external_message_id) if external_message_id is not None else None,
         text=text,
