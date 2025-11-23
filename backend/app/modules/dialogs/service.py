@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.service import AIService
+from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
@@ -20,7 +21,9 @@ class DialogsService:
     async def create(self, session: AsyncSession, obj_in: DialogCreate) -> Dialog:
         db_obj = Dialog(
             bot_id=obj_in.bot_id,
-            user_external_id=obj_in.user_external_id,
+            channel_type=obj_in.channel_type,
+            external_chat_id=obj_in.external_chat_id,
+            external_user_id=obj_in.external_user_id,
             status=obj_in.status,
             closed=obj_in.closed,
         )
@@ -37,13 +40,19 @@ class DialogsService:
         return result.scalars().first()
 
     async def get_or_create_dialog(
-        self, session: AsyncSession, bot_id: int, user_external_id: str
+        self,
+        session: AsyncSession,
+        bot_id: int,
+        channel_type: ChannelType,
+        external_chat_id: str,
+        external_user_id: str | None = None,
     ) -> tuple[Dialog, bool]:
         stmt = (
             select(Dialog)
             .where(
                 Dialog.bot_id == bot_id,
-                Dialog.user_external_id == user_external_id,
+                Dialog.channel_type == channel_type,
+                Dialog.external_chat_id == external_chat_id,
                 Dialog.closed.is_(False),
             )
             .order_by(Dialog.updated_at.desc())
@@ -55,7 +64,9 @@ class DialogsService:
 
         dialog = Dialog(
             bot_id=bot_id,
-            user_external_id=user_external_id,
+            channel_type=channel_type,
+            external_chat_id=external_chat_id,
+            external_user_id=external_user_id or external_chat_id,
             status=DialogStatus.AUTO,
             closed=False,
         )
@@ -95,13 +106,19 @@ class DialogsService:
         self,
         session: AsyncSession,
         bot_id: int,
-        user_external_id: str,
+        channel_type: ChannelType,
+        external_chat_id: str,
+        external_user_id: str,
         sender: MessageSender,
         text: str | None = None,
         payload: dict | None = None,
     ) -> tuple[DialogMessage, Dialog, bool]:
         dialog, dialog_created = await self.get_or_create_dialog(
-            session=session, bot_id=bot_id, user_external_id=user_external_id
+            session=session,
+            bot_id=bot_id,
+            channel_type=channel_type,
+            external_chat_id=external_chat_id,
+            external_user_id=external_user_id,
         )
 
         dialog.closed = False
@@ -110,6 +127,7 @@ class DialogsService:
         else:
             dialog.status = DialogStatus.WAIT_USER
         dialog.updated_at = datetime.utcnow()
+        dialog.last_message_at = datetime.utcnow()
 
         message = DialogMessage(
             dialog_id=dialog.id,
@@ -138,12 +156,15 @@ class DialogsService:
         dialog, dialog_created = await self.get_or_create_dialog(
             session=session,
             bot_id=incoming_message.bot_id,
-            user_external_id=incoming_message.external_user_id,
+            channel_type=incoming_message.channel_type,
+            external_chat_id=incoming_message.external_chat_id,
+            external_user_id=incoming_message.external_user_id,
         )
 
         dialog.closed = False
         dialog.status = DialogStatus.WAIT_OPERATOR
         dialog.updated_at = datetime.utcnow()
+        dialog.last_message_at = datetime.utcnow()
 
         user_message = DialogMessage(
             dialog_id=dialog.id,
@@ -172,6 +193,7 @@ class DialogsService:
 
             dialog.status = DialogStatus.WAIT_USER
             dialog.updated_at = datetime.utcnow()
+            dialog.last_message_at = datetime.utcnow()
 
             session.add_all([dialog, bot_message])
             await session.commit()
@@ -181,7 +203,7 @@ class DialogsService:
             sender_cls = get_sender(incoming_message.channel_type)
             await sender_cls().send_text(
                 bot_id=incoming_message.bot_id,
-                external_chat_id=incoming_message.external_user_id,
+                external_chat_id=incoming_message.external_chat_id,
                 text=answer.answer,
             )
         else:

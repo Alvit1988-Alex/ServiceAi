@@ -65,7 +65,7 @@ async def close_dialog(
     await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload})
     await manager.broadcast_to_webchat(
         bot_id=dialog_payload["bot_id"],
-        session_id=dialog_payload["user_external_id"],
+        session_id=dialog_payload["external_chat_id"],
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 
@@ -148,7 +148,9 @@ async def create_dialog_message(
     message, updated_dialog, dialog_created = await service.add_message(
         session=session,
         bot_id=dialog.bot_id,
-        user_external_id=dialog.user_external_id,
+        channel_type=dialog.channel_type,
+        external_chat_id=dialog.external_chat_id,
+        external_user_id=dialog.external_user_id,
         sender=MessageSender.OPERATOR,
         text=data.text,
         payload=data.payload,
@@ -161,7 +163,7 @@ async def create_dialog_message(
         await manager.broadcast_to_admins({"event": "dialog_created", "data": dialog_payload})
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
-            session_id=dialog_payload["user_external_id"],
+            session_id=dialog_payload["external_chat_id"],
             message={"event": "dialog_created", "data": dialog_payload},
         )
 
@@ -170,12 +172,12 @@ async def create_dialog_message(
 
     await manager.broadcast_to_webchat(
         bot_id=dialog_payload["bot_id"],
-        session_id=dialog_payload["user_external_id"],
+        session_id=dialog_payload["external_chat_id"],
         message={"event": "message_created", "data": message_payload},
     )
     await manager.broadcast_to_webchat(
         bot_id=dialog_payload["bot_id"],
-        session_id=dialog_payload["user_external_id"],
+        session_id=dialog_payload["external_chat_id"],
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 

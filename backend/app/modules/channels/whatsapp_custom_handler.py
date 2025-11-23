@@ -24,6 +24,7 @@ def normalize_whatsapp_custom_webhook(
         bot_id=bot_id,
         channel_id=channel_id,
         channel_type=ChannelType.WHATSAPP_CUSTOM,
+        external_chat_id=str(external_user_id),
         external_user_id=str(external_user_id),
         external_message_id=str(external_message_id) if external_message_id is not None else None,
         text=text,
