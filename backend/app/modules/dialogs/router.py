@@ -347,20 +347,17 @@ async def ws_webchat(websocket: WebSocket, bot_id: int, session_id: str) -> None
         await manager.unregister_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
 
 
-@router.post(
-    "/dialogs/{dialog_id}/messages",
-    response_model=DialogMessageOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_dialog_message(
+async def _create_operator_message(
     dialog_id: int,
     data: OperatorMessageIn,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-    service: DialogsService = Depends(DialogsService),
+    session: AsyncSession,
+    service: DialogsService,
+    expected_bot_id: int | None = None,
 ) -> DialogMessageOut:
     dialog = await service.get(session=session, bot_id=None, dialog_id=dialog_id)
     if not dialog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
+    if expected_bot_id is not None and dialog.bot_id != expected_bot_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
     if dialog.closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dialog is closed")
@@ -407,3 +404,36 @@ async def create_dialog_message(
     )
 
     return DialogMessageOut.model_validate(message)
+
+
+@router.post(
+    "/bots/{bot_id}/dialogs/{dialog_id}/message",
+    response_model=DialogMessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_bot_dialog_message(
+    bot_id: int,
+    dialog_id: int,
+    data: OperatorMessageIn,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+) -> DialogMessageOut:
+    return await _create_operator_message(
+        dialog_id=dialog_id, data=data, session=session, service=service, expected_bot_id=bot_id
+    )
+
+
+@router.post(
+    "/dialogs/{dialog_id}/messages",
+    response_model=DialogMessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dialog_message(
+    dialog_id: int,
+    data: OperatorMessageIn,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+) -> DialogMessageOut:
+    return await _create_operator_message(dialog_id=dialog_id, data=data, session=session, service=service)
