@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.database import async_session_factory
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.dialogs.models import Dialog
+from app.modules.dialogs.websocket_manager import manager
 from app.modules.channels.service import ChannelsService
 
 logger = logging.getLogger(__name__)
@@ -586,13 +587,58 @@ class MaxSender(BaseChannelSender):
 
 
 class WebchatSender(BaseChannelSender):
+    def __init__(self) -> None:
+        self.channels_service = ChannelsService()
+
+    async def _get_channel(self, bot_id: int) -> BotChannel | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(BotChannel).where(
+                    BotChannel.bot_id == bot_id,
+                    BotChannel.channel_type == ChannelType.WEBCHAT,
+                )
+            )
+            channel = result.scalars().first()
+            if channel:
+                channel = self.channels_service.decrypt(channel)
+            return channel
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
-        logger.info(
-            "Webchat sender is not configured; skipping send",
-            extra={"bot_id": bot_id, "chat_id": external_chat_id},
-        )
+        channel = await self._get_channel(bot_id)
+        if not channel:
+            logger.warning(
+                "No Webchat channel configured for bot",
+                extra={"bot_id": bot_id, "chat_id": external_chat_id},
+            )
+            return
+
+        if not channel.is_active:
+            logger.info(
+                "Webchat channel is inactive; skipping send",
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
+            return
+
+        event = {
+            "type": "outgoing_message",
+            "bot_id": bot_id,
+            "session_id": external_chat_id,
+            "payload": {"text": text},
+        }
+        if attachments:
+            event["payload"]["attachments"] = attachments
+
+        try:
+            await manager.broadcast_to_webchat(
+                bot_id=bot_id, session_id=external_chat_id, message=event
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send webchat message",
+                extra={"bot_id": bot_id, "session_id": external_chat_id},
+            )
 
 
 register_sender(ChannelType.TELEGRAM, TelegramSender)
