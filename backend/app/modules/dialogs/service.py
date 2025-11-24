@@ -13,7 +13,14 @@ from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
-from app.modules.dialogs.schemas import DialogCreate, DialogMessageCreate, DialogUpdate
+from app.modules.dialogs.schemas import (
+    DialogCreate,
+    DialogMessageCreate,
+    DialogMessageOut,
+    DialogOut,
+    DialogUpdate,
+)
+from app.modules.dialogs.websocket_manager import WebSocketManager
 from app.utils.validators import validate_pagination
 
 
@@ -215,6 +222,75 @@ class DialogsService:
         session.add(dialog)
         await session.commit()
         await session.refresh(dialog)
+        return dialog
+
+    async def switch_to_auto(
+        self,
+        *,
+        session: AsyncSession,
+        dialog: Dialog,
+        admin_id: int,
+        ai_service: AIService,
+        ws_manager: WebSocketManager,
+    ) -> Dialog:
+        if dialog.closed:
+            raise ValueError("Dialog is closed")
+
+        if dialog.assigned_admin_id not in (None, admin_id):
+            raise DialogLockError("Dialog is locked by another operator")
+
+        dialog.status = DialogStatus.AUTO
+        dialog.is_locked = False
+        dialog.locked_until = None
+        dialog.assigned_admin_id = None
+        dialog.updated_at = datetime.utcnow()
+
+        session.add(dialog)
+        await session.commit()
+        await session.refresh(dialog)
+
+        last_message = dialog.messages[-1] if dialog.messages else None
+        if last_message and last_message.sender == MessageSender.USER:
+            answer = await ai_service.answer(
+                bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or ""
+            )
+
+            if answer.can_answer and answer.answer:
+                message, updated_dialog, _dialog_created = await self.add_message(
+                    session=session,
+                    bot_id=dialog.bot_id,
+                    channel_type=dialog.channel_type,
+                    external_chat_id=dialog.external_chat_id,
+                    external_user_id=dialog.external_user_id,
+                    sender=MessageSender.BOT,
+                    text=answer.answer,
+                )
+
+                updated_dialog.status = DialogStatus.AUTO
+                updated_dialog.updated_at = datetime.utcnow()
+                updated_dialog.is_locked = False
+                updated_dialog.locked_until = None
+                updated_dialog.assigned_admin_id = None
+
+                session.add(updated_dialog)
+                await session.commit()
+                await session.refresh(updated_dialog)
+                await session.refresh(message)
+
+                dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
+                message_payload = DialogMessageOut.model_validate(message).model_dump()
+                admin_targets = (
+                    [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
+                )
+
+                await ws_manager.broadcast_new_message(
+                    dialog_payload=dialog_payload,
+                    message_payload=message_payload,
+                    admin_ids=admin_targets,
+                )
+
+                return updated_dialog
+
         return dialog
 
     async def add_message(
