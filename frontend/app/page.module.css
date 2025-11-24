@@ -103,3 +103,8 @@
     padding: 1.25rem;
   }
 }
+
+.errorText {
+  color: #dc2626;
+  font-weight: 600;
+}
