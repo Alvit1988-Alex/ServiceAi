@@ -20,6 +20,26 @@ export interface ListResponse<T> {
   items: T[];
 }
 
+export enum ChannelType {
+  TELEGRAM = "telegram",
+  WHATSAPP_GREEN = "whatsapp_green",
+  WHATSAPP_360 = "whatsapp_360",
+  WHATSAPP_CUSTOM = "whatsapp_custom",
+  AVITO = "avito",
+  MAX = "max",
+  WEBCHAT = "webchat",
+}
+
+export interface BotChannel {
+  id: number;
+  bot_id: number;
+  channel_type: ChannelType;
+  config: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Bot {
   id: number;
   name: string;
@@ -27,6 +47,7 @@ export interface Bot {
   account_id: number;
   created_at: string;
   updated_at: string;
+  channels?: BotChannel[];
 }
 
 export interface BotUpdate {
