@@ -13,6 +13,7 @@ interface SearchResultsProps {
   total: number;
   page: number;
   perPage: number;
+  hasNext: boolean;
   onRowClick: (dialog: DialogShort) => void;
   onPageChange: (page: number) => void;
   onPerPageChange: (perPage: number) => void;
@@ -47,6 +48,7 @@ export function SearchResults({
   total,
   page,
   perPage,
+  hasNext,
   onRowClick,
   onPageChange,
   onPerPageChange,
@@ -126,7 +128,7 @@ export function SearchResults({
           <button
             className={styles.button}
             onClick={handleNext}
-            disabled={page >= totalPages || loading}
+            disabled={loading || page >= totalPages || !hasNext}
           >
             Вперед
           </button>

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { Bot, DialogStatus } from "@/app/api/types";
+import { Bot, ChannelType, DialogStatus } from "@/app/api/types";
 
 import styles from "./SearchFilters.module.css";
 
@@ -10,6 +10,7 @@ interface FilterValues {
   query: string;
   status: DialogStatus | "";
   operatorId: string;
+  channelType: ChannelType | "";
 }
 
 interface SearchFiltersProps {
@@ -38,6 +39,7 @@ export function SearchFilters({
   onSubmit,
 }: SearchFiltersProps) {
   const statusOptions = useMemo(() => Object.values(DialogStatus), []);
+  const channelOptions = useMemo(() => Object.values(ChannelType), []);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -98,6 +100,27 @@ export function SearchFilters({
           {statusOptions.map((status) => (
             <option key={status} value={status}>
               {STATUS_LABELS[status]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="channelType">
+          Канал
+        </label>
+        <select
+          id="channelType"
+          className={styles.select}
+          value={filters.channelType}
+          onChange={(event) =>
+            onFiltersChange({ channelType: event.target.value as ChannelType | "" })
+          }
+        >
+          <option value="">Все каналы</option>
+          {channelOptions.map((channel) => (
+            <option key={channel} value={channel}>
+              {channel}
             </option>
           ))}
         </select>

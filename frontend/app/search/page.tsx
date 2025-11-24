@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { searchDialogs } from "@/app/api/dialogsApi";
-import { DialogShort, DialogStatus } from "@/app/api/types";
+import { ChannelType, DialogShort, DialogStatus } from "@/app/api/types";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import LayoutShell from "@/app/components/layout/LayoutShell";
 import { useBotsStore } from "@/store/bots.store";
@@ -17,6 +17,7 @@ interface FiltersState {
   query: string;
   status: DialogStatus | "";
   operatorId: string;
+  channelType: ChannelType | "";
   page: number;
   perPage: number;
 }
@@ -29,18 +30,25 @@ export default function SearchPage() {
     query: "",
     status: "",
     operatorId: "",
+    channelType: "",
     page: 1,
     perPage: 10,
   });
 
   const [results, setResults] = useState<{
     items: DialogShort[];
+    page: number;
+    perPage: number;
     total: number;
+    hasNext: boolean;
     error: string | null;
     loading: boolean;
   }>({
     items: [],
+    page: 1,
+    perPage: 10,
     total: 0,
+    hasNext: false,
     error: null,
     loading: false,
   });
@@ -70,21 +78,44 @@ export default function SearchPage() {
       return;
     }
 
-    setResults((prev) => ({ ...prev, loading: true, error: null }));
+    setResults((prev) => ({
+      ...prev,
+      page: filters.page,
+      perPage: filters.perPage,
+      loading: true,
+      error: null,
+    }));
 
     try {
       const response = await searchDialogs(currentBotId, {
         query: filters.query || undefined,
         status: filters.status || undefined,
         assigned_admin_id: filters.operatorId ? Number(filters.operatorId) : undefined,
+        channel_type: filters.channelType || undefined,
         limit: filters.perPage,
         offset: (filters.page - 1) * filters.perPage,
       });
 
-      setResults({ items: response.items, total: response.total, loading: false, error: null });
+      setResults({
+        items: response.items,
+        page: response.page,
+        perPage: response.per_page,
+        total: response.total,
+        hasNext: response.has_next,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось выполнить поиск";
-      setResults({ items: [], total: 0, loading: false, error: message });
+      setResults({
+        items: [],
+        page: filters.page,
+        perPage: filters.perPage,
+        total: 0,
+        hasNext: false,
+        loading: false,
+        error: message,
+      });
     }
   }, [currentBotId, filters]);
 
@@ -149,8 +180,9 @@ export default function SearchPage() {
                 loading={results.loading}
                 error={results.error}
                 total={results.total}
-                page={filters.page}
-                perPage={filters.perPage}
+                page={results.page}
+                perPage={results.perPage}
+                hasNext={results.hasNext}
                 onRowClick={handleRowClick}
                 onPageChange={(page) => handleFiltersChange({ page })}
                 onPerPageChange={(perPage) => resetToFirstPage({ perPage })}
