@@ -1,4 +1,5 @@
 import styles from "./page.module.css";
+import { Button } from "./components/Button/Button";
 
 const stats = [
   {
@@ -29,6 +30,50 @@ export default function Home() {
           ключевые изменения.
         </p>
       </header>
+
+      <section className={styles.loginSection}>
+        <div className={styles.loginHeader}>
+          <h2 className={styles.loginTitle}>Вход в панель управления</h2>
+          <p className={styles.loginDescription}>
+            Используйте корпоративную почту или логин, чтобы получить доступ к
+            аналитике и настройкам сервисов.
+          </p>
+        </div>
+
+        <form className={styles.loginForm}>
+          <div className={styles.fieldGroup}>
+            <label className={styles.fieldLabel} htmlFor="login">
+              Email или логин
+            </label>
+            <input
+              className={styles.fieldInput}
+              id="login"
+              name="login"
+              type="text"
+              autoComplete="username"
+              placeholder="name@company.com"
+            />
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.fieldLabel} htmlFor="password">
+              Пароль
+            </label>
+            <input
+              className={styles.fieldInput}
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <div className={styles.actions}>
+            <Button type="submit">Войти</Button>
+          </div>
+        </form>
+      </section>
 
       {stats.length > 0 && (
         <div className={styles.cards} aria-label="Ключевые показатели">
