@@ -3,6 +3,7 @@ import React from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Topbar from "./components/layout/Topbar";
+import Providers from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,13 +20,15 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={inter.className}>
-        <div className="app-layout">
-          <aside className="sidebar">Sidebar</aside>
-          <div className="content">
-            <Topbar />
-            <main className="main-content">{children}</main>
+        <Providers>
+          <div className="app-layout">
+            <aside className="sidebar">Sidebar</aside>
+            <div className="content">
+              <Topbar />
+              <main className="main-content">{children}</main>
+            </div>
           </div>
-        </div>
+        </Providers>
       </body>
     </html>
   );
