@@ -2,21 +2,34 @@
 
 import { create } from "zustand";
 
-import { fetchBotStats, fetchBots } from "@/app/api/botsApi";
-import { Bot, StatsSummary } from "@/app/api/types";
+import {
+  getBot,
+  getBotStatsSummary,
+  listBots,
+  updateBot as updateBotApi,
+} from "@/app/api/botsApi";
+import { Bot, BotUpdate, StatsSummary } from "@/app/api/types";
 
 interface BotsState {
   bots: Bot[];
+  selectedBotId: number | null;
+  selectedBot: Bot | null;
   statsByBot: Record<number, StatsSummary>;
   loadingBots: boolean;
   loadingStats: boolean;
   error: string | null;
   fetchBots: () => Promise<void>;
   fetchStatsForBots: () => Promise<void>;
+  selectBot: (botId: number | null) => void;
+  reloadSelectedBot: () => Promise<void>;
+  updateSelectedBot: (data: BotUpdate) => Promise<Bot | null>;
+  fetchSelectedBotStats: () => Promise<void>;
 }
 
 export const useBotsStore = create<BotsState>((set, get) => ({
   bots: [],
+  selectedBotId: null,
+  selectedBot: null,
   statsByBot: {},
   loadingBots: false,
   loadingStats: false,
@@ -25,8 +38,25 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     set({ loadingBots: true, error: null });
 
     try {
-      const bots = await fetchBots();
-      set({ bots, loadingBots: false });
+      const bots = await listBots();
+      set((state) => {
+        const hasSelected = state.selectedBotId && bots.some((bot) => bot.id === state.selectedBotId);
+        const selectedBotId = hasSelected ? state.selectedBotId : bots[0]?.id ?? null;
+        const selectedBot = selectedBotId ? bots.find((bot) => bot.id === selectedBotId) ?? null : null;
+        const statsByBot = Object.fromEntries(
+          Object.entries(state.statsByBot).filter(([botId]) =>
+            bots.some((bot) => bot.id === Number(botId)),
+          ),
+        );
+
+        return {
+          bots,
+          loadingBots: false,
+          selectedBotId,
+          selectedBot,
+          statsByBot,
+        };
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Не удалось загрузить ботов";
@@ -45,7 +75,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     try {
       const statsEntries = await Promise.all(
         bots.map(async (bot) => {
-          const stats = await fetchBotStats(bot.id);
+          const stats = await getBotStatsSummary(bot.id);
           return [bot.id, stats] as const;
         }),
       );
@@ -58,6 +88,80 @@ export const useBotsStore = create<BotsState>((set, get) => ({
           ? error.message
           : "Не удалось загрузить статистику ботов";
       set({ error: message, statsByBot: {}, loadingStats: false });
+    }
+  },
+  selectBot: (botId) => {
+    set((state) => ({
+      selectedBotId: botId,
+      selectedBot: botId ? state.bots.find((bot) => bot.id === botId) ?? null : null,
+    }));
+  },
+  reloadSelectedBot: async () => {
+    const botId = get().selectedBotId;
+    if (!botId) {
+      return;
+    }
+
+    set({ loadingBots: true, error: null });
+
+    try {
+      const bot = await getBot(botId);
+      set((state) => {
+        const bots = state.bots.some((item) => item.id === bot.id)
+          ? state.bots.map((item) => (item.id === bot.id ? bot : item))
+          : [...state.bots, bot];
+
+        return {
+          bots,
+          selectedBot: bot,
+          loadingBots: false,
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось обновить данные бота";
+      set({ error: message, loadingBots: false });
+    }
+  },
+  updateSelectedBot: async (data) => {
+    const botId = get().selectedBotId;
+    if (!botId) {
+      return null;
+    }
+
+    set({ loadingBots: true, error: null });
+
+    try {
+      const updatedBot = await updateBotApi(botId, data);
+      set((state) => ({
+        bots: state.bots.map((bot) => (bot.id === updatedBot.id ? updatedBot : bot)),
+        selectedBot: updatedBot,
+        loadingBots: false,
+      }));
+      return updatedBot;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось обновить данные бота";
+      set({ error: message, loadingBots: false });
+      return null;
+    }
+  },
+  fetchSelectedBotStats: async () => {
+    const botId = get().selectedBotId;
+    if (!botId) {
+      return;
+    }
+
+    set({ loadingStats: true, error: null });
+
+    try {
+      const stats = await getBotStatsSummary(botId);
+      set((state) => ({
+        statsByBot: { ...state.statsByBot, [botId]: stats },
+        loadingStats: false,
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Не удалось загрузить статистику бота";
+      set({ error: message, loadingStats: false });
     }
   },
 }));

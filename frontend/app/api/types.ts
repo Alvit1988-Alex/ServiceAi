@@ -29,6 +29,11 @@ export interface Bot {
   updated_at: string;
 }
 
+export interface BotUpdate {
+  name?: string;
+  description?: string | null;
+}
+
 export interface DialogStatusBreakdown {
   auto: number;
   wait_operator: number;
