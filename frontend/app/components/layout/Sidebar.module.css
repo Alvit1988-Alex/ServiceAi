@@ -6,9 +6,22 @@
   color: #e5e7eb;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.15);
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+
+.collapsed {
+  width: 88px;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .logo {
@@ -18,6 +31,7 @@
   font-size: 20px;
   letter-spacing: 0.5px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .logoAccent {
@@ -26,6 +40,10 @@
 
 .logoText {
   color: #f8fafc;
+}
+
+.collapsed .logoText {
+  display: none;
 }
 
 .nav {
@@ -46,18 +64,39 @@
 }
 
 .navLink {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px 14px;
   border-radius: 12px;
   color: inherit;
   text-decoration: none;
   font-weight: 500;
   transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
 }
 
 .navLink:hover {
   background-color: rgba(56, 189, 248, 0.08);
   color: #f8fafc;
+}
+
+.navDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.navLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapsed .navLabel {
+  display: none;
 }
 
 .active {
@@ -68,4 +107,31 @@
 
 .active:hover {
   background: linear-gradient(90deg, rgba(56, 189, 248, 0.25), rgba(59, 130, 246, 0.23));
+}
+
+.toggle {
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.toggleLabel {
+  font-weight: 600;
+}
+
+.collapsed .toggleLabel {
+  display: none;
 }
