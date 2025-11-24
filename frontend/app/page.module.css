@@ -28,6 +28,72 @@
   max-width: 820px;
 }
 
+.loginSection {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+.loginHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.loginTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.loginDescription {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.loginForm {
+  display: grid;
+  gap: 1rem;
+  max-width: 480px;
+}
+
+.fieldGroup {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldLabel {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.fieldInput {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.85rem 0.9rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fieldInput:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
