@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import React from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import Topbar from "./components/layout/Topbar";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,7 +22,7 @@ export default function RootLayout({
         <div className="app-layout">
           <aside className="sidebar">Sidebar</aside>
           <div className="content">
-            <header className="topbar">Topbar</header>
+            <Topbar />
             <main className="main-content">{children}</main>
           </div>
         </div>
