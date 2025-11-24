@@ -1,0 +1,49 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section {
+  background: #0b1021;
+  border: 1px solid #1f2a44;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 22px;
+  margin: 0;
+}
+
+.description {
+  margin: 0;
+  color: #9fb1d0;
+  font-size: 14px;
+}
+
+.statusMessage {
+  margin: 0;
+  color: #9fb1d0;
+}
+
+.errorMessage {
+  margin: 0;
+  color: #ff6b6b;
+  font-weight: 500;
+}
