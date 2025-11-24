@@ -137,3 +137,18 @@ export interface DialogShort extends Dialog {
 export interface DialogDetail extends Dialog {
   messages: DialogMessage[];
 }
+
+export interface KnowledgeFile {
+  id: number;
+  bot_id: number;
+  file_name: string;
+  original_name: string;
+  size_bytes: number;
+  mime_type?: string;
+  chunks_count: number;
+  created_at: string;
+}
+
+export interface KnowledgeListResponse {
+  items: KnowledgeFile[];
+}
