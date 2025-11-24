@@ -17,6 +17,25 @@ interface KnowledgePaginationState {
   has_next: boolean;
 }
 
+const KNOWLEDGE_PER_PAGE = 10;
+
+function buildPagination(
+  total: number,
+  perPage: number,
+  currentPage: number = 1,
+): KnowledgePaginationState {
+  const safePerPage = Math.max(1, perPage);
+  const maxPage = Math.max(1, Math.ceil(total / safePerPage));
+  const page = Math.min(Math.max(1, currentPage), maxPage);
+
+  return {
+    page,
+    per_page: safePerPage,
+    total,
+    has_next: page < maxPage,
+  };
+}
+
 interface AiState {
   instructionsByBot: Record<number, BotAiInstructions>;
   knowledgeByBot: Record<number, KnowledgeFile[]>;
@@ -33,6 +52,7 @@ interface AiState {
   reloadKnowledge: (botId: number) => Promise<KnowledgeFile[] | null>;
   uploadKnowledgeItem: (botId: number, file: File) => Promise<KnowledgeFile | null>;
   deleteKnowledgeItem: (botId: number, fileId: number) => Promise<boolean>;
+  changeKnowledgePage: (botId: number, page: number) => void;
 }
 
 export const useAiStore = create<AiState>((set, get) => ({
@@ -101,12 +121,11 @@ export const useAiStore = create<AiState>((set, get) => ({
         knowledgeByBot: { ...state.knowledgeByBot, [botId]: response.items },
         knowledgePaginationByBot: {
           ...state.knowledgePaginationByBot,
-          [botId]: {
-            page: 1,
-            per_page: response.items.length,
-            total: response.items.length,
-            has_next: false,
-          },
+          [botId]: buildPagination(
+            response.items.length,
+            state.knowledgePaginationByBot[botId]?.per_page ?? KNOWLEDGE_PER_PAGE,
+            state.knowledgePaginationByBot[botId]?.page,
+          ),
         },
         loadingKnowledge: false,
       }));
@@ -127,17 +146,12 @@ export const useAiStore = create<AiState>((set, get) => ({
         const existing = state.knowledgeByBot[botId];
         if (existing) {
           const updated = [uploadedItem, ...existing.filter((item) => item.id !== uploadedItem.id)];
-          const total = updated.length;
+          const perPage = state.knowledgePaginationByBot[botId]?.per_page ?? KNOWLEDGE_PER_PAGE;
           return {
             knowledgeByBot: { ...state.knowledgeByBot, [botId]: updated },
             knowledgePaginationByBot: {
               ...state.knowledgePaginationByBot,
-              [botId]: {
-                page: 1,
-                per_page: total,
-                total,
-                has_next: false,
-              },
+              [botId]: buildPagination(updated.length, perPage, 1),
             },
             uploadingKnowledge: false,
           };
@@ -167,17 +181,16 @@ export const useAiStore = create<AiState>((set, get) => ({
         const existing = state.knowledgeByBot[botId];
         if (existing) {
           const updated = existing.filter((item) => item.id !== fileId);
-          const total = updated.length;
+          const perPage = state.knowledgePaginationByBot[botId]?.per_page ?? KNOWLEDGE_PER_PAGE;
           return {
             knowledgeByBot: { ...state.knowledgeByBot, [botId]: updated },
             knowledgePaginationByBot: {
               ...state.knowledgePaginationByBot,
-              [botId]: {
-                page: 1,
-                per_page: total,
-                total,
-                has_next: false,
-              },
+              [botId]: buildPagination(
+                updated.length,
+                perPage,
+                state.knowledgePaginationByBot[botId]?.page,
+              ),
             },
             deletingKnowledge: false,
           };
@@ -196,5 +209,18 @@ export const useAiStore = create<AiState>((set, get) => ({
       set({ error: message, deletingKnowledge: false });
       return false;
     }
+  },
+  changeKnowledgePage: (botId, page) => {
+    set((state) => {
+      const perPage = state.knowledgePaginationByBot[botId]?.per_page ?? KNOWLEDGE_PER_PAGE;
+      const total = state.knowledgeByBot[botId]?.length ?? 0;
+
+      return {
+        knowledgePaginationByBot: {
+          ...state.knowledgePaginationByBot,
+          [botId]: buildPagination(total, perPage, page),
+        },
+      };
+    });
   },
 }));
