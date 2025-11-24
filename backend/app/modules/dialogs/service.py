@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -114,6 +114,59 @@ class DialogsService:
         items = result.scalars().unique().all()
         has_next = page * per_page < total
         return items, total, has_next
+
+    async def search_dialogs(
+        self,
+        session: AsyncSession,
+        bot_id: int,
+        query: str | None = None,
+        status: DialogStatus | None = None,
+        assigned_admin_id: int | None = None,
+        channel_type: ChannelType | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Dialog], int, bool]:
+        validate_pagination(1, limit)
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+
+        conditions: list[Any] = [Dialog.bot_id == bot_id]
+        if status is not None:
+            conditions.append(Dialog.status == status)
+        if assigned_admin_id is not None:
+            conditions.append(Dialog.assigned_admin_id == assigned_admin_id)
+        if channel_type is not None:
+            conditions.append(Dialog.channel_type == channel_type)
+
+        search_expr = None
+        if query:
+            pattern = f"%{query}%"
+            search_expr = or_(
+                DialogMessage.text.ilike(pattern),
+                Dialog.external_user_id.ilike(pattern),
+                Dialog.external_chat_id.ilike(pattern),
+            )
+
+        stmt = select(Dialog).where(*conditions)
+        count_stmt = select(func.count(func.distinct(Dialog.id))).select_from(Dialog).where(*conditions)
+
+        if search_expr is not None:
+            stmt = stmt.join(DialogMessage, DialogMessage.dialog_id == Dialog.id, isouter=True).where(search_expr)
+            count_stmt = count_stmt.join(DialogMessage, DialogMessage.dialog_id == Dialog.id, isouter=True).where(
+                search_expr
+            )
+
+        stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
+        stmt = stmt.order_by(Dialog.last_message_at.desc()).offset(offset).limit(limit)
+
+        result = await session.execute(stmt)
+        dialogs = result.scalars().unique().all()
+
+        total_result = await session.execute(count_stmt)
+        total = total_result.scalar_one()
+        has_next = offset + limit < total
+
+        return dialogs, total, has_next
 
     async def update(self, session: AsyncSession, db_obj: Dialog, obj_in: DialogUpdate) -> Dialog:
         data = obj_in.model_dump(exclude_unset=True)

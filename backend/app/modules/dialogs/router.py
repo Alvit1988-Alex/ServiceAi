@@ -74,6 +74,50 @@ async def list_dialogs(
     )
 
 
+@router.get("/bots/{bot_id}/search", response_model=ListResponse[DialogShort])
+async def search_dialogs(
+    bot_id: int,
+    query: str | None = None,
+    status: DialogStatus | None = None,
+    assigned_admin_id: int | None = None,
+    channel_type: ChannelType | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+) -> ListResponse[DialogShort]:
+    validate_pagination(1, limit)
+    if offset < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="offset must be >= 0")
+
+    dialogs, total, has_next = await service.search_dialogs(
+        session=session,
+        bot_id=bot_id,
+        query=query,
+        status=status,
+        assigned_admin_id=assigned_admin_id,
+        channel_type=channel_type,
+        limit=limit,
+        offset=offset,
+    )
+
+    items = [
+        DialogShort.model_validate(dialog, update={"last_message": dialog.messages[-1] if dialog.messages else None})
+        for dialog in dialogs
+    ]
+
+    page = offset // limit + 1 if limit else 1
+
+    return ListResponse[DialogShort](
+        items=items,
+        page=page,
+        per_page=limit,
+        total=total,
+        has_next=has_next,
+    )
+
+
 @router.get("/bots/{bot_id}/dialogs/{dialog_id}", response_model=DialogDetail)
 async def get_dialog(
     bot_id: int,
