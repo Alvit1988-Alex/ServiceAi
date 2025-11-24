@@ -1,3 +1,4 @@
+import LayoutShell from "./components/layout/LayoutShell";
 import styles from "./page.module.css";
 import { Button } from "./components/Button/Button";
 
@@ -21,16 +22,10 @@ const stats = [
 
 export default function Home() {
   return (
-    <section className={styles.page}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Панель управления ServiceAI</h1>
-        <p className={styles.description}>
-          Краткое описание состояния сервисов и полезные показатели. Обновления
-          происходят в реальном времени, чтобы вы могли быстро реагировать на
-          ключевые изменения.
-        </p>
-      </header>
-
+    <LayoutShell
+      title="Панель управления ServiceAI"
+      description="Краткое описание состояния сервисов и полезные показатели. Обновления происходят в реальном времени, чтобы вы могли быстро реагировать на ключевые изменения."
+    >
       <section className={styles.loginSection}>
         <div className={styles.loginHeader}>
           <h2 className={styles.loginTitle}>Вход в панель управления</h2>
@@ -86,6 +81,6 @@ export default function Home() {
           ))}
         </div>
       )}
-    </section>
+    </LayoutShell>
   );
 }
