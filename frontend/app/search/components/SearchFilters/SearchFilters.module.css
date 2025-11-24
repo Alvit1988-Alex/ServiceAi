@@ -1,0 +1,54 @@
+.form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  color: #9fb1d0;
+  font-size: 13px;
+}
+
+.select,
+.input {
+  background: #0b1021;
+  border: 1px solid #1f2a44;
+  border-radius: 10px;
+  color: #e3ecff;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 8px;
+}
+
+.button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #1f2a44;
+  background: linear-gradient(135deg, #1a2240, #1f2a44);
+  color: #e3ecff;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}
