@@ -18,6 +18,10 @@ export interface AuthTokens {
 
 export interface ListResponse<T> {
   items: T[];
+  page: number;
+  per_page: number;
+  total: number;
+  has_next: boolean;
 }
 
 export enum ChannelType {
@@ -75,4 +79,53 @@ export interface TimingMetrics {
 export interface StatsSummary {
   dialogs: DialogCounts;
   timing: TimingMetrics;
+}
+
+export enum DialogStatus {
+  AUTO = "auto",
+  WAIT_OPERATOR = "wait_operator",
+  WAIT_USER = "wait_user",
+}
+
+export enum MessageSender {
+  USER = "user",
+  BOT = "bot",
+  OPERATOR = "operator",
+}
+
+export interface Dialog {
+  id: number;
+  bot_id: number;
+  channel_type: ChannelType;
+  external_chat_id: string;
+  external_user_id: string;
+  status: DialogStatus;
+  closed: boolean;
+  last_message_at: string;
+  last_user_message_at: string | null;
+  unread_messages_count: number;
+  is_locked: boolean;
+  locked_until: string | null;
+  assigned_admin_id: number | null;
+  waiting_time_seconds: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DialogMessage {
+  id: number;
+  dialog_id: number;
+  sender: MessageSender;
+  text: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DialogShort extends Dialog {
+  last_message?: DialogMessage | null;
+}
+
+export interface DialogDetail extends Dialog {
+  messages: DialogMessage[];
 }
