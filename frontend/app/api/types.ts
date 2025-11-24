@@ -101,6 +101,15 @@ export enum MessageSender {
   OPERATOR = "operator",
 }
 
+export interface DialogSearchParams {
+  query: string;
+  status?: DialogStatus;
+  assigned_admin_id?: number;
+  channel_type?: ChannelType;
+  limit?: number;
+  offset?: number;
+}
+
 export interface Dialog {
   id: number;
   bot_id: number;
@@ -133,6 +142,8 @@ export interface DialogMessage {
 export interface DialogShort extends Dialog {
   last_message?: DialogMessage | null;
 }
+
+export type DialogSearchResponse = ListResponse<DialogShort>;
 
 export interface DialogDetail extends Dialog {
   messages: DialogMessage[];
