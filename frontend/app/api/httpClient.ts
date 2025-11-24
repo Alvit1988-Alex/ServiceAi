@@ -1,10 +1,10 @@
 import { AUTH_STORAGE_KEY, useAuthStore } from "@/store/auth.store";
 
+import { API_BASE_URL } from "./config";
+
 interface HttpClientOptions extends RequestInit {
   skipAuthRefresh?: boolean;
 }
-
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 
 function readStoredTokens(): { accessToken: string | null; refreshToken: string | null } {
   const { accessToken, refreshToken } = useAuthStore.getState();
