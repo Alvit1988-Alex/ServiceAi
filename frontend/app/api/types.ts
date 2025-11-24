@@ -59,6 +59,14 @@ export interface BotUpdate {
   description?: string | null;
 }
 
+export interface BotAiInstructions {
+  id: number;
+  bot_id: number;
+  system_prompt: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DialogStatusBreakdown {
   auto: number;
   wait_operator: number;
