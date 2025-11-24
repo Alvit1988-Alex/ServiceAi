@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import LayoutShell from "@/app/components/layout/LayoutShell";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import { useBotsStore } from "@/store/bots.store";
+import BotChannels from "@/components/bot/BotChannels";
+import BotOverview from "@/components/bot/BotOverview";
+import Tabs from "@/components/layout/Tabs";
 
 import styles from "./page.module.css";
 
@@ -13,24 +16,11 @@ interface BotDetailsPageProps {
   params: { botId: string };
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function BotDetailsPage({ params }: BotDetailsPageProps) {
   const botId = useMemo(() => Number(params.botId), [params.botId]);
   const invalidId = Number.isNaN(botId);
+
+  const [activeTab, setActiveTab] = useState<"overview" | "channels">("overview");
 
   const { bots, selectedBot, loadingBots, error, fetchBots, reloadSelectedBot, selectBot } = useBotsStore();
 
@@ -57,6 +47,13 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
   }, [botId, bots, fetchBots, invalidId, reloadSelectedBot]);
 
   const bot = useMemo(() => bots.find((item) => item.id === botId) ?? selectedBot, [botId, bots, selectedBot]);
+  const tabs = useMemo(
+    () => [
+      { value: "overview", label: "Обзор" },
+      { value: "channels", label: "Каналы" },
+    ],
+    [],
+  );
 
   return (
     <AuthGuard>
@@ -75,33 +72,12 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
           )}
 
           {bot && (
-            <article className={styles.card}>
-              <h2 className={styles.title}>{bot.name}</h2>
-              {bot.description ? (
-                <p className={styles.description}>{bot.description}</p>
-              ) : (
-                <p className={styles.muted}>Описание не указано</p>
-              )}
+            <div className={styles.content}>
+              <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(value) => setActiveTab(value as typeof activeTab)} />
 
-              <div className={styles.meta}>
-                <div className={styles.metaItem}>
-                  <span className={styles.label}>ID</span>
-                  <span className={styles.value}>{bot.id}</span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span className={styles.label}>Аккаунт</span>
-                  <span className={styles.value}>#{bot.account_id}</span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span className={styles.label}>Создан</span>
-                  <span className={styles.value}>{formatDate(bot.created_at)}</span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span className={styles.label}>Обновлен</span>
-                  <span className={styles.value}>{formatDate(bot.updated_at)}</span>
-                </div>
-              </div>
-            </article>
+              {activeTab === "overview" && <BotOverview bot={bot} />}
+              {activeTab === "channels" && <BotChannels botId={bot.id} />}
+            </div>
           )}
         </div>
       </LayoutShell>
