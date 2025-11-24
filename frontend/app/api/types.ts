@@ -10,6 +10,18 @@ export interface User {
   updated_at: string;
 }
 
+export interface AccountProfile extends User {}
+
+export interface UpdateAccountProfilePayload {
+  email: string;
+  full_name: string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;
