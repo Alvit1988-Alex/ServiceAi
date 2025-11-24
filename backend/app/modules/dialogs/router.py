@@ -7,7 +7,7 @@ from app.dependencies import get_db_session
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
 from app.modules.channels.models import ChannelType
-from app.modules.dialogs.models import DialogStatus, MessageSender
+from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
 from app.modules.dialogs.service import DialogLockError, DialogMessagesService, DialogsService
 from app.modules.dialogs.websocket_manager import manager
@@ -26,6 +26,44 @@ class OperatorMessageIn(BaseModel):
 def _resolve_admin_targets(dialog_payload: dict) -> list[int] | None:
     admin_id = dialog_payload.get("assigned_admin_id")
     return [admin_id] if admin_id is not None else None
+
+
+async def _unlock_expired_dialog(
+    dialog: Dialog,
+    *,
+    service: DialogsService,
+    session: AsyncSession,
+    bot_id: int,
+    include_messages: bool = False,
+) -> Dialog:
+    dialog, unlocked = await service.unlock_if_expired(session=session, dialog=dialog)
+
+    if unlocked and include_messages:
+        dialog = await service.get(
+            session=session, bot_id=bot_id, dialog_id=dialog.id, include_messages=True
+        )
+
+    return dialog
+
+
+async def _unlock_expired_dialogs(
+    dialogs: list[Dialog],
+    *,
+    service: DialogsService,
+    session: AsyncSession,
+    bot_id: int,
+    include_messages: bool = False,
+) -> list[Dialog]:
+    return [
+        await _unlock_expired_dialog(
+            dialog,
+            service=service,
+            session=session,
+            bot_id=bot_id,
+            include_messages=include_messages,
+        )
+        for dialog in dialogs
+    ]
 
 
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])
@@ -59,6 +97,10 @@ async def list_dialogs(
         page=page,
         per_page=per_page,
         include_messages=True,
+    )
+
+    dialogs = await _unlock_expired_dialogs(
+        dialogs, service=service, session=session, bot_id=bot_id, include_messages=True
     )
 
     items = [
@@ -103,6 +145,10 @@ async def search_dialogs(
         offset=offset,
     )
 
+    dialogs = await _unlock_expired_dialogs(
+        dialogs, service=service, session=session, bot_id=bot_id, include_messages=True
+    )
+
     items = [
         DialogShort.model_validate(dialog, update={"last_message": dialog.messages[-1] if dialog.messages else None})
         for dialog in dialogs
@@ -128,6 +174,10 @@ async def get_dialog(
     service: DialogsService = Depends(DialogsService),
 ) -> DialogDetail:
     dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    if dialog:
+        dialog = await _unlock_expired_dialog(
+            dialog, service=service, session=session, bot_id=bot_id, include_messages=True
+        )
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
     messages = sorted(dialog.messages, key=lambda m: m.created_at) if dialog.messages else []
