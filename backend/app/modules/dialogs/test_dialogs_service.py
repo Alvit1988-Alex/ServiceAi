@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -222,3 +222,33 @@ def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWr
     assert total_locked == 1
     assert {d.id for d in unlocked_items} == {unlocked_dialog.id}
     assert total_unlocked == 1
+
+
+def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    dialog = run(_create_dialog(service, db_sessionmaker, bot, "expire"))
+
+    async def _lock_and_expire_dialog():
+        async with db_sessionmaker() as session:
+            locked_dialog = await service.lock_dialog(session=session, dialog=dialog, admin_id=operator.id)
+            locked_dialog.locked_until = datetime.utcnow() - timedelta(seconds=1)
+            session.add(locked_dialog)
+            await session.commit()
+            await session.refresh(locked_dialog)
+            return locked_dialog
+
+    run(_lock_and_expire_dialog())
+
+    async def _unlock_expired_dialog():
+        async with db_sessionmaker() as session:
+            fetched_dialog = await service.get(session=session, bot_id=bot.id, dialog_id=dialog.id)
+            unlocked_dialog, unlocked = await service.unlock_if_expired(session=session, dialog=fetched_dialog)
+            return unlocked_dialog, unlocked
+
+    unlocked_dialog, unlocked = run(_unlock_expired_dialog())
+
+    assert unlocked is True
+    assert unlocked_dialog.is_locked is False
+    assert unlocked_dialog.assigned_admin_id is None
+    assert unlocked_dialog.locked_until is None

@@ -224,6 +224,20 @@ class DialogsService:
         await session.refresh(dialog)
         return dialog
 
+    async def unlock_if_expired(
+        self, session: AsyncSession, dialog: Dialog
+    ) -> tuple[Dialog, bool]:
+        """Unlock a dialog when its lock has expired."""
+
+        if dialog.is_locked and dialog.locked_until and dialog.locked_until < datetime.utcnow():
+            admin_id = dialog.assigned_admin_id if dialog.assigned_admin_id is not None else 0
+            unlocked_dialog = await self.unlock_dialog(
+                session=session, dialog=dialog, admin_id=admin_id
+            )
+            return unlocked_dialog, True
+
+        return dialog, False
+
     async def switch_to_auto(
         self,
         *,
@@ -362,6 +376,8 @@ class DialogsService:
             external_chat_id=incoming_message.external_chat_id,
             external_user_id=incoming_message.external_user_id,
         )
+
+        dialog, _ = await self.unlock_if_expired(session=session, dialog=dialog)
 
         now = datetime.utcnow()
 
