@@ -54,6 +54,27 @@ class WebSocketManager:
         if not connections:
             self._webchat_connections.pop(key, None)
 
+    async def broadcast_new_message(
+        self,
+        *,
+        dialog_payload: dict,
+        message_payload: dict,
+        admin_ids: Iterable[int] | None = None,
+    ) -> None:
+        await self.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_ids)
+        await self.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_ids)
+
+        await self.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["external_chat_id"],
+            message={"event": "message_created", "data": message_payload},
+        )
+        await self.broadcast_to_webchat(
+            bot_id=dialog_payload["bot_id"],
+            session_id=dialog_payload["external_chat_id"],
+            message={"event": "dialog_updated", "data": dialog_payload},
+        )
+
     async def _broadcast_to_connections(self, connections: Set[WebSocket], message: dict) -> None:
         disconnected: Set[WebSocket] = set()
 

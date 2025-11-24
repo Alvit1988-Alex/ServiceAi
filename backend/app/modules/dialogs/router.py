@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
 from app.modules.channels.models import ChannelType
 from app.modules.dialogs.models import DialogStatus, MessageSender
@@ -229,6 +230,49 @@ async def unlock_dialog(
         bot_id=dialog_payload["bot_id"],
         session_id=dialog_payload["external_chat_id"],
         message={"event": "dialog_unlocked", "data": dialog_payload},
+    )
+
+    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
+
+
+@router.post("/bots/{bot_id}/dialogs/{dialog_id}/auto", response_model=DialogDetail)
+async def switch_dialog_to_auto(
+    bot_id: int,
+    dialog_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+) -> DialogDetail:
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    if not dialog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
+
+    try:
+        await service.switch_to_auto(
+            session=session,
+            dialog=dialog,
+            admin_id=current_user.id,
+            ai_service=ai_service,
+            ws_manager=manager,
+        )
+    except DialogLockError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog_payload = DialogDetail.model_validate(
+        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
+    ).model_dump()
+
+    admin_targets = _resolve_admin_targets(dialog_payload)
+
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
+    await manager.broadcast_to_webchat(
+        bot_id=dialog_payload["bot_id"],
+        session_id=dialog_payload["external_chat_id"],
+        message={"event": "dialog_updated", "data": dialog_payload},
     )
 
     return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
