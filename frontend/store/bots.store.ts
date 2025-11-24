@@ -19,6 +19,7 @@ interface BotsState {
   loadingStats: boolean;
   error: string | null;
   fetchBots: () => Promise<void>;
+  loadBot: (botId: number) => Promise<Bot | null>;
   fetchStatsForBots: () => Promise<void>;
   selectBot: (botId: number | null) => void;
   reloadSelectedBot: () => Promise<void>;
@@ -63,6 +64,35 @@ export const useBotsStore = create<BotsState>((set, get) => ({
       set({ error: message, bots: [], loadingBots: false });
     }
   },
+  loadBot: async (botId) => {
+    set({ loadingBots: true, error: null });
+
+    try {
+      const bot = await getBot(botId);
+      set((state) => {
+        const existingBot = state.bots.find((item) => item.id === bot.id);
+        const mergedBot = existingBot
+          ? { ...existingBot, ...bot, channels: bot.channels ?? existingBot.channels }
+          : bot;
+        const bots = existingBot
+          ? state.bots.map((item) => (item.id === bot.id ? mergedBot : item))
+          : [...state.bots, mergedBot];
+
+        return {
+          bots,
+          selectedBotId: bot.id,
+          selectedBot: mergedBot,
+          loadingBots: false,
+        };
+      });
+
+      return bot;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить бота";
+      set({ error: message, loadingBots: false });
+      return null;
+    }
+  },
   fetchStatsForBots: async () => {
     const bots = get().bots;
     if (bots.length === 0) {
@@ -102,25 +132,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
       return;
     }
 
-    set({ loadingBots: true, error: null });
-
-    try {
-      const bot = await getBot(botId);
-      set((state) => {
-        const bots = state.bots.some((item) => item.id === bot.id)
-          ? state.bots.map((item) => (item.id === bot.id ? bot : item))
-          : [...state.bots, bot];
-
-        return {
-          bots,
-          selectedBot: bot,
-          loadingBots: false,
-        };
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось обновить данные бота";
-      set({ error: message, loadingBots: false });
-    }
+    await get().loadBot(botId);
   },
   updateSelectedBot: async (data) => {
     const botId = get().selectedBotId;
