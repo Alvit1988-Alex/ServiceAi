@@ -1,4 +1,9 @@
+"use client";
+
 import Link from "next/link";
+
+import { useUiStore } from "@/store/ui.store";
+
 import styles from "./Sidebar.module.css";
 
 const navItems = [
@@ -12,17 +17,40 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const { sidebarCollapsed, toggleSidebar } = useUiStore((state) => ({
+    sidebarCollapsed: state.sidebarCollapsed,
+    toggleSidebar: state.toggleSidebar,
+  }));
+
+  const className = [styles.sidebar, sidebarCollapsed ? styles.collapsed : ""]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <aside className={styles.sidebar} aria-label="Основная навигация">
-      <div className={styles.logo}>
-        <span className={styles.logoAccent}>Service</span>
-        <span className={styles.logoText}>AI</span>
+    <aside className={className} aria-label="Основная навигация">
+      <div className={styles.header}>
+        <div className={styles.logo}>
+          <span className={styles.logoAccent}>Service</span>
+          <span className={styles.logoText}>AI</span>
+        </div>
+
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-label="Переключить размер меню"
+          onClick={toggleSidebar}
+        >
+          <span aria-hidden>{sidebarCollapsed ? ">" : "<"}</span>
+          <span className={styles.toggleLabel}>
+            {sidebarCollapsed ? "Развернуть" : "Свернуть"}
+          </span>
+        </button>
       </div>
 
       <nav className={styles.nav}>
         <ul className={styles.navList}>
           {navItems.map((item) => {
-            const className = [
+            const linkClassName = [
               styles.navLink,
               item.active ? styles.active : "",
             ]
@@ -33,10 +61,13 @@ export function Sidebar() {
               <li key={item.label} className={styles.navItem}>
                 <Link
                   href={item.href}
-                  className={className}
+                  className={linkClassName}
                   aria-current={item.active ? "page" : undefined}
                 >
-                  {item.label}
+                  <span className={styles.navDot} aria-hidden>
+                    •
+                  </span>
+                  <span className={styles.navLabel}>{item.label}</span>
                 </Link>
               </li>
             );
