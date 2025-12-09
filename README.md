@@ -8,6 +8,9 @@
 docker compose -f docker/docker-compose.yml up --build
 ```
 
+Перед запуском убедитесь, что Postgres доступен на `localhost:5432` (или укажите правильный порт в `DATABASE_URL`).
+Если база недоступна, backend теперь завершит запуск с понятной ошибкой, вместо того чтобы падать 500 при авторизации.
+
 Основные точки входа:
 - `backend/app/main.py` — FastAPI приложение со сборкой роутеров.
 - `backend/pyproject.toml` — зависимости Poetry для backend.
