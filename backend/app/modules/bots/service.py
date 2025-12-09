@@ -8,15 +8,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bots.models import Bot
 from app.modules.bots.schemas import BotCreateInternal, BotUpdate
+from app.modules.channels.service import ChannelsService
 
 
 class BotsService:
     model = Bot
 
     async def create(self, session: AsyncSession, obj_in: BotCreateInternal) -> Bot:
-        db_obj = Bot(account_id=obj_in.account_id, name=obj_in.name, description=obj_in.description)
-        session.add(db_obj)
-        await session.commit()
+        channels_service = ChannelsService()
+
+        async with session.begin():
+            db_obj = Bot(account_id=obj_in.account_id, name=obj_in.name, description=obj_in.description)
+            session.add(db_obj)
+            await session.flush()
+
+            await channels_service.create_default_channels(session=session, bot_id=db_obj.id)
+
         await session.refresh(db_obj)
         return db_obj
 

@@ -26,6 +26,27 @@ class ChannelsService:
         await session.refresh(db_obj)
         return self.decrypt(db_obj)
 
+    async def create_default_channels(
+        self, session: AsyncSession, bot_id: int, channel_types: list[ChannelType] | None = None
+    ) -> list[BotChannel]:
+        """Create default inactive channels for a bot without committing the transaction."""
+
+        default_types = channel_types or [ChannelType.TELEGRAM, ChannelType.WEBCHAT]
+        channels: list[BotChannel] = []
+
+        for channel_type in default_types:
+            channel = BotChannel(
+                bot_id=bot_id,
+                channel_type=channel_type,
+                config=encrypt_config({}),
+                is_active=False,
+            )
+            session.add(channel)
+            channels.append(channel)
+
+        await session.flush()
+        return channels
+
     async def get(self, session: AsyncSession, bot_id: int, channel_id: int) -> BotChannel | None:
         stmt = select(BotChannel).where(BotChannel.id == channel_id, BotChannel.bot_id == bot_id)
         result = await session.execute(stmt)

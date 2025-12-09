@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { listChannels, updateChannel } from "@/app/api/channelsApi";
+import { createChannel, listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType } from "@/app/api/types";
 
 import styles from "./BotChannels.module.css";
@@ -145,6 +145,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [channels, setChannels] = useState<BotChannel[]>([]);
   const [forms, setForms] = useState<Record<number, ChannelFormState>>({});
   const [loading, setLoading] = useState(true);
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [newChannelType, setNewChannelType] = useState<ChannelType | null>(null);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
@@ -163,6 +165,9 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           items.map((channel) => [channel.id, { config: buildConfigState(channel), is_active: channel.is_active }]),
         );
         setForms(nextForms);
+        const existingTypes = new Set(items.map((channel) => channel.channel_type));
+        const firstAvailable = Object.values(ChannelType).find((type) => !existingTypes.has(type)) ?? null;
+        setNewChannelType((prev) => prev ?? firstAvailable);
         setLoading(false);
       })
       .catch((err) => {
@@ -228,6 +233,60 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }
   };
 
+  const availableChannelTypes = useMemo(() => {
+    const existingTypes = new Set(channels.map((channel) => channel.channel_type));
+    return Object.values(ChannelType).filter((type) => !existingTypes.has(type));
+  }, [channels]);
+
+  const handleAddChannel = async () => {
+    if (!newChannelType) {
+      return;
+    }
+
+    setCreatingChannel(true);
+    setError(null);
+    setSuccessChannelId(null);
+
+    try {
+      const payload = {
+        channel_type: newChannelType,
+        config: {},
+        is_active: false,
+      };
+      const createdChannel = await createChannel(botId, payload);
+      setChannels((prev) => [...prev, createdChannel]);
+      setForms((prev) => ({
+        ...prev,
+        [createdChannel.id]: {
+          config: buildConfigState(createdChannel),
+          is_active: createdChannel.is_active,
+        },
+      }));
+
+      const nextAvailable = availableChannelTypes.find((type) => type !== newChannelType) ?? null;
+      setNewChannelType(nextAvailable);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось создать канал";
+      setError(message);
+    } finally {
+      setCreatingChannel(false);
+    }
+  };
+
+  useEffect(() => {
+    if (availableChannelTypes.length === 0) {
+      setNewChannelType(null);
+      return;
+    }
+
+    setNewChannelType((prev) => {
+      if (prev && availableChannelTypes.includes(prev)) {
+        return prev;
+      }
+      return availableChannelTypes[0] ?? null;
+    });
+  }, [availableChannelTypes]);
+
   const renderFields = (channel: BotChannel) => {
     const form = forms[channel.id];
     if (!form) return null;
@@ -291,7 +350,46 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       {loading && <p className={styles.muted}>Загружаем каналы...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
       {!loading && !error && channels.length === 0 && (
-        <p className={styles.muted}>У бота нет настроенных каналов.</p>
+        <p className={styles.muted}>У бота нет настроенных каналов. Добавьте первый канал.</p>
+      )}
+
+      {!loading && !error && availableChannelTypes.length > 0 && (
+        <div className={styles.addChannelCard}>
+          <div>
+            <h4 className={styles.addChannelTitle}>Добавить канал</h4>
+            <p className={styles.subtitle}>Выберите тип и создайте новый канал.</p>
+          </div>
+          <div className={styles.addChannelControls}>
+            <label className={styles.fieldLabel} htmlFor="channel-type-select">
+              Тип канала
+            </label>
+            <div className={styles.addChannelRow}>
+              <select
+                id="channel-type-select"
+                className={styles.select}
+                value={newChannelType ?? ""}
+                onChange={(event) => setNewChannelType(event.target.value as ChannelType)}
+              >
+                <option value="" disabled>
+                  Выберите тип
+                </option>
+                {availableChannelTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {CHANNEL_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={styles.saveButton}
+                onClick={handleAddChannel}
+                disabled={!newChannelType || creatingChannel}
+              >
+                {creatingChannel ? "Добавляем..." : "Добавить канал"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {!loading && !error && channels.map((channel) => {
