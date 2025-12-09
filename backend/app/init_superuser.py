@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.database import async_session_factory
 from app.modules.accounts.models import User, UserRole
 from app.modules.accounts.schemas import UserCreate
-from app.modules.accounts.service import UsersService
+from app.modules.accounts.service import AccountsService, UsersService
 
 # просто импортируем модели, чтобы зарегистрировать их в маппере
 from app.modules.dialogs.models import Dialog  # noqa: F401
@@ -37,10 +37,15 @@ async def create_initial_admin() -> None:
         )
         existing = result.scalars().first()
 
+        accounts_service = AccountsService()
+
         if existing:
+            account = await accounts_service.get_or_create_for_owner(
+                session=session, owner=existing
+            )
             print(
                 f"[init_superuser] User {ADMIN_EMAIL} уже существует "
-                f"(id={existing.id}), ничего не делаем."
+                f"(id={existing.id}, account_id={account.id}), ничего не делаем."
             )
             return
 
@@ -55,7 +60,11 @@ async def create_initial_admin() -> None:
         )
 
         user = await users_service.create(session, user_in)
-        print(f"[init_superuser] Создан админ: {user.email} (id={user.id})")
+        account = await accounts_service.get_or_create_for_owner(session=session, owner=user)
+        print(
+            f"[init_superuser] Создан админ: {user.email} (id={user.id}, "
+            f"account_id={account.id})"
+        )
 
 
 def main() -> None:
