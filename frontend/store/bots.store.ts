@@ -2,7 +2,6 @@
 
 import { httpClient } from "@/app/api/httpClient";
 import { createBot as createBotApi } from "@/app/api/botsApi";
-import { useAuthStore } from "@/store/auth.store";
 import { create } from "zustand";
 
 export interface BotDTO {
@@ -140,16 +139,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     set({ loadingBots: true, error: null });
 
     try {
-      const user = useAuthStore.getState().user;
-      if (!user) {
-        throw new Error("Пользователь не авторизован");
-      }
-
-      const newBot = await createBotApi({
-        name,
-        description,
-        account_id: user.id,
-      });
+      const newBot = await createBotApi({ name, description });
 
       set((state) => ({
         bots: [...state.bots, newBot],
