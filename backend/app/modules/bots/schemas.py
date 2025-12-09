@@ -21,6 +21,10 @@ class BotBase(BaseModel):
 
 
 class BotCreate(BotBase):
+    pass
+
+
+class BotCreateInternal(BotBase):
     account_id: int
 
 

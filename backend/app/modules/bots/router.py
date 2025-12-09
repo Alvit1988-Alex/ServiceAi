@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.accounts.service import AccountsService
 from app.modules.accounts.models import User
-from app.modules.bots.schemas import BotCreate, BotOut, BotUpdate, ListResponse
+from app.modules.bots.schemas import BotCreate, BotCreateInternal, BotOut, BotUpdate, ListResponse
 from app.modules.bots.service import BotsService
 from app.security.auth import get_current_user
 
@@ -16,9 +17,12 @@ async def create_bot(
     data: BotCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
+    accounts_service: AccountsService = Depends(AccountsService),
     service: BotsService = Depends(BotsService),
 ) -> BotOut:
-    return await service.create(session=session, obj_in=data)
+    account = await accounts_service.get_or_create_for_owner(session=session, owner=current_user)
+    bot_data = BotCreateInternal(**data.model_dump(), account_id=account.id)
+    return await service.create(session=session, obj_in=bot_data)
 
 
 @router.get("", response_model=ListResponse[BotOut])

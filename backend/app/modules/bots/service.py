@@ -7,13 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bots.models import Bot
-from app.modules.bots.schemas import BotCreate, BotUpdate
+from app.modules.bots.schemas import BotCreateInternal, BotUpdate
 
 
 class BotsService:
     model = Bot
 
-    async def create(self, session: AsyncSession, obj_in: BotCreate) -> Bot:
+    async def create(self, session: AsyncSession, obj_in: BotCreateInternal) -> Bot:
         db_obj = Bot(account_id=obj_in.account_id, name=obj_in.name, description=obj_in.description)
         session.add(db_obj)
         await session.commit()
