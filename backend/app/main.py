@@ -1,5 +1,10 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from app.database import engine
 
 from app.config import settings
 from app.modules.accounts import router as accounts_router
@@ -36,3 +41,17 @@ app.include_router(stats_router.router)
 @app.get("/health", tags=["system"])
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def verify_database_connection() -> None:
+    """Fail fast with a clear message if the database is unreachable."""
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:  # pragma: no cover - defensive logging
+        logging.exception(
+            "Database connection failed. Check DATABASE_URL (port, host, credentials) and ensure the DB is running."
+        )
+        raise
