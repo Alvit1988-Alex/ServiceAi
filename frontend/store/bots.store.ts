@@ -1,6 +1,8 @@
 "use client";
 
 import { httpClient } from "@/app/api/httpClient";
+import { createBot as createBotApi } from "@/app/api/botsApi";
+import { useAuthStore } from "@/store/auth.store";
 import { create } from "zustand";
 
 export interface BotDTO {
@@ -32,6 +34,7 @@ interface BotsState {
 
   fetchBots: () => Promise<void>;
   fetchStatsForBots: () => Promise<void>;
+  createBot: (name: string, description?: string | null) => Promise<void>;
 }
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -128,6 +131,39 @@ export const useBotsStore = create<BotsState>((set, get) => ({
           : "Не удалось загрузить статистику ботов";
       set({
         loadingStats: false,
+        error: message,
+      });
+    }
+  },
+
+  async createBot(name, description) {
+    set({ loadingBots: true, error: null });
+
+    try {
+      const user = useAuthStore.getState().user;
+      if (!user) {
+        throw new Error("Пользователь не авторизован");
+      }
+
+      const newBot = await createBotApi({
+        name,
+        description,
+        account_id: user.id,
+      });
+
+      set((state) => ({
+        bots: [...state.bots, newBot],
+        loadingBots: false,
+      }));
+    } catch (error) {
+      console.error("Failed to create bot", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Не удалось создать бота";
+
+      set({
+        loadingBots: false,
         error: message,
       });
     }

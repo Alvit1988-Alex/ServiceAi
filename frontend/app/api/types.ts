@@ -66,6 +66,12 @@ export interface Bot {
   channels?: BotChannel[];
 }
 
+export interface BotCreate {
+  name: string;
+  description?: string | null;
+  account_id: number;
+}
+
 export interface BotUpdate {
   name?: string;
   description?: string | null;
