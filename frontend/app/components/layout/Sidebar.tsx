@@ -1,23 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 import styles from "./Sidebar.module.css";
 
 const navItems = [
-  { label: "Дашборд", href: "#", active: true },
-  { label: "Боты", href: "#" },
+  { label: "Дашборд", href: "/" },
+  { label: "Боты", href: "/bots" },
   { label: "Диалоги", href: "#" },
   { label: "AI-настройки", href: "#" },
   { label: "База знаний", href: "#" },
-  { label: "Поиск", href: "#" },
-  { label: "Настройки", href: "#" },
+  { label: "Поиск", href: "/search" },
+  { label: "Настройки", href: "/settings" },
 ];
 
 export function Sidebar() {
   // локальный стейт сворачивания вместо zustand
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pathname = usePathname();
 
   const className = [styles.sidebar, sidebarCollapsed ? styles.collapsed : ""]
     .filter(Boolean)
@@ -51,10 +53,8 @@ export function Sidebar() {
       <nav className={styles.nav}>
         <ul className={styles.navList}>
           {navItems.map((item) => {
-            const linkClassName = [
-              styles.navLink,
-              item.active ? styles.active : "",
-            ]
+            const isActive = pathname === item.href;
+            const linkClassName = [styles.navLink, isActive ? styles.active : ""]
               .filter(Boolean)
               .join(" ");
 
@@ -63,7 +63,7 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   className={linkClassName}
-                  aria-current={item.active ? "page" : undefined}
+                  aria-current={isActive ? "page" : undefined}
                 >
                   <span className={styles.navDot} aria-hidden>
                     •
