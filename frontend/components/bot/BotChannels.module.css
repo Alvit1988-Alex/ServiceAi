@@ -140,3 +140,43 @@
   margin: 0;
   color: var(--color-text-muted);
 }
+
+.addChannelCard {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.addChannelTitle {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.addChannelControls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.addChannelRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.select {
+  min-width: 200px;
+  padding: 0.55rem 0.6rem;
+  border-radius: calc(var(--border-radius) - 4px);
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 0.95rem;
+}
