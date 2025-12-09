@@ -1,9 +1,7 @@
 "use client";
 
+import { httpClient } from "@/app/api/httpClient";
 import { create } from "zustand";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 export interface BotDTO {
   id: number;
@@ -37,8 +35,7 @@ interface BotsState {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
-  const response = await fetch(url, {
+  const response = await httpClient(path, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
