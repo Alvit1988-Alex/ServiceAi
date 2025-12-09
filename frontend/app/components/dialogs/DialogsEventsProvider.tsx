@@ -1,6 +1,13 @@
 "use client";
 
-import { PropsWithChildren, createContext, useContext, useEffect, useMemo } from "react";
+import {
+  PropsWithChildren,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 
 import { AdminWebSocketClient, DialogWsEvent } from "@/app/api/wsClient";
 import { DialogDetail, DialogMessage, DialogShort } from "@/app/api/types";
@@ -9,7 +16,9 @@ import { useDialogsStore } from "@/store/dialogs.store";
 
 const DialogsWsContext = createContext<AdminWebSocketClient | null>(null);
 
-function isDialogPayload(payload: unknown): payload is DialogDetail | DialogShort {
+function isDialogPayload(
+  payload: unknown,
+): payload is DialogDetail | DialogShort {
   if (!payload || typeof payload !== "object") {
     return false;
   }
@@ -26,19 +35,29 @@ function isMessagePayload(payload: unknown): payload is DialogMessage {
 }
 
 export function DialogsEventsProvider({ children }: PropsWithChildren) {
-  const { accessToken, isAuthenticated } = useAuthStore();
-  const {
-    applyDialogCreated,
-    applyDialogUpdated,
-    applyDialogLocked,
-    applyDialogUnlocked,
-    applyMessageCreated,
-  } = useDialogsStore();
+  // ВАЖНО: берём только нужные поля, а не весь auth-store
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  const client = useMemo(() => new AdminWebSocketClient(), []);
+  // Гарантируем один и тот же экземпляр клиента
+  const clientRef = useRef<AdminWebSocketClient | null>(null);
+  if (!clientRef.current) {
+    clientRef.current = new AdminWebSocketClient();
+  }
+  const client = clientRef.current;
 
+  // Подписка на события WS
+  // Здесь НЕ используем useDialogsStore() – чтобы провайдер не подписывался на store.
   useEffect(() => {
     const unsubscribe = client.subscribe((event: DialogWsEvent) => {
+      const {
+        applyDialogCreated,
+        applyDialogUpdated,
+        applyDialogLocked,
+        applyDialogUnlocked,
+        applyMessageCreated,
+      } = useDialogsStore.getState();
+
       switch (event.event) {
         case "dialog_created": {
           if (isDialogPayload(event.data)) {
@@ -76,15 +95,9 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     });
 
     return unsubscribe;
-  }, [
-    applyDialogCreated,
-    applyDialogLocked,
-    applyDialogUnlocked,
-    applyDialogUpdated,
-    applyMessageCreated,
-    client,
-  ]);
+  }, [client]);
 
+  // Подключение / отключение WebSocket при изменении auth-состояния
   useEffect(() => {
     if (isAuthenticated && accessToken) {
       client.connect(accessToken);
@@ -95,7 +108,11 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     return () => client.disconnect();
   }, [accessToken, client, isAuthenticated]);
 
-  return <DialogsWsContext.Provider value={client}>{children}</DialogsWsContext.Provider>;
+  return (
+    <DialogsWsContext.Provider value={client}>
+      {children}
+    </DialogsWsContext.Provider>
+  );
 }
 
 export function useDialogsWebSocket() {

@@ -1,9 +1,6 @@
 "use client";
-
-import { PropsWithChildren } from "react";
-
-import { DialogsEventsProvider } from "@/app/components/dialogs/DialogsEventsProvider";
+import type { PropsWithChildren } from "react";
 
 export default function Providers({ children }: PropsWithChildren) {
-  return <DialogsEventsProvider>{children}</DialogsEventsProvider>;
+  return <>{children}</>;
 }

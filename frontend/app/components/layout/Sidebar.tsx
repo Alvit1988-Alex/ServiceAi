@@ -1,8 +1,7 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-
-import { useUiStore } from "@/store/ui.store";
 
 import styles from "./Sidebar.module.css";
 
@@ -17,14 +16,16 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar } = useUiStore((state) => ({
-    sidebarCollapsed: state.sidebarCollapsed,
-    toggleSidebar: state.toggleSidebar,
-  }));
+  // локальный стейт сворачивания вместо zustand
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const className = [styles.sidebar, sidebarCollapsed ? styles.collapsed : ""]
     .filter(Boolean)
     .join(" ");
+
+  const handleToggle = () => {
+    setSidebarCollapsed((prev) => !prev);
+  };
 
   return (
     <aside className={className} aria-label="Основная навигация">
@@ -38,7 +39,7 @@ export function Sidebar() {
           type="button"
           className={styles.toggle}
           aria-label="Переключить размер меню"
-          onClick={toggleSidebar}
+          onClick={handleToggle}
         >
           <span aria-hidden>{sidebarCollapsed ? ">" : "<"}</span>
           <span className={styles.toggleLabel}>

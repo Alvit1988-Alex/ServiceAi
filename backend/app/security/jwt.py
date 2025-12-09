@@ -1,10 +1,20 @@
 """JWT utilities."""
 
 from datetime import datetime, timedelta
-from enum import StrEnum
 from typing import Any, Dict
 
 import jwt
+
+# --- Python 3.10 fallback for StrEnum ---
+try:
+    from enum import StrEnum  # Python 3.11+
+except ImportError:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Fallback for Python < 3.11."""
+        pass
+# ----------------------------------------
 
 from app.config import settings
 
@@ -74,9 +84,9 @@ def _create_token(
 def _decode_token(token: str, secret_key: str, expected_type: TokenType) -> Dict[str, Any]:
     try:
         payload = jwt.decode(token, secret_key, algorithms=[settings.jwt_algorithm])
-    except jwt.ExpiredSignatureError as exc:  # pragma: no cover - thin wrapper
+    except jwt.ExpiredSignatureError as exc:  # pragma: no cover
         raise TokenDecodeError("Token has expired") from exc
-    except jwt.InvalidTokenError as exc:  # pragma: no cover - thin wrapper
+    except jwt.InvalidTokenError as exc:  # pragma: no cover
         raise TokenDecodeError("Invalid token") from exc
 
     token_type = payload.get("type")

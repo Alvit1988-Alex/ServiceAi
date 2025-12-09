@@ -1,125 +1,117 @@
-# ======================
-# GLOBAL
-# ======================
-
-# OS
+# === Общие системные файлы ===
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
+# === Логи и временные файлы ===
 *.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.tmp
+*.swp
+*.swo
+*.bak
+*.orig
 
-# IDE / Editors
+# === Общие кэши ===
+.cache/
+.tmp/
+temp/
+
+# === Настройки IDE/редакторов ===
 .vscode/
 .idea/
-*.swp
+*.code-workspace
 
-# Env files
+# === Git ===
+.git/
+.git-*/
+
+# === Файлы окружения и секреты ===
 .env
-.env.local
-.env.development
-.env.production
-.env.test
+.env.*
+*.env
+*.secrets
+*.secret
 
-# ======================
-# PYTHON / BACKEND
-# ======================
-
+# === Python: кэш, байткод ===
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.pkl
-*.pickle
+*$py.class
+
+# Инструменты Python
+.venv/
+venv/
+env/
+servenv/
+gigaenv/
+avtocodvenv/
+
+# Кэши Python-инструментов
+.mypy_cache/
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Сборки / артефакты Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Базы данных, если они локальные/тестовые
+*.sqlite3
 *.db
 
-# Virtual environments (даже если мы их не используем)
-venv/
-.venv/
-env/
-ENV/
+# === Backend (FastAPI / Python) специфичное ===
+backend/.env
+backend/.env.*
+backend/env/
+backend/venv/
+backend/servenv/
+backend/gigaenv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/**/__pycache__/
 
-# FastAPI / Uvicorn temp
-*.pid
+# Логи и временные файлы бэкенда
+backend/logs/
+backend/*.log
 
-# Migrations cache
-backend/migrations/__pycache__/
-backend/migrations/*.pyc
+# Статические загружаемые файлы (если не нужно хранить в Git)
+backend/app/static/uploads/
+backend/app/media/
 
-# Static/uploads
-backend/app/static/*
-backend/app/uploads/*
-
-# Poetry / pip cache
-poetry.lock
-pip-wheel-metadata/
-*.egg-info/
-dist/
-build/
-
-# ======================
-# NODE / FRONTEND
-# ======================
-
-node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Next.js build
-.next/
-out/
-.next-cache/
-
-# Typescript
-*.tsbuildinfo
-
-# local dev temp
-frontend/.next/
-frontend/out/
+# === Frontend (Next.js / React) специфичное ===
 frontend/node_modules/
+node_modules/
 
-# ======================
-# DOCKER / COMPOSE
-# ======================
+# Артефакты сборки фронтенда
+frontend/.next/
+.next/
+frontend/out/
+out/
+frontend/.turbo/
+.turbo/
 
-docker-data/
-db_data/
-postgres-data/
+# Локальные env-файлы фронтенда
+frontend/.env
+frontend/.env.*
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.production.local
+frontend/.env.test.local
 
-# ======================
-# CUSTOM PROJECT FILES
-# ======================
+# Кэш фронтенда
+frontend/.cache/
+frontend/.eslintcache
+eslintcache
 
-# Knowledge base uploaded files
-knowledge_storage/
+# Инструменты форматирования/линтеры
+.prettier-cache/
+.stylelintcache
 
-# Uploaded files via webchat
+# === Прочие папки, которые не нужны в репозитории ===
+coverage/
+reports/
 uploads/
-
-# Compiled artifacts
-*.zip
-*.tar
-*.gz
-
-# Debug dumps
-*.dump
-*.bak
-
-
-# ======================
-# SECURITY
-# ======================
-
-# Токены
-secret.key
-private.key
-public.key
-
-# Любые конфиги с доступами
-**/config.local.json
-**/secrets.json

@@ -37,10 +37,12 @@ export default function Home() {
     fetchStatsForBots,
   } = useBotsStore();
 
+  // загрузка списка ботов
   useEffect(() => {
     void fetchBots();
   }, [fetchBots]);
 
+  // загрузка статистики по ботам
   useEffect(() => {
     if (bots.length > 0) {
       void fetchStatsForBots();
@@ -50,29 +52,42 @@ export default function Home() {
   const stats = useMemo(() => {
     const summaries = bots
       .map((bot) => statsByBot[bot.id])
-      .filter((summary): summary is NonNullable<typeof summary> => Boolean(summary));
+      .filter(
+        (summary): summary is NonNullable<typeof summary> => Boolean(summary),
+      );
 
     const dialogDurations = summaries
       .map((summary) => summary.timing.average_dialog_duration_seconds)
       .filter((value): value is number => value != null);
 
     const firstMessageDelays = summaries
-      .map((summary) => summary.timing.average_time_to_first_message_seconds)
+      .map(
+        (summary) => summary.timing.average_time_to_first_message_seconds,
+      )
       .filter((value): value is number => value != null);
 
     const averageDialogDurationSeconds = dialogDurations.length
-      ? dialogDurations.reduce((acc, value) => acc + value, 0) / dialogDurations.length
+      ? dialogDurations.reduce((acc, value) => acc + value, 0) /
+        dialogDurations.length
       : null;
 
     const averageFirstMessageDelaySeconds = firstMessageDelays.length
-      ? firstMessageDelays.reduce((acc, value) => acc + value, 0) / firstMessageDelays.length
+      ? firstMessageDelays.reduce((acc, value) => acc + value, 0) /
+        firstMessageDelays.length
       : null;
 
     return {
       totalBots: bots.length,
-      activeBots: summaries.filter((summary) => summary.dialogs.active > 0).length,
-      totalDialogs: summaries.reduce((acc, summary) => acc + summary.dialogs.total, 0),
-      activeDialogs: summaries.reduce((acc, summary) => acc + summary.dialogs.active, 0),
+      activeBots: summaries.filter((summary) => summary.dialogs.active > 0)
+        .length,
+      totalDialogs: summaries.reduce(
+        (acc, summary) => acc + summary.dialogs.total,
+        0,
+      ),
+      activeDialogs: summaries.reduce(
+        (acc, summary) => acc + summary.dialogs.active,
+        0,
+      ),
       averageDialogDurationSeconds,
       averageFirstMessageDelaySeconds,
       hasStats: summaries.length > 0,
@@ -85,19 +100,26 @@ export default function Home() {
 
   return (
     <AuthGuard>
-      <LayoutShell title="Панель управления ServiceAI" description={DASHBOARD_DESCRIPTION}>
+      <LayoutShell
+        title="Панель управления ServiceAI"
+        description={DASHBOARD_DESCRIPTION}
+      >
         <section className={styles.loginSection}>
           <div className={styles.loginHeader}>
             <h2 className={styles.loginTitle}>Сводка по сервисам</h2>
             <p className={styles.loginDescription}>
-              Добро пожаловать! Используйте сводку ниже, чтобы оперативно оценить состояние системы и перейти к нужным
-              разделам.
+              Добро пожаловать! Используйте сводку ниже, чтобы оперативно
+              оценить состояние системы и перейти к нужным разделам.
             </p>
           </div>
           {error && <p className={styles.errorText}>{error}</p>}
-          {isLoading && <p className={styles.mutedText}>Загружаем данные...</p>}
+          {isLoading && (
+            <p className={styles.mutedText}>Загружаем данные...</p>
+          )}
           {!isLoading && !error && !hasBots && (
-            <p className={styles.mutedText}>У вас пока нет ботов. Создайте бота, чтобы увидеть статистику.</p>
+            <p className={styles.mutedText}>
+              У вас пока нет ботов. Создайте бота, чтобы увидеть статистику.
+            </p>
           )}
         </section>
 
@@ -106,25 +128,37 @@ export default function Home() {
             <article className={styles.card}>
               <p className={styles.cardLabel}>Всего ботов</p>
               <p className={styles.cardValue}>{stats.totalBots}</p>
-              <p className={styles.cardNote}>Активных: {stats.activeBots}</p>
+              <p className={styles.cardNote}>
+                Активных: {stats.activeBots}
+              </p>
             </article>
 
             <article className={styles.card}>
               <p className={styles.cardLabel}>Диалоги</p>
               <p className={styles.cardValue}>{stats.totalDialogs}</p>
-              <p className={styles.cardNote}>Активных сейчас: {stats.activeDialogs}</p>
+              <p className={styles.cardNote}>
+                Активных сейчас: {stats.activeDialogs}
+              </p>
             </article>
 
             <article className={styles.card}>
               <p className={styles.cardLabel}>Длительность диалога</p>
-              <p className={styles.cardValue}>{formatSeconds(stats.averageDialogDurationSeconds)}</p>
-              <p className={styles.cardNote}>Среднее время от первого до последнего сообщения</p>
+              <p className={styles.cardValue}>
+                {formatSeconds(stats.averageDialogDurationSeconds)}
+              </p>
+              <p className={styles.cardNote}>
+                Среднее время от первого до последнего сообщения
+              </p>
             </article>
 
             <article className={styles.card}>
               <p className={styles.cardLabel}>Отклик до первого сообщения</p>
-              <p className={styles.cardValue}>{formatSeconds(stats.averageFirstMessageDelaySeconds)}</p>
-              <p className={styles.cardNote}>Среднее время ожидания первого ответа</p>
+              <p className={styles.cardValue}>
+                {formatSeconds(stats.averageFirstMessageDelaySeconds)}
+              </p>
+              <p className={styles.cardNote}>
+                Среднее время ожидания первого ответа
+              </p>
             </article>
           </div>
         )}

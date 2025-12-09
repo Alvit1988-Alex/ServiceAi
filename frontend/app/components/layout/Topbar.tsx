@@ -1,20 +1,45 @@
 "use client";
 
-import React from "react";
-
-import { useUiStore } from "@/store/ui.store";
+import React, { useEffect, useState } from "react";
 
 import styles from "./Topbar.module.css";
 
+type Theme = "light" | "dark";
+
+const THEME_STORAGE_KEY = "serviceai_theme";
+
+// определяем начальную тему (как в ui.store, но локально)
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+
+  if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+
+  return "light";
+}
+
 const Topbar: React.FC = () => {
-  const { theme, toggleTheme, globalLoading, lastError } = useUiStore(
-    (state) => ({
-      theme: state.theme,
-      toggleTheme: state.toggleTheme,
-      globalLoading: state.globalLoading,
-      lastError: state.lastError,
-    }),
-  );
+  // локальное состояние вместо useUiStore
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
+  const [globalLoading] = useState(false);       // пока заглушки
+  const [lastError] = useState<string | null>(null);
+
+  // применяем тему к документу и в localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    document.documentElement.setAttribute("data-theme", theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
 
   const themeLabel = theme === "dark" ? "Светлая тема" : "Темная тема";
 
@@ -29,7 +54,9 @@ const Topbar: React.FC = () => {
             </span>
           )}
           {lastError && (
-            <span className={`${styles.status} ${styles.error}`}>{lastError}</span>
+            <span className={`${styles.status} ${styles.error}`}>
+              {lastError}
+            </span>
           )}
         </div>
         <button
