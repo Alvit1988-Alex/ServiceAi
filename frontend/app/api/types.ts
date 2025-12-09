@@ -69,7 +69,6 @@ export interface Bot {
 export interface BotCreate {
   name: string;
   description?: string | null;
-  account_id: number;
 }
 
 export interface BotUpdate {

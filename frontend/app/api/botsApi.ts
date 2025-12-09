@@ -26,12 +26,13 @@ export async function listBots(): Promise<Bot[]> {
 }
 
 export async function createBot(payload: BotCreate): Promise<Bot> {
+  const { name, description } = payload;
   const response = await httpClient("/bots", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ name, description }),
   });
 
   if (!response.ok) {
