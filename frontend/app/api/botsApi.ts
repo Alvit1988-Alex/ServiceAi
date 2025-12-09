@@ -1,5 +1,5 @@
 import { httpClient } from "./httpClient";
-import { Bot, BotUpdate, ListResponse, StatsSummary } from "./types";
+import { Bot, BotCreate, BotUpdate, ListResponse, StatsSummary } from "./types";
 
 async function getErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
@@ -23,6 +23,22 @@ export async function listBots(): Promise<Bot[]> {
 
   const data = (await response.json()) as ListResponse<Bot>;
   return data.items;
+}
+
+export async function createBot(payload: BotCreate): Promise<Bot> {
+  const response = await httpClient("/bots", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось создать бота"));
+  }
+
+  return (await response.json()) as Bot;
 }
 
 export async function getBot(botId: number): Promise<Bot> {
