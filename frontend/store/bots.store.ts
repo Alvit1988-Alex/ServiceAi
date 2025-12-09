@@ -62,14 +62,14 @@ export const useBotsStore = create<BotsState>((set, get) => ({
   /**
    * Загрузка списка ботов.
    * Никаких внутренних рекурсий или подписок — только set() по результату.
-   */
+  */
   async fetchBots() {
     set({ loadingBots: true, error: null });
 
     try {
-      const bots = await apiGet<BotDTO[]>("/bots");
+      const data = await apiGet<{ items: BotDTO[] }>("/bots");
       set({
-        bots,
+        bots: data.items,
         loadingBots: false,
       });
     } catch (error) {
