@@ -31,9 +31,36 @@ interface BotsState {
   loadingStats: boolean;
   error: string | null;
 
+  /**
+   * Текущий выбранный бот (используется на странице бота и в поиске).
+   */
+  selectedBotId: number | null;
+  selectedBot: BotDTO | null;
+
+  /**
+   * Загрузка списка ботов.
+   */
   fetchBots: () => Promise<void>;
+
+  /**
+   * Загрузка сводной статистики для всех ботов.
+   */
   fetchStatsForBots: () => Promise<void>;
+
+  /**
+   * Создание нового бота.
+   */
   createBot: (name: string, description?: string | null) => Promise<void>;
+
+  /**
+   * Установка выбранного бота по id.
+   */
+  selectBot: (id: number | null) => void;
+
+  /**
+   * Перезагрузка данных выбранного бота с бэкенда.
+   */
+  reloadSelectedBot: () => Promise<void>;
 }
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -60,19 +87,31 @@ export const useBotsStore = create<BotsState>((set, get) => ({
   loadingBots: false,
   loadingStats: false,
   error: null,
+  selectedBotId: null,
+  selectedBot: null,
 
   /**
    * Загрузка списка ботов.
    * Никаких внутренних рекурсий или подписок — только set() по результату.
-  */
+   */
   async fetchBots() {
     set({ loadingBots: true, error: null });
 
     try {
       const data = await apiGet<{ items: BotDTO[] }>("/bots");
-      set({
-        bots: data.items,
-        loadingBots: false,
+      const items = data.items;
+
+      set((state) => {
+        const nextSelectedBot =
+          state.selectedBotId != null
+            ? items.find((bot) => bot.id === state.selectedBotId) ?? state.selectedBot
+            : state.selectedBot;
+
+        return {
+          bots: items,
+          loadingBots: false,
+          selectedBot: nextSelectedBot,
+        };
       });
     } catch (error) {
       console.error("Failed to fetch bots", error);
@@ -80,6 +119,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
         error instanceof Error
           ? error.message
           : "Не удалось загрузить список ботов";
+
       set({
         loadingBots: false,
         error: message,
@@ -89,7 +129,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
 
   /**
    * Загрузка сводной статистики по всем ботам.
-   * Вызывается только после fetchBots (когда в сторе уже есть bots).
+   * Вызывается только после fetchBots (когда в сторе уже есть список ботов).
    */
   async fetchStatsForBots() {
     const { bots } = get();
@@ -103,7 +143,6 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     set({ loadingStats: true, error: null });
 
     try {
-      // здесь можно будет заменить эндпоинт на тот, что реализован на бэке
       const results = await Promise.all(
         bots.map(async (bot) => {
           const stats = await apiGet<BotStatsSummaryDTO>(
@@ -123,11 +162,12 @@ export const useBotsStore = create<BotsState>((set, get) => ({
         loadingStats: false,
       });
     } catch (error) {
-      console.error("Failed to fetch bots stats", error);
+      console.error("Failed to fetch bot stats", error);
       const message =
         error instanceof Error
           ? error.message
           : "Не удалось загрузить статистику ботов";
+
       set({
         loadingStats: false,
         error: message,
@@ -135,7 +175,10 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     }
   },
 
-  async createBot(name, description) {
+  /**
+   * Создание нового бота.
+   */
+  async createBot(name: string, description?: string | null) {
     set({ loadingBots: true, error: null });
 
     try {
@@ -151,6 +194,69 @@ export const useBotsStore = create<BotsState>((set, get) => ({
         error instanceof Error
           ? error.message
           : "Не удалось создать бота";
+
+      set({
+        loadingBots: false,
+        error: message,
+      });
+    }
+  },
+
+  /**
+   * Установка выбранного бота по идентификатору.
+   */
+  selectBot(id: number | null) {
+    set((state) => {
+      if (id == null) {
+        return {
+          selectedBotId: null,
+          selectedBot: null,
+        };
+      }
+
+      const botFromList = state.bots.find((bot) => bot.id === id) ?? null;
+
+      return {
+        selectedBotId: id,
+        selectedBot: botFromList ?? state.selectedBot,
+      };
+    });
+  },
+
+  /**
+   * Перезагрузка данных выбранного бота с сервера.
+   * Если selectedBotId не задан, функция ничего не делает.
+   */
+  async reloadSelectedBot() {
+    const { selectedBotId } = get();
+
+    if (!selectedBotId) {
+      return;
+    }
+
+    set({ loadingBots: true, error: null });
+
+    try {
+      const bot = await apiGet<BotDTO>(`/bots/${selectedBotId}`);
+
+      set((state) => {
+        const bots = state.bots.some((item) => item.id === bot.id)
+          ? state.bots.map((item) => (item.id === bot.id ? bot : item))
+          : [...state.bots, bot];
+
+        return {
+          bots,
+          selectedBotId,
+          selectedBot: bot,
+          loadingBots: false,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to reload selected bot", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Не удалось загрузить данные бота";
 
       set({
         loadingBots: false,
