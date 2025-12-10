@@ -38,7 +38,6 @@ const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
 const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
   [ChannelType.TELEGRAM]: [
     { key: "token", label: "API token", placeholder: "123456:ABC..." },
-    { key: "secret_token", label: "Секретный токен" },
   ],
   [ChannelType.WHATSAPP_GREEN]: [
     { key: "send_message_url", label: "Send message URL" },
@@ -335,6 +334,31 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
+  const renderWebhookStatus = (channel: BotChannel) => {
+    if (channel.channel_type !== ChannelType.TELEGRAM) {
+      return null;
+    }
+
+    const status = channel.webhook_status;
+    const error = channel.webhook_error;
+
+    if (!status && !error) {
+      return null;
+    }
+
+    return (
+      <div className={styles.webhookStatus}>
+        {status && (
+          <div className={styles.webhookStatusLine}>
+            <span className={styles.webhookStatusLabel}>Статус вебхука:</span>
+            <span className={styles.webhookStatusValue}>{status}</span>
+          </div>
+        )}
+        {error && <div className={styles.webhookStatusError}>{error}</div>}
+      </div>
+    );
+  };
+
   return (
     <section className={styles.section}>
       <header className={styles.header}>
@@ -416,6 +440,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             </div>
 
             {renderFields(channel)}
+
+            {renderWebhookStatus(channel)}
 
             <div className={styles.actions}>
               {successChannelId === channel.id && (
