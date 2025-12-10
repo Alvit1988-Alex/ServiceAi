@@ -46,12 +46,14 @@ export enum ChannelType {
   WEBCHAT = "webchat",
 }
 
+export type WebhookStatus = "ok" | "pending" | "error";
+
 export interface BotChannel {
   id: number;
   bot_id: number;
   channel_type: ChannelType;
   config: Record<string, unknown>;
-  webhook_status?: string | null;
+  webhook_status?: WebhookStatus | null;
   webhook_error?: string | null;
   is_active: boolean;
   created_at: string;
