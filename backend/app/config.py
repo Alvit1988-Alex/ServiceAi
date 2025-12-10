@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("REFRESH_TOKEN_EXPIRES_DAYS", "refresh_token_expires_days"),
     )
 
+    public_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),
+        description="Publicly accessible base URL used for building webhooks",
+    )
+
     channel_config_secret_key: str = Field(
         ...,
         min_length=1,

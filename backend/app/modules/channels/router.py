@@ -12,7 +12,7 @@ from app.modules.channels.schemas import (
     ListResponse,
     NormalizedIncomingMessage,
 )
-from app.modules.channels.service import ChannelsService
+from app.modules.channels.service import ChannelsService, sync_telegram_webhook
 from app.modules.channels.telegram_handler import normalize_telegram_update
 from app.modules.channels.avito_handler import normalize_avito_update
 from app.modules.channels.max_handler import normalize_max_webhook
@@ -20,6 +20,7 @@ from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
 from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
+from app.modules.channels.models import ChannelType
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
 from app.modules.dialogs.service import DialogsService
 from app.modules.dialogs.websocket_manager import manager
@@ -135,7 +136,19 @@ async def update_channel(
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     updated = await service.update(session=session, db_obj=channel, obj_in=data)
-    return service.decrypt(updated)
+    decrypted = service.decrypt(updated)
+
+    if decrypted.channel_type == ChannelType.TELEGRAM:
+        status, error = await sync_telegram_webhook(decrypted)
+        decrypted.config = dict(decrypted.config or {})
+        if status:
+            decrypted.config["webhook_status"] = status
+        if error:
+            decrypted.config["webhook_error"] = error
+        elif "webhook_error" in decrypted.config:
+            decrypted.config.pop("webhook_error")
+
+    return decrypted
 
 
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
