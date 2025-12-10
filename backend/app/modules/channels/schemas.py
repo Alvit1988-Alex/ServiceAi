@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.modules.channels.models import ChannelType
 
@@ -76,3 +76,19 @@ class BotChannelOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=Literal["ok", "pending", "error"] | None)
+    @property
+    def webhook_status(self) -> Literal["ok", "pending", "error"] | None:  # type: ignore[override]
+        status = (self.config or {}).get("webhook_status")
+        if status in {"ok", "pending", "error"}:
+            return status
+        return None
+
+    @computed_field(return_type=str | None)
+    @property
+    def webhook_error(self) -> str | None:  # type: ignore[override]
+        error = (self.config or {}).get("webhook_error")
+        if error:
+            return str(error)
+        return None
