@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import { createChannel, listChannels, updateChannel } from "@/app/api/channelsApi";
+import { listChannels, updateChannel } from "@/app/api/channelsApi";
+import { API_BASE_URL } from "@/app/api/config";
 import { BotChannel, ChannelType } from "@/app/api/types";
 
 import styles from "./BotChannels.module.css";
@@ -35,6 +36,37 @@ const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
   [ChannelType.WEBCHAT]: "Webchat",
 };
 
+const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
+  ChannelType.TELEGRAM,
+  ChannelType.WEBCHAT,
+  ChannelType.WHATSAPP_GREEN,
+  ChannelType.AVITO,
+  ChannelType.MAX,
+];
+
+const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
+  [ChannelType.TELEGRAM]: {
+    href: "/instructions/telegram.pdf",
+    summary: "Как получить токен бота в BotFather и настроить webhook.",
+  },
+  [ChannelType.WEBCHAT]: {
+    href: "/instructions/webchat.pdf",
+    summary: "Как вставить код виджета чата на сайт.",
+  },
+  [ChannelType.WHATSAPP_GREEN]: {
+    href: "/instructions/whatsapp_green.pdf",
+    summary: "Настройка WhatsApp Green API и вебхука.",
+  },
+  [ChannelType.AVITO]: {
+    href: "/instructions/avito.pdf",
+    summary: "Подключение Avito и настройка вебхука.",
+  },
+  [ChannelType.MAX]: {
+    href: "/instructions/max.pdf",
+    summary: "Подключение Max и настройка отправки сообщений.",
+  },
+};
+
 const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
   [ChannelType.TELEGRAM]: [
     { key: "token", label: "API token", placeholder: "123456:ABC..." },
@@ -43,10 +75,8 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
     { key: "send_message_url", label: "Send message URL" },
     { key: "api_base_url", label: "API base URL" },
     { key: "send_message_path", label: "Send message path" },
-    { key: "instance_id", label: "Instance ID" },
     { key: "api_token", label: "API token" },
     { key: "secret", label: "Webhook secret" },
-    { key: "webhook_secret", label: "Webhook secret (альт.)" },
   ],
   [ChannelType.WHATSAPP_360]: [
     { key: "send_message_url", label: "Send message URL" },
@@ -84,10 +114,6 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
     { key: "api_base_url", label: "API base URL" },
     { key: "send_message_path", label: "Send message path" },
     { key: "auth_token", label: "Auth token" },
-    { key: "token", label: "Token" },
-    { key: "secret", label: "Webhook secret" },
-  ],
-  [ChannelType.WEBCHAT]: [
     { key: "token", label: "Token" },
     { key: "secret", label: "Webhook secret" },
   ],
@@ -144,9 +170,9 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [channels, setChannels] = useState<BotChannel[]>([]);
   const [forms, setForms] = useState<Record<number, ChannelFormState>>({});
   const [loading, setLoading] = useState(true);
-  const [creatingChannel, setCreatingChannel] = useState(false);
-  const [newChannelType, setNewChannelType] = useState<ChannelType | null>(null);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
+  const [generatingWebchatId, setGeneratingWebchatId] = useState<number | null>(null);
+  const [webchatCodes, setWebchatCodes] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
 
@@ -164,9 +190,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           items.map((channel) => [channel.id, { config: buildConfigState(channel), is_active: channel.is_active }]),
         );
         setForms(nextForms);
-        const existingTypes = new Set(items.map((channel) => channel.channel_type));
-        const firstAvailable = Object.values(ChannelType).find((type) => !existingTypes.has(type)) ?? null;
-        setNewChannelType((prev) => prev ?? firstAvailable);
         setLoading(false);
       })
       .catch((err) => {
@@ -198,6 +221,20 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }));
   };
 
+  const INTERNAL_KEYS = new Set(["secret_token", "webhook_status", "webhook_error", "secret"]);
+
+  const applyChannelUpdate = (channelId: number, updatedChannel: BotChannel) => {
+    setChannels((prev) => prev.map((item) => (item.id === channelId ? updatedChannel : item)));
+    setForms((prev) => ({
+      ...prev,
+      [channelId]: {
+        config: buildConfigState(updatedChannel),
+        is_active: updatedChannel.is_active,
+      },
+    }));
+    setSuccessChannelId(channelId);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>, channelId: number) => {
     event.preventDefault();
     const form = forms[channelId];
@@ -215,15 +252,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         config: prepareConfig(form.config),
       };
       const updatedChannel = await updateChannel(botId, channelId, payload);
-      setChannels((prev) => prev.map((item) => (item.id === channelId ? updatedChannel : item)));
-      setForms((prev) => ({
-        ...prev,
-        [channelId]: {
-          config: buildConfigState(updatedChannel),
-          is_active: updatedChannel.is_active,
-        },
-      }));
-      setSuccessChannelId(channelId);
+      applyChannelUpdate(channelId, updatedChannel);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось обновить канал";
       setError(message);
@@ -232,67 +261,15 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }
   };
 
-  const availableChannelTypes = useMemo(() => {
-    const existingTypes = new Set(channels.map((channel) => channel.channel_type));
-    return Object.values(ChannelType).filter((type) => !existingTypes.has(type));
-  }, [channels]);
-
-  const handleAddChannel = async () => {
-    if (!newChannelType) {
-      return;
-    }
-
-    setCreatingChannel(true);
-    setError(null);
-    setSuccessChannelId(null);
-
-    try {
-      const payload = {
-        channel_type: newChannelType,
-        config: {},
-        is_active: false,
-      };
-      const createdChannel = await createChannel(botId, payload);
-      setChannels((prev) => [...prev, createdChannel]);
-      setForms((prev) => ({
-        ...prev,
-        [createdChannel.id]: {
-          config: buildConfigState(createdChannel),
-          is_active: createdChannel.is_active,
-        },
-      }));
-
-      const nextAvailable = availableChannelTypes.find((type) => type !== newChannelType) ?? null;
-      setNewChannelType(nextAvailable);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось создать канал";
-      setError(message);
-    } finally {
-      setCreatingChannel(false);
-    }
-  };
-
-  useEffect(() => {
-    if (availableChannelTypes.length === 0) {
-      setNewChannelType(null);
-      return;
-    }
-
-    setNewChannelType((prev) => {
-      if (prev && availableChannelTypes.includes(prev)) {
-        return prev;
-      }
-      return availableChannelTypes[0] ?? null;
-    });
-  }, [availableChannelTypes]);
-
   const renderFields = (channel: BotChannel) => {
     const form = forms[channel.id];
     if (!form) return null;
 
     const definedFields = CHANNEL_FIELDS[channel.channel_type] ?? [];
     const existingKeys = new Set(definedFields.map((field) => field.key));
-    const additionalKeys = Object.keys(form.config).filter((key) => !existingKeys.has(key));
+    const additionalKeys = Object.keys(form.config)
+      .filter((key) => !existingKeys.has(key))
+      .filter((key) => !INTERNAL_KEYS.has(key));
 
     return (
       <div className={styles.fieldsGrid}>
@@ -334,6 +311,123 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
+  const generateSecretValue = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2, 12);
+  };
+
+  const buildWebchatEmbedCode = (channelId: number, secret: string) => {
+    const endpoint = `${API_BASE_URL}/bots/${botId}/channels/webhooks/webchat/${channelId}`;
+    return `<script>
+  (function() {
+    const WEBCHAT_ENDPOINT = "${endpoint}";
+    const WEBCHAT_SECRET = "${secret}";
+
+    async function sendWebchatMessage(sessionId, text) {
+      await fetch(WEBCHAT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webchat-Secret": WEBCHAT_SECRET,
+        },
+        body: JSON.stringify({ session_id: sessionId, text }),
+      });
+    }
+
+    // TODO: интегрировать этот вызов с вашим сайтом/виджетом
+  })();
+</script>`;
+  };
+
+  const handleGenerateWebchatCode = async (channel: BotChannel) => {
+    const form = forms[channel.id];
+    if (!form) return;
+
+    setGeneratingWebchatId(channel.id);
+    setError(null);
+    setSuccessChannelId(null);
+
+    let secret = form.config.secret || channel.config?.secret;
+
+    try {
+      if (!secret) {
+        const newSecret = generateSecretValue();
+        const preparedConfig = { ...prepareConfig(form.config), secret: newSecret };
+        const updatedChannel = await updateChannel(botId, channel.id, {
+          is_active: form.is_active,
+          config: preparedConfig,
+        });
+        applyChannelUpdate(channel.id, updatedChannel);
+        secret = newSecret;
+      }
+
+      const embedCode = buildWebchatEmbedCode(channel.id, secret as string);
+      setWebchatCodes((prev) => ({ ...prev, [channel.id]: embedCode }));
+      setSuccessChannelId(channel.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось сгенерировать код";
+      setError(message);
+    } finally {
+      setGeneratingWebchatId(null);
+    }
+  };
+
+  const handleCopyWebchatCode = async (channelId: number) => {
+    const code = webchatCodes[channelId];
+    if (!code || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(code);
+      setSuccessChannelId(channelId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось скопировать код";
+      setError(message);
+    }
+  };
+
+  const renderWebchatSettings = (channel: BotChannel) => {
+    const code = webchatCodes[channel.id] ?? "";
+
+    return (
+      <div className={styles.webchatSettings}>
+        <p className={styles.subtitle}>
+          Вставьте готовый сниппет на сайт, чтобы подключить Webchat. Секрет сохранится автоматически при генерации.
+        </p>
+        <div className={styles.webchatActions}>
+          <button
+            type="button"
+            className={styles.saveButton}
+            onClick={() => handleGenerateWebchatCode(channel)}
+            disabled={generatingWebchatId === channel.id}
+          >
+            {generatingWebchatId === channel.id ? "Генерируем..." : "Сгенерировать код"}
+          </button>
+        </div>
+        <div className={styles.webchatCodeBlock}>
+          <textarea
+            className={styles.textarea}
+            readOnly
+            value={code}
+            placeholder="Сгенерируйте код, чтобы увидеть готовый сниппет"
+            rows={8}
+          />
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => handleCopyWebchatCode(channel.id)}
+            disabled={!code}
+          >
+            Скопировать
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderWebhookStatus = (channel: BotChannel) => {
     if (channel.channel_type !== ChannelType.TELEGRAM) {
       return null;
@@ -359,6 +453,10 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
+  const visibleChannels = channels.filter((channel) =>
+    VISIBLE_CHANNEL_TYPES.includes(channel.channel_type),
+  );
+
   return (
     <section className={styles.section}>
       <header className={styles.header}>
@@ -373,51 +471,13 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
       {loading && <p className={styles.muted}>Загружаем каналы...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
-      {!loading && !error && channels.length === 0 && (
-        <p className={styles.muted}>У бота нет настроенных каналов. Добавьте первый канал.</p>
+      {!loading && !error && visibleChannels.length === 0 && (
+        <p className={styles.muted}>Нет доступных каналов для отображения.</p>
       )}
 
-      {!loading && !error && availableChannelTypes.length > 0 && (
-        <div className={styles.addChannelCard}>
-          <div>
-            <h4 className={styles.addChannelTitle}>Добавить канал</h4>
-            <p className={styles.subtitle}>Выберите тип и создайте новый канал.</p>
-          </div>
-          <div className={styles.addChannelControls}>
-            <label className={styles.fieldLabel} htmlFor="channel-type-select">
-              Тип канала
-            </label>
-            <div className={styles.addChannelRow}>
-              <select
-                id="channel-type-select"
-                className={styles.select}
-                value={newChannelType ?? ""}
-                onChange={(event) => setNewChannelType(event.target.value as ChannelType)}
-              >
-                <option value="" disabled>
-                  Выберите тип
-                </option>
-                {availableChannelTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {CHANNEL_TYPE_LABELS[type]}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className={styles.saveButton}
-                onClick={handleAddChannel}
-                disabled={!newChannelType || creatingChannel}
-              >
-                {creatingChannel ? "Добавляем..." : "Добавить канал"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && channels.map((channel) => {
+      {!loading && !error && visibleChannels.map((channel) => {
         const form = forms[channel.id];
+        const instruction = CHANNEL_INSTRUCTIONS[channel.channel_type];
         return (
           <form
             key={channel.id}
@@ -439,13 +499,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               </label>
             </div>
 
-            {renderFields(channel)}
+            {channel.channel_type === ChannelType.WEBCHAT
+              ? renderWebchatSettings(channel)
+              : renderFields(channel)}
 
             {renderWebhookStatus(channel)}
 
             <div className={styles.actions}>
               {successChannelId === channel.id && (
                 <span className={styles.success}>Настройки сохранены</span>
+              )}
+              {instruction && (
+                <a
+                  href={instruction.href}
+                  className={styles.instructionLink}
+                  download
+                  title={instruction.summary}
+                >
+                  Инструкция
+                </a>
               )}
               <button
                 type="submit"

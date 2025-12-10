@@ -35,7 +35,15 @@ class ChannelsService:
     ) -> list[BotChannel]:
         """Create default inactive channels for a bot without committing the transaction."""
 
-        default_types = channel_types or [ChannelType.TELEGRAM, ChannelType.WEBCHAT]
+        default_types = channel_types or [
+            ChannelType.TELEGRAM,
+            ChannelType.WEBCHAT,
+            ChannelType.WHATSAPP_GREEN,
+            ChannelType.WHATSAPP_360,
+            ChannelType.WHATSAPP_CUSTOM,
+            ChannelType.AVITO,
+            ChannelType.MAX,
+        ]
         channels: list[BotChannel] = []
 
         for channel_type in default_types:
