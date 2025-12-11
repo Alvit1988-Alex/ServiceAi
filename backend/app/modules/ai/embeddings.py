@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -51,11 +52,13 @@ class GigaChatEmbeddingsClient(EmbeddingsClient):
         headers = {
             "Authorization": f"Basic {auth_header}",
             "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "RqUID": str(uuid.uuid4()),
         }
-        data = {"scope": self._scope}
+        data = f"scope={self._scope}"
 
         async with httpx.AsyncClient(verify=self._verify, timeout=self._timeout) as client:
-            response = await client.post(self._auth_url, data=data, headers=headers)
+            response = await client.post(self._auth_url, content=data, headers=headers)
             response.raise_for_status()
             payload: dict[str, Any] = response.json()
 
