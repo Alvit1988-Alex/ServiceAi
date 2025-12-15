@@ -85,6 +85,13 @@ def main() -> int:
     status_code = status_line or "0"
     body = body_part.strip()
 
+    if status_code == "403":
+        print("[FAIL] Доступ запрещен (проверьте INTERNAL_API_KEY)")
+        return 2
+    if status_code != "200":
+        print(f"[FAIL] Ошибка API: HTTP {status_code}")
+        return 2
+
     if not body:
         print("[FAIL] Некорректный ответ от API")
         return 2
@@ -93,13 +100,6 @@ def main() -> int:
         payload = json.loads(body)
     except json.JSONDecodeError:
         print("[FAIL] Некорректный ответ от API")
-        return 2
-
-    if status_code == "403":
-        print("[FAIL] Доступ запрещен (проверьте INTERNAL_API_KEY)")
-        return 2
-    if status_code != "200":
-        print(f"[FAIL] Ошибка API: HTTP {status_code}")
         return 2
 
     checks = payload.get("checks", [])
