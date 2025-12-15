@@ -56,6 +56,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CHANNEL_CONFIG_SECRET_KEY", "channel_config_secret_key"),
     )
 
+    internal_api_key: str = Field(
+        ..., validation_alias=AliasChoices("INTERNAL_API_KEY", "internal_api_key")
+    )
+
     gigachat_client_id: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CLIENT_ID", "gigachat_client_id"))
     gigachat_client_secret: str | None = Field(
         default=None,
