@@ -61,11 +61,11 @@ async def log_integration_event(
     )
 
     try:
-        async with session.begin():
+        async with session.begin_nested():
             session.add(log_entry)
     except Exception:
         # Diagnostics should not crash on logging issues.
-        await session.rollback()
+        return
 
 
 class DiagnosticsService:
