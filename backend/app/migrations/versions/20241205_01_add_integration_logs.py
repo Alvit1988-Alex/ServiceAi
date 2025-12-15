@@ -15,7 +15,12 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "integration_logs",
-        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+        sa.Column(
+            "id",
+            sa.BigInteger(),
+            sa.Identity(always=False),
+            primary_key=True,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("account_id", sa.BigInteger(), nullable=False),
         sa.Column("bot_id", sa.BigInteger(), sa.ForeignKey("bots.id", ondelete="SET NULL"), nullable=True),
