@@ -38,6 +38,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    if os.name == "nt":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+
     args = parse_args()
     internal_key = args.internal_key or os.getenv("INTERNAL_API_KEY")
     if not internal_key:
