@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import subprocess
 import sys
 from typing import Any
-
-import httpx
+from urllib.parse import urlencode
 
 
 def _print_check(check: dict[str, Any], verbose: bool = False) -> None:
@@ -51,25 +52,56 @@ def main() -> int:
     if args.since:
         params["since"] = args.since
 
-    try:
-        response = httpx.get(
-            f"{args.base_url.rstrip('/')}/diagnostics",
-            params=params,
-            headers={"X-Internal-Key": internal_key},
-            timeout=15,
-        )
-    except httpx.RequestError as exc:
-        print(f"[FAIL] Ошибка запроса: {exc}", file=sys.stderr)
+    url = f"{args.base_url.rstrip('/')}/diagnostics"
+    query = urlencode(params)
+    status_marker = "__HTTP_STATUS__:"
+
+    command = [
+        "curl",
+        "-sS",
+        "-m",
+        "15",
+        "-H",
+        f"X-Internal-Key: {internal_key}",
+        f"{url}?{query}",
+        "-w",
+        "\n__HTTP_STATUS__:%{http_code}\n",
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        error_output = result.stderr.strip() or "unknown error"
+        print(f"[FAIL] Ошибка запроса: {error_output}", file=sys.stderr)
         return 2
 
-    if response.status_code == 403:
+    stdout = result.stdout
+    if status_marker not in stdout:
+        print("[FAIL] Некорректный ответ от API")
+        return 2
+
+    body_part, status_part = stdout.rsplit(status_marker, 1)
+    status_line = status_part.strip().splitlines()[0] if status_part.strip() else ""
+    status_code = status_line or "0"
+    body = body_part.strip()
+
+    if not body:
+        print("[FAIL] Некорректный ответ от API")
+        return 2
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        print("[FAIL] Некорректный ответ от API")
+        return 2
+
+    if status_code == "403":
         print("[FAIL] Доступ запрещен (проверьте INTERNAL_API_KEY)")
         return 2
-    if not response.is_success:
-        print(f"[FAIL] Ошибка API: HTTP {response.status_code}")
+    if status_code != "200":
+        print(f"[FAIL] Ошибка API: HTTP {status_code}")
         return 2
 
-    payload = response.json()
     checks = payload.get("checks", [])
     for check in checks:
         _print_check(check, verbose=args.verbose)
