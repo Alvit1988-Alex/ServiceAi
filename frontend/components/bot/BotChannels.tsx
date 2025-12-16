@@ -8,7 +8,7 @@ import { BotChannel, ChannelType } from "@/app/api/types";
 
 import styles from "./BotChannels.module.css";
 
-type ChannelConfigState = Record<string, string>;
+type ChannelConfigState = Record<string, unknown>;
 
 interface ChannelFormState {
   config: ChannelConfigState;
@@ -102,12 +102,9 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
     },
   ],
   [ChannelType.AVITO]: [
-    { key: "send_message_url", label: "Send message URL" },
-    { key: "api_base_url", label: "API base URL" },
-    { key: "send_message_path", label: "Send message path" },
-    { key: "auth_token", label: "Auth token" },
-    { key: "token", label: "Token" },
-    { key: "secret", label: "Webhook secret" },
+    { key: "client_id", label: "Client ID" },
+    { key: "client_secret", label: "Client secret" },
+    { key: "webhook_secret", label: "Webhook secret" },
   ],
   [ChannelType.MAX]: [
     { key: "send_message_url", label: "Send message URL" },
@@ -121,23 +118,32 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
 
 function buildConfigState(channel: BotChannel): ChannelConfigState {
   const fields = CHANNEL_FIELDS[channel.channel_type] ?? [];
-  const initialEntries: ChannelConfigState = {};
+  const initialEntries: ChannelConfigState = { ...(channel.config ?? {}) };
 
   fields.forEach((field) => {
     const value = channel.config?.[field.key];
-    initialEntries[field.key] = value === undefined || value === null ? "" : String(value);
-  });
-
-  Object.entries(channel.config ?? {}).forEach(([key, value]) => {
-    if (!(key in initialEntries)) {
-      initialEntries[key] = value === undefined || value === null ? "" : String(value);
+    if (value === undefined || value === null) {
+      initialEntries[field.key] = "";
     }
   });
+
+  if (channel.channel_type === ChannelType.AVITO) {
+    if (initialEntries["reply_all_items"] === undefined) {
+      initialEntries["reply_all_items"] = true;
+    }
+    if (!Array.isArray(initialEntries["allowed_item_ids"])) {
+      initialEntries["allowed_item_ids"] = [];
+    }
+  }
 
   return initialEntries;
 }
 
-function parseConfigValue(key: string, value: string): unknown {
+function parseConfigValue(key: string, value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
   const trimmed = value.trim();
   if (trimmed === "") {
     return undefined;
@@ -169,6 +175,7 @@ function prepareConfig(config: ChannelConfigState): Record<string, unknown> {
 export default function BotChannels({ botId }: BotChannelsProps) {
   const [channels, setChannels] = useState<BotChannel[]>([]);
   const [forms, setForms] = useState<Record<number, ChannelFormState>>({});
+  const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
   const [generatingWebchatId, setGeneratingWebchatId] = useState<number | null>(null);
@@ -190,6 +197,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           items.map((channel) => [channel.id, { config: buildConfigState(channel), is_active: channel.is_active }]),
         );
         setForms(nextForms);
+        setAllowedItemInputs({});
         setLoading(false);
       })
       .catch((err) => {
@@ -212,6 +220,64 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         config: { ...prev[channelId]?.config, [key]: value },
       },
     }));
+  };
+
+  const handleReplyAllToggle = (channelId: number, replyAll: boolean) => {
+    setForms((prev) => ({
+      ...prev,
+      [channelId]: {
+        ...prev[channelId],
+        config: { ...prev[channelId]?.config, reply_all_items: replyAll },
+      },
+    }));
+  };
+
+  const handleAllowedItemInputChange = (channelId: number, value: string) => {
+    setAllowedItemInputs((prev) => ({ ...prev, [channelId]: value }));
+  };
+
+  const handleAddAllowedItem = (channelId: number) => {
+    const value = (allowedItemInputs[channelId] ?? "").trim();
+    if (!value) return;
+
+    setForms((prev) => {
+      const allowedRaw = prev[channelId]?.config?.["allowed_item_ids"];
+      const currentAllowed = Array.isArray(allowedRaw)
+        ? [...(allowedRaw as unknown[])]
+        : [];
+
+      if (currentAllowed.includes(value)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [channelId]: {
+          ...prev[channelId],
+          config: { ...prev[channelId]?.config, allowed_item_ids: [...currentAllowed, value] },
+        },
+      };
+    });
+
+    setAllowedItemInputs((prev) => ({ ...prev, [channelId]: "" }));
+  };
+
+  const handleRemoveAllowedItem = (channelId: number, itemId: string) => {
+    setForms((prev) => {
+      const allowedRaw = prev[channelId]?.config?.["allowed_item_ids"];
+      const currentAllowed = Array.isArray(allowedRaw)
+        ? (allowedRaw as unknown[])
+        : [];
+      const nextAllowed = currentAllowed.filter((item) => String(item) !== itemId);
+
+      return {
+        ...prev,
+        [channelId]: {
+          ...prev[channelId],
+          config: { ...prev[channelId]?.config, allowed_item_ids: nextAllowed },
+        },
+      };
+    });
   };
 
   const handleActiveToggle = (channelId: number, isActive: boolean) => {
@@ -261,6 +327,69 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }
   };
 
+  const renderAvitoFilters = (channel: BotChannel) => {
+    const form = forms[channel.id];
+    if (!form) return null;
+
+    const replyAllRaw = form.config["reply_all_items"];
+    const replyAll = typeof replyAllRaw === "boolean" ? replyAllRaw : true;
+    const allowedRaw = form.config["allowed_item_ids"];
+    const allowedItems = Array.isArray(allowedRaw)
+      ? (allowedRaw as unknown[]).map((value) => String(value))
+      : [];
+    const inputValue = allowedItemInputs[channel.id] ?? "";
+
+    return (
+      <div className={styles.field}>
+        <label className={styles.switch}>
+          <input
+            type="checkbox"
+            checked={replyAll}
+            onChange={(event) => handleReplyAllToggle(channel.id, event.target.checked)}
+          />
+          <span>Отвечать на все объявления</span>
+        </label>
+
+        {!replyAll && (
+          <>
+            <span className={styles.fieldLabel}>ID объявления</span>
+            <div className={styles.inlineInputs}>
+              <input
+                className={styles.input}
+                type="text"
+                value={inputValue}
+                onChange={(event) => handleAllowedItemInputChange(channel.id, event.target.value)}
+                placeholder="123456789"
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => handleAddAllowedItem(channel.id)}
+              >
+                Добавить
+              </button>
+            </div>
+            <p className={styles.helperText}>Добавьте один или несколько ID объявлений для ответа бота.</p>
+            <ul className={styles.tagList}>
+              {allowedItems.map((item) => (
+                <li key={item} className={styles.tag}>
+                  <span>{item}</span>
+                  <button
+                    type="button"
+                    className={styles.tagRemoveButton}
+                    onClick={() => handleRemoveAllowedItem(channel.id, item)}
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderFields = (channel: BotChannel) => {
     const form = forms[channel.id];
     if (!form) return null;
@@ -269,7 +398,14 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     const existingKeys = new Set(definedFields.map((field) => field.key));
     const additionalKeys = Object.keys(form.config)
       .filter((key) => !existingKeys.has(key))
-      .filter((key) => !INTERNAL_KEYS.has(key));
+      .filter((key) => !INTERNAL_KEYS.has(key))
+      .filter(
+        (key) =>
+          !(
+            channel.channel_type === ChannelType.AVITO &&
+            (key === "reply_all_items" || key === "allowed_item_ids")
+          ),
+      );
 
     return (
       <div className={styles.fieldsGrid}>
@@ -279,7 +415,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             {field.type === "textarea" ? (
               <textarea
                 className={styles.textarea}
-                value={form.config[field.key] ?? ""}
+                value={String(form.config[field.key] ?? "")}
                 onChange={(event) => handleConfigChange(channel.id, field.key, event.target.value)}
                 placeholder={field.placeholder}
                 rows={3}
@@ -288,7 +424,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               <input
                 className={styles.input}
                 type="text"
-                value={form.config[field.key] ?? ""}
+                value={String(form.config[field.key] ?? "")}
                 onChange={(event) => handleConfigChange(channel.id, field.key, event.target.value)}
                 placeholder={field.placeholder}
               />
@@ -302,11 +438,13 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             <input
               className={styles.input}
               type="text"
-              value={form.config[key] ?? ""}
+              value={String(form.config[key] ?? "")}
               onChange={(event) => handleConfigChange(channel.id, key, event.target.value)}
             />
           </label>
         ))}
+
+        {channel.channel_type === ChannelType.AVITO && renderAvitoFilters(channel)}
       </div>
     );
   };
