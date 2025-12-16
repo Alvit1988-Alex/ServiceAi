@@ -29,23 +29,56 @@ def _parse_timestamp(value) -> datetime | None:
 def normalize_avito_update(bot_id: int, channel_id: int, update: dict) -> NormalizedIncomingMessage:
     """Convert an Avito webhook update into a NormalizedIncomingMessage."""
 
-    payload_value = update.get("payload", {}).get("value")
+    payload = update.get("payload") or {}
+    payload_value = payload.get("value") or {}
 
-    if payload_value:
-        external_user_id = payload_value.get("user_id") or payload_value.get("user") or ""
-        external_chat_id = payload_value.get("chat_id") or payload_value.get("conversation_id") or ""
-        external_message_id = payload_value.get("id") or payload_value.get("message_id")
-        content = payload_value.get("content") or {}
-        text = (content.get("text") if isinstance(content, dict) else None) or ""
-        item_id = payload_value.get("item_id") or payload_value.get("itemId")
-        timestamp_value = payload_value.get("timestamp") or payload_value.get("created_at")
-    else:
-        external_user_id = update.get("user_id") or update.get("user") or ""
-        external_chat_id = update.get("chat_id") or update.get("conversation_id") or external_user_id
-        external_message_id = update.get("message_id") or update.get("id")
-        text = update.get("text") or update.get("message") or ""
-        item_id = update.get("item_id") or update.get("itemId")
-        timestamp_value = update.get("timestamp") or update.get("created_at")
+    source = payload_value if payload_value else update
+
+    external_user_id = (
+        payload_value.get("user_id")
+        or payload_value.get("user")
+        or payload_value.get("author_id")
+        or source.get("user_id")
+        or source.get("user")
+        or ""
+    )
+    external_chat_id = (
+        payload_value.get("chat_id")
+        or payload_value.get("conversation_id")
+        or source.get("chat_id")
+        or source.get("conversation_id")
+        or external_user_id
+    )
+    external_message_id = (
+        payload_value.get("id")
+        or payload_value.get("message_id")
+        or source.get("message_id")
+        or source.get("id")
+    )
+
+    content = payload_value.get("content") if isinstance(payload_value, dict) else {}
+    text = (content.get("text") if isinstance(content, dict) else None) or source.get("text") or ""
+    item_id = (
+        payload_value.get("item_id")
+        or payload_value.get("itemId")
+        or source.get("item_id")
+        or source.get("itemId")
+    )
+    timestamp_value = (
+        payload_value.get("timestamp")
+        or payload_value.get("created_at")
+        or source.get("timestamp")
+        or source.get("created_at")
+    )
+
+    direction = payload_value.get("direction") or source.get("direction")
+    message_type = payload_value.get("type") or source.get("type")
+
+    skip_reason = None
+    if message_type == "system":
+        skip_reason = "system_message"
+    if direction and str(direction).lower() == "out":
+        skip_reason = skip_reason or "outgoing_message"
 
     external_chat_id = external_chat_id or external_user_id
     text = text or ""
@@ -60,5 +93,12 @@ def normalize_avito_update(bot_id: int, channel_id: int, update: dict) -> Normal
         text=text,
         item_id=str(item_id) if item_id is not None else None,
         timestamp=_parse_timestamp(timestamp_value),
-        payload={"raw_update": update, "item_id": item_id},
+        payload={
+            "raw_update": update,
+            "item_id": item_id,
+            "direction": direction,
+            "message_type": message_type,
+            "skip_processing": bool(skip_reason),
+            "skip_reason": skip_reason,
+        },
     )

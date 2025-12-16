@@ -8,14 +8,13 @@ import httpx
 from sqlalchemy import select
 
 from app.database import async_session_factory
-from app.modules.channels.avito_auth import get_valid_access_token, refresh_access_token
+from app.modules.channels.avito_auth import get_valid_access_token, request_access_token
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.sender_registry import BaseChannelSender
 from app.modules.channels.service import ChannelsService
 
 logger = logging.getLogger(__name__)
-
-AVITO_SEND_MESSAGE_URL_TEMPLATE = "https://api.avito.ru/messenger/v1/conversations/{conversation_id}/messages"
+AVITO_SEND_MESSAGE_URL_TEMPLATE = "https://api.avito.ru/messenger/v1/accounts/{user_id}/chats/{chat_id}/messages"
 
 
 class AvitoSender(BaseChannelSender):
@@ -67,13 +66,21 @@ class AvitoSender(BaseChannelSender):
             )
             return
 
-        url = AVITO_SEND_MESSAGE_URL_TEMPLATE.format(conversation_id=external_chat_id)
-        payload = {"type": "text", "message": {"text": text}}
+        user_id = channel.config.get("user_id")
+        if not user_id:
+            logger.error(
+                "Avito config missing user_id",
+                extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            return
+
+        url = AVITO_SEND_MESSAGE_URL_TEMPLATE.format(user_id=user_id, chat_id=external_chat_id)
+        payload = {"message": {"text": text}, "type": "text"}
 
         try:
             response = await self._send_request(url, payload, access_token)
-            if response.status_code == 401:
-                refreshed_token = await refresh_access_token(channel)
+            if response.status_code in (401, 403):
+                refreshed_token = await request_access_token(channel)
                 if refreshed_token:
                     response = await self._send_request(url, payload, refreshed_token)
 
