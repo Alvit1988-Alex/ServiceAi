@@ -1,4 +1,9 @@
 """Channels router."""
+import hashlib
+import hmac
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +32,8 @@ from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
 
 router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
+logger = logging.getLogger(__name__)
+AVITO_SIGNATURE_HEADER = "X-Avito-Signature"
 
 
 def _ensure_channel_available(channel) -> None:
@@ -199,6 +206,16 @@ def _extract_provided_secret(request: Request, payload: dict, header_name: str =
     return request.headers.get(header_name) or payload.get("secret") or payload.get("token")
 
 
+def _verify_avito_signature(raw_body: bytes, secret: str | None, provided_signature: str | None) -> bool:
+    if not secret:
+        return True
+    if not provided_signature:
+        return False
+
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, provided_signature)
+
+
 @router.post("/webhooks/whatsapp/green/{channel_id}")
 async def whatsapp_green_webhook(
     bot_id: int,
@@ -297,22 +314,60 @@ async def whatsapp_custom_webhook(
 async def avito_webhook(
     bot_id: int,
     channel_id: int,
-    payload: dict,
     request: Request,
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
 ) -> dict:
+    raw_body = await request.body()
+
     channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     _ensure_channel_available(channel)
     channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("token")
-    provided_secret = _extract_provided_secret(request=request, payload=payload, header_name="X-Avito-Secret")
-    _validate_secret(expected_secret, provided_secret, "Invalid Avito secret")
+    expected_secret = channel.config.get("webhook_secret") or channel.config.get("secret")
+    provided_signature = request.headers.get(AVITO_SIGNATURE_HEADER)
+
+    if not _verify_avito_signature(raw_body=raw_body, secret=expected_secret, provided_signature=provided_signature):
+        logger.warning(
+            "Invalid Avito webhook signature",
+            extra={"bot_id": bot_id, "channel_id": channel_id},
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Avito signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+
+    logger.info(
+        "Avito webhook received",
+        extra={
+            "bot_id": bot_id,
+            "channel_id": channel_id,
+            "conversation_id": normalized.external_chat_id,
+            "item_id": normalized.item_id,
+        },
+    )
+
+    should_reply, reason = channels_service.should_reply_to_avito_message(
+        channel.config, normalized.item_id
+    )
+    if not should_reply:
+        logger.info(
+            "Avito message filtered",
+            extra={
+                "bot_id": bot_id,
+                "channel_id": channel_id,
+                "conversation_id": normalized.external_chat_id,
+                "item_id": normalized.item_id,
+                "reason": reason,
+            },
+        )
+        return {"status": "filtered", "reason": reason}
 
     await _process_and_broadcast(
         normalized=normalized,

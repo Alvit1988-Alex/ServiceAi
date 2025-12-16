@@ -110,7 +110,38 @@ class ChannelsService:
         if channel_type == ChannelType.TELEGRAM and not prepared.get("secret_token"):
             prepared["secret_token"] = secrets.token_hex(16)
 
+        if channel_type == ChannelType.AVITO:
+            prepared.setdefault("client_id", "")
+            prepared.setdefault("client_secret", "")
+            prepared.setdefault("access_token", "")
+            prepared.setdefault("refresh_token", "")
+            prepared.setdefault("token_expires_at", "")
+            prepared.setdefault("webhook_secret", "")
+            prepared.setdefault("reply_all_items", True)
+            prepared.setdefault("allowed_item_ids", [])
+
         return prepared
+
+
+    @staticmethod
+    def should_reply_to_avito_message(config: dict[str, Any] | None, item_id: str | None) -> tuple[bool, str | None]:
+        if not config:
+            return True, None
+
+        reply_all = config.get("reply_all_items", True)
+        if reply_all:
+            return True, None
+
+        allowed = config.get("allowed_item_ids") or []
+        normalized_item_id = str(item_id) if item_id is not None else None
+        if not normalized_item_id:
+            return False, "item_id_missing"
+
+        allowed_as_str = {str(value) for value in allowed}
+        if normalized_item_id in allowed_as_str:
+            return True, None
+
+        return False, "item_id_not_allowed"
 
 
 async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | None]:

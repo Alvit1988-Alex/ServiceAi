@@ -46,6 +46,8 @@ class NormalizedIncomingMessage(BaseModel):
     external_user_id: str
     external_message_id: str | None = None
     text: str | None = None
+    item_id: str | None = None
+    timestamp: datetime | None = None
     payload: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
