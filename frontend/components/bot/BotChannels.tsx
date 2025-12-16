@@ -105,6 +105,7 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
     { key: "client_id", label: "Client ID" },
     { key: "client_secret", label: "Client secret" },
     { key: "webhook_secret", label: "Webhook secret" },
+    { key: "user_id", label: "User ID" },
   ],
   [ChannelType.MAX]: [
     { key: "send_message_url", label: "Send message URL" },
@@ -133,6 +134,9 @@ function buildConfigState(channel: BotChannel): ChannelConfigState {
     }
     if (!Array.isArray(initialEntries["allowed_item_ids"])) {
       initialEntries["allowed_item_ids"] = [];
+    }
+    if (initialEntries["user_id"] === undefined) {
+      initialEntries["user_id"] = "";
     }
   }
 
@@ -288,6 +292,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   };
 
   const INTERNAL_KEYS = new Set(["secret_token", "webhook_status", "webhook_error", "secret"]);
+  const AVITO_HIDDEN_KEYS = new Set([
+    "send_message_url",
+    "api_base_url",
+    "send_message_path",
+    "token",
+  ]);
 
   const applyChannelUpdate = (channelId: number, updatedChannel: BotChannel) => {
     setChannels((prev) => prev.map((item) => (item.id === channelId ? updatedChannel : item)));
@@ -403,7 +413,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         (key) =>
           !(
             channel.channel_type === ChannelType.AVITO &&
-            (key === "reply_all_items" || key === "allowed_item_ids")
+            (key === "reply_all_items" || key === "allowed_item_ids" || AVITO_HIDDEN_KEYS.has(key))
           ),
       );
 

@@ -1,6 +1,4 @@
 """Channels router."""
-import hashlib
-import hmac
 import json
 import logging
 
@@ -206,16 +204,6 @@ def _extract_provided_secret(request: Request, payload: dict, header_name: str =
     return request.headers.get(header_name) or payload.get("secret") or payload.get("token")
 
 
-def _verify_avito_signature(raw_body: bytes, secret: str | None, provided_signature: str | None) -> bool:
-    if not secret:
-        return True
-    if not provided_signature:
-        return False
-
-    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, provided_signature)
-
-
 @router.post("/webhooks/whatsapp/green/{channel_id}")
 async def whatsapp_green_webhook(
     bot_id: int,
@@ -327,14 +315,21 @@ async def avito_webhook(
     channel = channels_service.decrypt(channel)
 
     expected_secret = channel.config.get("webhook_secret") or channel.config.get("secret")
-    provided_signature = request.headers.get(AVITO_SIGNATURE_HEADER)
+    provided_secret = request.query_params.get("secret")
 
-    if not _verify_avito_signature(raw_body=raw_body, secret=expected_secret, provided_signature=provided_signature):
+    if not expected_secret:
         logger.warning(
-            "Invalid Avito webhook signature",
+            "Avito webhook secret is not configured; rejecting webhook",
             extra={"bot_id": bot_id, "channel_id": channel_id},
         )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Avito signature")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Avito webhook secret not configured")
+
+    if expected_secret != provided_secret:
+        logger.warning(
+            "Invalid Avito webhook secret",
+            extra={"bot_id": bot_id, "channel_id": channel_id},
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Avito webhook secret")
 
     try:
         payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
@@ -342,6 +337,20 @@ async def avito_webhook(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+
+    payload_meta = normalized.payload or {}
+    if payload_meta.get("skip_processing"):
+        logger.info(
+            "Avito webhook skipped",
+            extra={
+                "bot_id": bot_id,
+                "channel_id": channel_id,
+                "conversation_id": normalized.external_chat_id,
+                "item_id": normalized.item_id,
+                "reason": payload_meta.get("skip_reason"),
+            },
+        )
+        return {"status": "skipped", "reason": payload_meta.get("skip_reason")}
 
     logger.info(
         "Avito webhook received",

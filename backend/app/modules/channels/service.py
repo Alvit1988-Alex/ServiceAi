@@ -1,6 +1,7 @@
 """Channel management CRUD operations and webhook helpers."""
 from __future__ import annotations
 
+import logging
 import secrets
 from typing import Any
 
@@ -9,9 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.modules.channels.avito_webhook import subscribe as avito_subscribe
+from app.modules.channels.avito_webhook import unsubscribe as avito_unsubscribe
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.schemas import BotChannelCreate, BotChannelUpdate
 from app.utils.encryption import decrypt_config, encrypt_config
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChannelsService:
@@ -28,7 +34,15 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)
-        return self.decrypt(db_obj)
+        decrypted = self.decrypt(db_obj)
+
+        await self._maybe_sync_avito_webhook(
+            channel=decrypted,
+            previous_active=False,
+            previous_config=None,
+        )
+
+        return decrypted
 
     async def create_default_channels(
         self, session: AsyncSession, bot_id: int, channel_types: list[ChannelType] | None = None
@@ -75,6 +89,8 @@ class ChannelsService:
         db_obj: BotChannel,
         obj_in: BotChannelUpdate,
     ) -> BotChannel:
+        previous_active = db_obj.is_active
+        previous_config = decrypt_config(db_obj.config)
         data = obj_in.model_dump(exclude_unset=True)
         if "config" in data:
             prepared_config = self._prepare_config(db_obj.channel_type, data["config"])
@@ -89,7 +105,15 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)
-        return self.decrypt(db_obj)
+        decrypted = self.decrypt(db_obj)
+
+        await self._maybe_sync_avito_webhook(
+            channel=decrypted,
+            previous_active=previous_active,
+            previous_config=previous_config,
+        )
+
+        return decrypted
 
     async def delete(self, session: AsyncSession, bot_id: int, channel_id: int) -> None:
         obj = await self.get(session, bot_id, channel_id)
@@ -117,6 +141,7 @@ class ChannelsService:
             prepared.setdefault("refresh_token", "")
             prepared.setdefault("token_expires_at", "")
             prepared.setdefault("webhook_secret", "")
+            prepared.setdefault("user_id", None)
             prepared.setdefault("reply_all_items", True)
             prepared.setdefault("allowed_item_ids", [])
 
@@ -128,7 +153,13 @@ class ChannelsService:
         if not config:
             return True, None
 
-        reply_all = config.get("reply_all_items", True)
+        reply_all_raw = config.get("reply_all_items", True)
+        reply_all = True
+        if isinstance(reply_all_raw, str):
+            reply_all = reply_all_raw.strip().lower() not in {"false", "0", "no", "off"}
+        else:
+            reply_all = bool(reply_all_raw)
+
         if reply_all:
             return True, None
 
@@ -142,6 +173,56 @@ class ChannelsService:
             return True, None
 
         return False, "item_id_not_allowed"
+
+    async def _maybe_sync_avito_webhook(
+        self,
+        channel: BotChannel,
+        previous_active: bool,
+        previous_config: dict[str, Any] | None,
+    ) -> None:
+        if channel.channel_type != ChannelType.AVITO:
+            return
+
+        base_url = settings.public_base_url
+        if not base_url:
+            logger.warning(
+                "Public base URL is not configured; Avito webhook sync skipped",
+                extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+            )
+            return
+
+        config = channel.config or {}
+        webhook_secret = config.get("webhook_secret") or config.get("secret")
+        if not webhook_secret and previous_config:
+            webhook_secret = previous_config.get("webhook_secret") or previous_config.get("secret")
+
+        if channel.is_active:
+            required = [
+                config.get("client_id"),
+                config.get("client_secret"),
+                config.get("user_id"),
+                webhook_secret,
+            ]
+            if all(required):
+                await avito_subscribe(channel, base_url)
+            else:
+                logger.warning(
+                    "Avito webhook subscribe skipped due to missing config",
+                    extra={
+                        "bot_id": channel.bot_id,
+                        "channel_id": channel.id,
+                        "missing": [
+                            key
+                            for key, value in zip(
+                                ["client_id", "client_secret", "user_id", "webhook_secret"],
+                                required,
+                            )
+                            if not value
+                        ],
+                    },
+                )
+        elif previous_active and webhook_secret:
+            await avito_unsubscribe(channel, base_url, webhook_secret=webhook_secret)
 
 
 async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | None]:
