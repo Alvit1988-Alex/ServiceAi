@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -52,9 +53,10 @@ async def subscribe(channel: BotChannel, public_base_url: str, webhook_secret: s
                 AVITO_WEBHOOK_SUBSCRIBE_URL, json=payload, headers={"Authorization": f"Bearer {access_token}"}
             )
             response.raise_for_status()
+            safe_url = urlunsplit(urlsplit(webhook_url)._replace(query=""))
             logger.info(
                 "Avito webhook subscribed",
-                extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": webhook_url},
+                extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
             )
     except httpx.HTTPStatusError as exc:
         logger.error(
@@ -108,9 +110,10 @@ async def unsubscribe(channel: BotChannel, public_base_url: str, webhook_secret:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             response.raise_for_status()
+            safe_url = urlunsplit(urlsplit(webhook_url)._replace(query=""))
             logger.info(
                 "Avito webhook unsubscribed",
-                extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": webhook_url},
+                extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
             )
     except httpx.HTTPStatusError as exc:
         logger.error(
