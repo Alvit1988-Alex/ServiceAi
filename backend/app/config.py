@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         description="SQLAlchemy async URL, e.g. postgresql+asyncpg://user:pass@localhost:5432/db",
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
+    db_auto_create: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("DB_AUTO_CREATE", "db_auto_create"),
+        description="When true, create_all can be used to bootstrap tables automatically.",
+    )
 
     jwt_secret_key: str = Field(
         ...,
