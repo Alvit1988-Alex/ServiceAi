@@ -45,6 +45,7 @@ async def subscribe(channel: BotChannel, public_base_url: str, webhook_secret: s
         return
 
     webhook_url = _build_webhook_url(channel, public_base_url, secret)
+    safe_url = urlunsplit(urlsplit(webhook_url)._replace(query=""))
     payload = {"url": webhook_url}
 
     try:
@@ -67,18 +68,19 @@ async def subscribe(channel: BotChannel, public_base_url: str, webhook_secret: s
                 "channel_id": channel.id,
                 "status": exc.response.status_code if exc.response else None,
                 "response": exc.response.text if exc.response else None,
+                "url": safe_url,
             },
         )
     except httpx.RequestError as exc:
         logger.error(
             "Failed to subscribe Avito webhook: request error",
             exc_info=exc,
-            extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+            extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
         )
     except Exception:
         logger.exception(
             "Unexpected error during Avito webhook subscribe",
-            extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+            extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
         )
 
 
@@ -100,6 +102,7 @@ async def unsubscribe(channel: BotChannel, public_base_url: str, webhook_secret:
         return
 
     webhook_url = _build_webhook_url(channel, public_base_url, secret)
+    safe_url = urlunsplit(urlsplit(webhook_url)._replace(query=""))
     payload = {"url": webhook_url}
 
     try:
@@ -124,16 +127,17 @@ async def unsubscribe(channel: BotChannel, public_base_url: str, webhook_secret:
                 "channel_id": channel.id,
                 "status": exc.response.status_code if exc.response else None,
                 "response": exc.response.text if exc.response else None,
+                "url": safe_url,
             },
         )
     except httpx.RequestError as exc:
         logger.error(
             "Failed to unsubscribe Avito webhook: request error",
             exc_info=exc,
-            extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+            extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
         )
     except Exception:
         logger.exception(
             "Unexpected error during Avito webhook unsubscribe",
-            extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+            extra={"bot_id": channel.bot_id, "channel_id": channel.id, "url": safe_url},
         )
