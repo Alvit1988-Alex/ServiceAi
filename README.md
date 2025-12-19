@@ -35,4 +35,4 @@ cp .env.example .env.local
 
 Необходимые переменные окружения (смотрите `frontend/.env.example`):
 
-- `NEXT_PUBLIC_API_BASE_URL` — базовый URL API (например, `http://localhost:8000`).
+- `NEXT_PUBLIC_API_BASE_URL` — базовый URL API (например, dev: `http://localhost:8000`, prod: `https://api.example.com`).

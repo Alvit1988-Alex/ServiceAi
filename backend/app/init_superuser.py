@@ -10,6 +10,7 @@ Usage (from backend/ directory):
 from __future__ import annotations
 
 import asyncio
+import os
 
 from sqlalchemy import select
 
@@ -23,17 +24,22 @@ from app.modules.dialogs.models import Dialog  # noqa: F401
 from app.modules.bots.models import Bot       # noqa: F401
 
 
-
-ADMIN_EMAIL = "admin@admin.com"
-ADMIN_PASSWORD = "admin"
-ADMIN_FULL_NAME = "Admin"
-
-
 async def create_initial_admin() -> None:
+    admin_email = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    admin_full_name = os.getenv("ADMIN_FULL_NAME") or "Admin"
+
+    if not admin_email or not admin_password:
+        print(
+            "[init_superuser] Пропускаем создание администратора: "
+            "ADMIN_EMAIL или ADMIN_PASSWORD не заданы в окружении."
+        )
+        return
+
     async with async_session_factory() as session:
         # Проверяем, есть ли уже такой пользователь
         result = await session.execute(
-            select(User).where(User.email == ADMIN_EMAIL)
+            select(User).where(User.email == admin_email)
         )
         existing = result.scalars().first()
 
@@ -44,7 +50,7 @@ async def create_initial_admin() -> None:
                 session=session, owner=existing
             )
             print(
-                f"[init_superuser] User {ADMIN_EMAIL} уже существует "
+                f"[init_superuser] User {admin_email} уже существует "
                 f"(id={existing.id}, account_id={account.id}), ничего не делаем."
             )
             return
@@ -52,11 +58,11 @@ async def create_initial_admin() -> None:
         users_service = UsersService()
 
         user_in = UserCreate(
-            email=ADMIN_EMAIL,
-            full_name=ADMIN_FULL_NAME,
+            email=admin_email,
+            full_name=admin_full_name,
             role=UserRole.ADMIN,
             is_active=True,
-            password=ADMIN_PASSWORD,
+            password=admin_password,
         )
 
         user = await users_service.create(session, user_in)
