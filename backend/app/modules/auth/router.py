@@ -6,7 +6,7 @@ import secrets
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -292,6 +292,29 @@ async def _confirm_pending(
     return pending
 
 
+async def _send_telegram_confirmation_message(chat_id: int | str, text: str) -> None:
+    if not settings.telegram_auth_bot_token:
+        return
+
+    bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
+    try:
+        async with httpx.AsyncClient(base_url=bot_base_url, timeout=3) as client:
+            await client.post(
+                "/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                },
+            )
+    except Exception:
+        if settings.debug:
+            # pragma: no cover - diagnostic logging only in debug
+            masked_token = _mask_bot_token(settings.telegram_auth_bot_token)
+            print(  # noqa: T201
+                f"Failed to send Telegram confirmation using bot={masked_token}"
+            )
+
+
 async def _consume_pending_login(session: AsyncSession, pending: PendingLogin) -> tuple[PendingLogin, bool]:
     if pending.status != PendingLoginStatus.CONFIRMED or not pending.user_id:
         return pending, False
@@ -377,6 +400,7 @@ async def confirm_telegram_login(
 @router.post(_telegram_webhook_path(), response_model=TelegramWebhookResponse)
 async def telegram_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ) -> TelegramWebhookResponse:
     secret = request.query_params.get("secret") or request.headers.get("X-Telegram-Secret")
@@ -412,17 +436,9 @@ async def telegram_webhook(
 
     pending = await _confirm_pending(session=session, payload=confirm_payload)
 
-    bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
     reply_text = "✅ Вход подтвержден. Вернитесь в браузер, чтобы продолжить."
     chat_id = chat.get("id") or from_user.get("id")
-    async with httpx.AsyncClient(base_url=bot_base_url, timeout=10) as client:
-        await client.post(
-            "/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": reply_text,
-            },
-        )
+    background_tasks.add_task(_send_telegram_confirmation_message, chat_id, reply_text)
 
     masked_token = _mask_bot_token(settings.telegram_auth_bot_token)
     masked_secret = _mask_bot_token(settings.telegram_webhook_secret)
