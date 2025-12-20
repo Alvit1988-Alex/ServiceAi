@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from typing import Any
-from urllib.parse import urlencode
+
+import httpx
 
 
 def _print_check(check: dict[str, Any], verbose: bool = False) -> None:
@@ -57,37 +57,22 @@ def main() -> int:
         params["since"] = args.since
 
     url = f"{args.base_url.rstrip('/')}/diagnostics"
-    query = urlencode(params)
-    status_marker = "__HTTP_STATUS__:"
-
-    command = [
-        "curl",
-        "-sS",
-        "-m",
-        "15",
-        "-H",
-        f"X-Internal-Key: {internal_key}",
-        f"{url}?{query}",
-        "-w",
-        "\n__HTTP_STATUS__:%{http_code}\n",
-    ]
-
-    result = subprocess.run(command, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        error_output = result.stderr.strip() or "unknown error"
-        print(f"[FAIL] Ошибка запроса: {error_output}", file=sys.stderr)
+    try:
+        response = httpx.get(
+            url,
+            params=params,
+            headers={"X-Internal-Key": internal_key},
+            timeout=15.0,
+        )
+    except httpx.TimeoutException:
+        print("[FAIL] Ошибка запроса: таймаут", file=sys.stderr)
+        return 2
+    except httpx.RequestError as exc:
+        print(f"[FAIL] Ошибка запроса: {exc}", file=sys.stderr)
         return 2
 
-    stdout = result.stdout
-    if status_marker not in stdout:
-        print("[FAIL] Некорректный ответ от API")
-        return 2
-
-    body_part, status_part = stdout.rsplit(status_marker, 1)
-    status_line = status_part.strip().splitlines()[0] if status_part.strip() else ""
-    status_code = status_line or "0"
-    body = body_part.strip()
+    status_code = str(response.status_code)
+    body = response.text.strip()
 
     if status_code == "403":
         print("[FAIL] Доступ запрещен (проверьте INTERNAL_API_KEY)")
@@ -121,4 +106,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

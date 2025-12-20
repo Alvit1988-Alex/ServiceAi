@@ -19,11 +19,11 @@ from app.modules.diagnostics import router as diagnostics_router
 
 app = FastAPI(
     title=settings.app_name,
-    debug=settings.debug,
+    debug=settings.runtime_debug,
 )
 
 def configure_cors() -> None:
-    debug = settings.debug
+    debug = settings.runtime_debug
 
     allow_origins = settings.cors_allow_origins
     allow_credentials = settings.cors_allow_credentials
