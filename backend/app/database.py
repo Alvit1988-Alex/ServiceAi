@@ -7,7 +7,7 @@ Base = declarative_base()
 
 engine: AsyncEngine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=settings.runtime_debug,
     future=True,
 )
 

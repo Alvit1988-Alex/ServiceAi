@@ -307,7 +307,7 @@ async def _send_telegram_confirmation_message(chat_id: int | str, text: str) -> 
                 },
             )
     except Exception:
-        if settings.debug:
+        if settings.runtime_debug:
             # pragma: no cover - diagnostic logging only in debug
             masked_token = _mask_bot_token(settings.telegram_auth_bot_token)
             print(  # noqa: T201
@@ -443,7 +443,7 @@ async def telegram_webhook(
     masked_token = _mask_bot_token(settings.telegram_auth_bot_token)
     masked_secret = _mask_bot_token(settings.telegram_webhook_secret)
     # Minimal logging for observability without exposing secrets
-    if settings.debug:
+    if settings.runtime_debug:
         # pragma: no cover - diagnostic logging only in debug
         print(  # noqa: T201
             f"Telegram webhook processed for token={token[:4]}*** using bot={masked_token} secret={masked_secret}"

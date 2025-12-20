@@ -9,6 +9,8 @@
    - `ADMIN_EMAIL` и `ADMIN_PASSWORD` — опционально для первичного создания администратора; если они не заданы, bootstrap будет пропущен.
    - `CHANNEL_CONFIG_SECRET_KEY` для шифрования конфигов каналов.
    - `INTERNAL_API_KEY` — секретный ключ для доступа к `/diagnostics`.
+   - `APP_ENV` — `development` (по умолчанию) или `production`. В режиме production приложение не запускается с debug-опциями.
+   - `DEBUG` — `true` включайте только при `APP_ENV=development`, чтобы активировать debug FastAPI/SQLAlchemy. При `APP_ENV=production` значение `true` будет отклонено.
    - CORS:
      - `CORS_ALLOW_ORIGINS` — список доменов через запятую (поддерживаются пробелы). В debug или если переменная не задана, по умолчанию `http://localhost:3000,http://127.0.0.1:3000`.
      - `CORS_ALLOW_CREDENTIALS` — `true`/`false` (по умолчанию `true`).
@@ -106,6 +108,11 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
     -d "url=https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}"
   ```
+
+## Режимы разработки и продакшена
+- По умолчанию конфигурация безопасна для продакшена: `APP_ENV=development` и `DEBUG=false` не включают verbose/debug middleware и SQL-логирование.
+- Чтобы включить dev-режим с дополнительными логами и hot-reload, задайте `APP_ENV=development` и `DEBUG=true` перед запуском `uvicorn`.
+- Для продакшена используйте `APP_ENV=production` (оставляя `DEBUG=false`) — при таком значении попытка запустить приложение с `DEBUG=true` приведёт к ошибке и не позволит нечаянно включить debug.
 
 ## Запуск диагностики
 Форматы режимов: `fast`, `deep`, `full`. Пример вызова CLI:
