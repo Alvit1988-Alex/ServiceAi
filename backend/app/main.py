@@ -22,13 +22,32 @@ app = FastAPI(
     debug=settings.debug,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def configure_cors() -> None:
+    debug = settings.debug
+
+    allow_origins = settings.cors_allow_origins
+    allow_credentials = settings.cors_allow_credentials
+
+    if allow_origins is None or (debug and not allow_origins):
+        allow_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    if not debug:
+        if allow_credentials and (not allow_origins or allow_origins == ["*"]):
+            raise ValueError("CORS allow_origins must be explicitly set when allow_credentials=true in production")
+    else:
+        if allow_origins == ["*"] and allow_credentials:
+            raise ValueError("In debug, use allow_credentials=false when allow_origins='*'")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_credentials=allow_credentials,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+    )
+
+
+configure_cors()
 
 app.include_router(accounts_router.router)
 app.include_router(auth_router.router)

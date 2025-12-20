@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -101,6 +101,58 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("GIGACHAT_USE_TLS_CERT", "gigachat_use_tls_cert"),
     )
     gigachat_cert_path: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CERT_PATH", "gigachat_cert_path"))
+
+    cors_allow_origins: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
+        description="Comma-separated list of allowed CORS origins",
+    )
+    cors_allow_credentials: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("CORS_ALLOW_CREDENTIALS", "cors_allow_credentials"),
+    )
+    cors_allow_methods: list[str] = Field(
+        default=["*"],
+        validation_alias=AliasChoices("CORS_ALLOW_METHODS", "cors_allow_methods"),
+        description="Comma-separated list of allowed HTTP methods",
+    )
+    cors_allow_headers: list[str] = Field(
+        default=["*"],
+        validation_alias=AliasChoices("CORS_ALLOW_HEADERS", "cors_allow_headers"),
+        description="Comma-separated list of allowed HTTP headers",
+    )
+
+    @classmethod
+    def _parse_csv_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str] | None:
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+
+        items = [str(item).strip() for item in raw_items]
+        filtered_items = [item for item in items if item]
+
+        return filtered_items
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _normalize_cors_allow_origins(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str] | None:
+        return cls._parse_csv_list(value)
+
+    @field_validator("cors_allow_methods", mode="before")
+    @classmethod
+    def _normalize_cors_allow_methods(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        parsed = cls._parse_csv_list(value)
+        return parsed if parsed is not None else value
+
+    @field_validator("cors_allow_headers", mode="before")
+    @classmethod
+    def _normalize_cors_allow_headers(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        parsed = cls._parse_csv_list(value)
+        return parsed if parsed is not None else value
 
 
 settings = Settings()
