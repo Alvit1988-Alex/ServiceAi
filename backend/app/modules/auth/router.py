@@ -74,6 +74,13 @@ async def _get_pending_by_token(session: AsyncSession, token: str) -> PendingLog
     return result.scalars().first()
 
 
+async def _lock_pending_by_id(session: AsyncSession, pending_id: int) -> PendingLogin | None:
+    result = await session.execute(
+        select(PendingLogin).where(PendingLogin.id == pending_id).with_for_update()
+    )
+    return result.scalars().first()
+
+
 def _ensure_password_enabled() -> None:
     if settings.auth_telegram_only:
         raise HTTPException(
@@ -285,6 +292,24 @@ async def _confirm_pending(
     return pending
 
 
+async def _consume_pending_login(session: AsyncSession, pending: PendingLogin) -> tuple[PendingLogin, bool]:
+    if pending.status != PendingLoginStatus.CONFIRMED or not pending.user_id:
+        return pending, False
+
+    async with session.begin():
+        locked_pending = await _lock_pending_by_id(session=session, pending_id=pending.id)
+        if locked_pending is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending login not found")
+
+        should_issue_tokens = locked_pending.consumed_at is None
+        if should_issue_tokens:
+            locked_pending.consumed_at = _now()
+            session.add(locked_pending)
+
+    await session.refresh(locked_pending)
+    return locked_pending, should_issue_tokens
+
+
 @router.post("/pending", response_model=PendingLoginResponse)
 async def create_pending_login(
     request: Request,
@@ -313,8 +338,10 @@ async def get_pending_status(
     access_token = None
     refresh_token = None
     if pending.status == PendingLoginStatus.CONFIRMED and pending.user_id:
-        access_token = create_access_token(subject=pending.user_id)
-        refresh_token = create_refresh_token(subject=pending.user_id)
+        pending, should_issue_tokens = await _consume_pending_login(session=session, pending=pending)
+        if should_issue_tokens:
+            access_token = create_access_token(subject=pending.user_id)
+            refresh_token = create_refresh_token(subject=pending.user_id)
 
     return PendingStatusResponse(
         status=pending.status,
@@ -334,8 +361,10 @@ async def confirm_telegram_login(
     access_token = None
     refresh_token = None
     if pending.user_id:
-        access_token = create_access_token(subject=pending.user_id)
-        refresh_token = create_refresh_token(subject=pending.user_id)
+        pending, should_issue_tokens = await _consume_pending_login(session=session, pending=pending)
+        if should_issue_tokens:
+            access_token = create_access_token(subject=pending.user_id)
+            refresh_token = create_refresh_token(subject=pending.user_id)
 
     return PendingStatusResponse(
         status=pending.status,
