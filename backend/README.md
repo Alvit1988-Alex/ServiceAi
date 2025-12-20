@@ -5,7 +5,8 @@
 ## Подготовка окружения
 1. Скопируйте `.env.example` в `.env` и задайте значения:
    - `DATABASE_URL` для подключения к Postgres.
-   - `DB_AUTO_CREATE` — оставьте `true` для локальной разработки, чтобы скрипт `create_db.py` мог автоматически создать таблицы. В проде установите `false`, чтобы использовать только миграции.
+   - `DEBUG` и `ENV` — в продакшене ставьте `DEBUG=false` и `ENV=production`.
+   - `DB_AUTO_CREATE` — по умолчанию `false`. Включайте `true` только в локальной разработке вместе с `DEBUG=true` и `ENV=development`, чтобы скрипт `create_db.py` мог автоматически создать таблицы. **НЕ ИСПОЛЬЗУЙТЕ В PRODUCTION.**
    - `ADMIN_EMAIL` и `ADMIN_PASSWORD` — опционально для первичного создания администратора; если они не заданы, bootstrap будет пропущен.
    - `CHANNEL_CONFIG_SECRET_KEY` для шифрования конфигов каналов.
    - `INTERNAL_API_KEY` — секретный ключ для доступа к `/diagnostics`.
@@ -85,11 +86,11 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Миграции: новая БД vs существующая
 - **Новая установка (пустая БД)**:
-  1. Установите `DB_AUTO_CREATE=false` в `.env`.
+  1. Установите `DB_AUTO_CREATE=false`, `DEBUG=false`, `ENV=production` в `.env`.
   2. Выполните `alembic -c alembic.ini upgrade head` (через Poetry или активированный venv).
   3. Запустите backend.
 - **Уже работающая БД, созданная через create_all**:
-  1. Установите `DB_AUTO_CREATE=false` в `.env`.
+  1. Установите `DB_AUTO_CREATE=false`, `DEBUG=false`, `ENV=production` в `.env`.
   2. Выполните `alembic -c alembic.ini stamp head` (через Poetry или активированный venv).
   3. Запустите backend.
 - **Будущие изменения схемы**: создавайте миграции через `alembic -c alembic.ini revision --autogenerate -m "...описание..."`, затем применяйте `upgrade head`.

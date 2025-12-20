@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, FieldValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,11 @@ class Settings(BaseSettings):
 
     app_name: str = "ServiceAI Backend"
     debug: bool = False
+    environment: Literal["development", "staging", "production", "test"] = Field(
+        default="development",
+        validation_alias=AliasChoices("ENV", "environment"),
+        description="Deployment environment used for safety checks.",
+    )
 
     database_url: str = Field(
         ...,
@@ -24,7 +30,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
     db_auto_create: bool = Field(
-        default=True,
+        default=False,
         validation_alias=AliasChoices("DB_AUTO_CREATE", "db_auto_create"),
         description="When true, create_all can be used to bootstrap tables automatically.",
     )
@@ -153,6 +159,31 @@ class Settings(BaseSettings):
     def _normalize_cors_allow_headers(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
+
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _normalize_environment(cls, value: str | None) -> str:
+        if value is None:
+            return "development"
+
+        normalized = str(value).strip().lower()
+        if normalized not in {"development", "staging", "production", "test"}:
+            raise ValueError("ENV must be one of: development, staging, production, test")
+
+        return normalized
+
+    @field_validator("db_auto_create")
+    @classmethod
+    def _guard_db_auto_create(cls, value: bool, info: FieldValidationInfo):
+        environment = (info.data.get("environment") or "development").lower()
+        debug = info.data.get("debug")
+
+        if value and (environment == "production" or debug is False):
+            raise ValueError(
+                "DB_AUTO_CREATE is disabled when DEBUG=false or ENV=production. НЕ ИСПОЛЬЗОВАТЬ В PRODUCTION."
+            )
+
+        return value
 
 
 settings = Settings()
