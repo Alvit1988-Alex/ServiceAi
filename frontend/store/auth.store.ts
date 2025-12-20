@@ -34,6 +34,7 @@ interface AuthState {
   initFromStorage: () => Promise<void>;
   startTelegramLogin: () => Promise<void>;
   pollPendingLogin: () => Promise<void>;
+  stopTelegramLoginPolling: () => void;
 }
 
 function persistTokens(tokens: AuthTokens | null) {
@@ -279,5 +280,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       clearPoll();
     }
+  },
+
+  stopTelegramLoginPolling: () => {
+    clearPoll();
+    set({
+      polling: false,
+      pendingToken: null,
+      pendingExpiresAt: null,
+      pendingStatus: null,
+      pendingDeeplink: null,
+    });
   },
 }));
