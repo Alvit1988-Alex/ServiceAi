@@ -22,6 +22,7 @@ export default function LoginPage() {
     isAuthenticated,
     isInitialized,
     initFromStorage,
+    stopTelegramLoginPolling,
   } = useAuthStore();
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -51,6 +52,12 @@ export default function LoginPage() {
     };
     void generateQr();
   }, [pendingDeeplink]);
+
+  useEffect(() => {
+    return () => {
+      stopTelegramLoginPolling();
+    };
+  }, [stopTelegramLoginPolling]);
 
   const handleStart = async () => {
     setLocalError(null);
