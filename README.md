@@ -15,6 +15,7 @@ docker compose -f docker/docker-compose.yml up --build
 - `backend/app/main.py` — FastAPI приложение со сборкой роутеров.
 - `backend/pyproject.toml` — зависимости Poetry для backend.
 - `docker/Dockerfile.backend` — сборка API-сервиса.
+- Поддерживается вход через Telegram: установите `AUTH_TELEGRAM_ONLY=true`, чтобы отключить парольный вход. При значении `false` Telegram-авторизация работает совместно с логином по email/паролю.
 
 ## Frontend
 

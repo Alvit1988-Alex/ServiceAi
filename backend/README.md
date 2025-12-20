@@ -9,6 +9,12 @@
    - `ADMIN_EMAIL` и `ADMIN_PASSWORD` — опционально для первичного создания администратора; если они не заданы, bootstrap будет пропущен.
    - `CHANNEL_CONFIG_SECRET_KEY` для шифрования конфигов каналов.
    - `INTERNAL_API_KEY` — секретный ключ для доступа к `/diagnostics`.
+   - Telegram-авторизация:
+     - `AUTH_TELEGRAM_ONLY` — `true`, чтобы отключить парольный вход и смену пароля (по умолчанию `false`).
+     - `TELEGRAM_AUTH_BOT_TOKEN` и `TELEGRAM_AUTH_BOT_USERNAME` — токен и username бота, через которого подтверждается вход.
+     - `TELEGRAM_WEBHOOK_SECRET` — секрет, требуемый для вызова вебхука.
+     - `TELEGRAM_WEBHOOK_PATH` — путь для вебхука (по умолчанию `/auth/telegram/webhook`).
+     - `PUBLIC_BASE_URL` — публичный URL сервера для генерации ссылки вебхука.
 
 ## Запуск backend
 Команды следует выполнять из каталога `backend/`.
@@ -77,6 +83,15 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### Подсказки
 - Если автогенерация не видит таблицы, убедитесь, что все модели импортируются в `alembic/env.py`.
 - Проверьте, что переменная `DATABASE_URL` указывает на ту же БД, которую использует backend.
+
+## Telegram webhook
+- Путь вебхука определяется `TELEGRAM_WEBHOOK_PATH` (по умолчанию `/auth/telegram/webhook`). Итоговый URL:\
+  `https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}`
+- Пример установки вебхука для бота:
+  ```bash
+  curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
+    -d "url=https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}"
+  ```
 
 ## Запуск диагностики
 Форматы режимов: `fast`, `deep`, `full`. Пример вызова CLI:

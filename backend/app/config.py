@@ -49,6 +49,28 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("REFRESH_TOKEN_EXPIRES_DAYS", "refresh_token_expires_days"),
     )
 
+    auth_telegram_only: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AUTH_TELEGRAM_ONLY", "auth_telegram_only"),
+        description="When true, disable password-based login and password changes",
+    )
+    telegram_auth_bot_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TELEGRAM_AUTH_BOT_TOKEN", "telegram_auth_bot_token"),
+    )
+    telegram_auth_bot_username: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TELEGRAM_AUTH_BOT_USERNAME", "telegram_auth_bot_username"),
+    )
+    telegram_webhook_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TELEGRAM_WEBHOOK_SECRET", "telegram_webhook_secret"),
+    )
+    telegram_webhook_path: str = Field(
+        default="/auth/telegram/webhook",
+        validation_alias=AliasChoices("TELEGRAM_WEBHOOK_PATH", "telegram_webhook_path"),
+    )
+
     public_base_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),

@@ -1,4 +1,4 @@
-import { AuthTokens, User } from "./types";
+import { AuthTokens, PendingLoginResponse, PendingStatusResponse, User } from "./types";
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -46,4 +46,37 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
   }
 
   return (await response.json()) as User;
+}
+
+export async function createPendingLogin(): Promise<PendingLoginResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/pending`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error("Не удалось создать запрос на вход");
+  }
+
+  return (await response.json()) as PendingLoginResponse;
+}
+
+export async function getPendingStatus(token: string): Promise<PendingStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/pending/${token}/status`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Запрос входа не найден");
+    }
+    if (response.status === 410) {
+      return {
+        status: "expired",
+        expires_at: new Date().toISOString(),
+        access_token: null,
+        refresh_token: null,
+      };
+    }
+    throw new Error("Не удалось получить статус входа");
+  }
+
+  return (await response.json()) as PendingStatusResponse;
 }

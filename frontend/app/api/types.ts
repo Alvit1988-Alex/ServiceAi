@@ -28,6 +28,22 @@ export interface AuthTokens {
   token_type?: string;
 }
 
+export type PendingLoginStatus = "pending" | "confirmed" | "expired";
+
+export interface PendingLoginResponse {
+  token: string;
+  status: PendingLoginStatus;
+  expires_at: string;
+  telegram_deeplink: string;
+}
+
+export interface PendingStatusResponse {
+  status: PendingLoginStatus;
+  expires_at: string;
+  access_token?: string | null;
+  refresh_token?: string | null;
+}
+
 export interface ListResponse<T> {
   items: T[];
   page: number;
