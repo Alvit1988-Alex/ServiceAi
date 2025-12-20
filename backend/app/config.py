@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -16,28 +18,33 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "ServiceAI Backend"
-    env: str = Field(
+
+    # Environment / Debug
+    # Support both ENV and APP_ENV (plus 'env') to avoid breaking existing deployments.
+    environment: Literal["development", "staging", "production", "test"] = Field(
         default="development",
-        validation_alias=AliasChoices("APP_ENV", "ENV", "env"),
-        description="Application environment (development or production).",
+        validation_alias=AliasChoices("ENV", "APP_ENV", "environment", "env"),
+        description="Deployment environment used for safety checks.",
     )
     debug: bool = Field(
         default=False,
         validation_alias=AliasChoices("DEBUG", "debug"),
-        description="Enable debug features; ignored in production.",
+        description="Enable debug features; must be false in production.",
     )
 
+    # Database
     database_url: str = Field(
         ...,
         description="SQLAlchemy async URL, e.g. postgresql+asyncpg://user:pass@localhost:5432/db",
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
     db_auto_create: bool = Field(
-        default=True,
+        default=False,
         validation_alias=AliasChoices("DB_AUTO_CREATE", "db_auto_create"),
-        description="When true, create_all can be used to bootstrap tables automatically.",
+        description="When true, create_all can be used to bootstrap tables automatically (dev only).",
     )
 
+    # JWT
     jwt_secret_key: str = Field(
         ...,
         min_length=32,
@@ -58,6 +65,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("REFRESH_TOKEN_EXPIRES_DAYS", "refresh_token_expires_days"),
     )
 
+    # Telegram auth
     auth_telegram_only: bool = Field(
         default=False,
         validation_alias=AliasChoices("AUTH_TELEGRAM_ONLY", "auth_telegram_only"),
@@ -79,24 +87,24 @@ class Settings(BaseSettings):
         default="/auth/telegram/webhook",
         validation_alias=AliasChoices("TELEGRAM_WEBHOOK_PATH", "telegram_webhook_path"),
     )
-
     public_base_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),
         description="Publicly accessible base URL used for building webhooks",
     )
 
+    # Internal security
     channel_config_secret_key: str = Field(
         ...,
         min_length=1,
         validation_alias=AliasChoices("CHANNEL_CONFIG_SECRET_KEY", "channel_config_secret_key"),
     )
-
     internal_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("INTERNAL_API_KEY", "internal_api_key"),
     )
 
+    # GigaChat
     gigachat_client_id: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CLIENT_ID", "gigachat_client_id"))
     gigachat_client_secret: str | None = Field(
         default=None,
@@ -111,6 +119,7 @@ class Settings(BaseSettings):
     )
     gigachat_cert_path: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CERT_PATH", "gigachat_cert_path"))
 
+    # CORS
     cors_allow_origins: list[str] | None = Field(
         default=None,
         validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
@@ -131,63 +140,75 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed HTTP headers",
     )
 
+    # ---------- helpers ----------
     @classmethod
-    def _parse_csv_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str] | None:
+    def _parse_csv_list(cls, value: Any) -> list[str] | None:
         if value is None:
             return None
-
         if isinstance(value, str):
             raw_items = value.split(",")
         else:
             raw_items = value
-
         items = [str(item).strip() for item in raw_items]
         filtered_items = [item for item in items if item]
-
         return filtered_items
+
+    # ---------- validators ----------
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _normalize_environment(cls, value: str | None) -> str:
+        if value is None:
+            return "development"
+        normalized = str(value).strip().lower()
+        allowed = {"development", "staging", "production", "test"}
+        if normalized not in allowed:
+            raise ValueError("ENV/APP_ENV must be one of: development, staging, production, test")
+        return normalized
+
+    @field_validator("debug")
+    @classmethod
+    def _guard_debug_in_production(cls, value: bool, info: ValidationInfo) -> bool:
+        env = (info.data.get("environment") or "development").lower()
+        if env == "production" and value:
+            raise ValueError("DEBUG cannot be enabled when ENV/APP_ENV=production")
+        return value
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
-    def _normalize_cors_allow_origins(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str] | None:
+    def _normalize_cors_allow_origins(cls, value: Any) -> list[str] | None:
         return cls._parse_csv_list(value)
 
     @field_validator("cors_allow_methods", mode="before")
     @classmethod
-    def _normalize_cors_allow_methods(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    def _normalize_cors_allow_methods(cls, value: Any) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
 
     @field_validator("cors_allow_headers", mode="before")
     @classmethod
-    def _normalize_cors_allow_headers(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    def _normalize_cors_allow_headers(cls, value: Any) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
 
-    @field_validator("env", mode="before")
+    @field_validator("db_auto_create")
     @classmethod
-    def _normalize_env(cls, value: str | None) -> str:
-        if value is None:
-            return "development"
+    def _guard_db_auto_create(cls, value: bool, info: ValidationInfo) -> bool:
+        env = (info.data.get("environment") or "development").lower()
+        debug = bool(info.data.get("debug"))
 
-        normalized = str(value).strip().lower()
-        if normalized not in {"development", "production"}:
-            raise ValueError("ENV must be one of: development, production")
-
-        return normalized
-
-    @field_validator("debug")
-    @classmethod
-    def _enforce_debug_environment(cls, value: bool, info: ValidationInfo) -> bool:
-        env = (info.data.get("env") or "development").lower()
-
-        if env == "production" and value:
-            raise ValueError("DEBUG cannot be enabled when ENV=production")
-
+        # Allow DB auto-create ONLY for local dev bootstrap:
+        # - debug must be true
+        # - environment must NOT be production
+        if value and (env == "production" or not debug):
+            raise ValueError(
+                "DB_AUTO_CREATE is disabled when DEBUG=false or ENV/APP_ENV=production. НЕ ИСПОЛЬЗОВАТЬ В PRODUCTION."
+            )
         return value
 
+    # ---------- convenience ----------
     @property
     def is_development(self) -> bool:
-        return self.env == "development"
+        return self.environment == "development"
 
     @property
     def runtime_debug(self) -> bool:

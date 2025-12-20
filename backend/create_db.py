@@ -13,6 +13,13 @@ from app.modules.diagnostics import models as diagnostics_models  # noqa: F401
 
 
 async def create_all_tables() -> None:
+    if settings.db_auto_create and (not settings.debug or settings.environment == "production"):
+        print(
+            "🚫 DB_AUTO_CREATE=true запрещено при DEBUG=false или ENV=production. "
+            "НЕ ИСПОЛЬЗОВАТЬ В PRODUCTION."
+        )
+        return
+
     if not settings.db_auto_create:
         print("⚠️ DB_AUTO_CREATE=false — пропускаем создание таблиц через create_all.")
         return
