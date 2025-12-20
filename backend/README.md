@@ -114,4 +114,4 @@ cd backend
 python -m app.diagnostics --base-url http://localhost:8000 --mode deep --account-id 12 --since 24h
 ```
 Опционально добавьте `--internal-key`, если ключ не задан в окружении. Флаг `--verbose` выводит детали проверок.
-CLI использует системный `curl`, убедитесь, что он доступен в `PATH` (в Windows 10+ он предустановлен).
+CLI использует встроенный HTTP-клиент на базе `httpx`, дополнительный `curl` не требуется (Windows и Linux работают «из коробки»).
