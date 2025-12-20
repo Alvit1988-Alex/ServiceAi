@@ -37,3 +37,4 @@ cp .env.example .env.local
 Необходимые переменные окружения (смотрите `frontend/.env.example`):
 
 - `NEXT_PUBLIC_API_BASE_URL` — базовый URL API (например, dev: `http://localhost:8000`, prod: `https://api.example.com`).
+- `NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION` — включает генерацию кода webchat-виджета (dev: `true`, prod по умолчанию `false`).

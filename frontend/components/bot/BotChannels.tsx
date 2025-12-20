@@ -44,6 +44,8 @@ const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
   ChannelType.MAX,
 ];
 
+const WIDGET_INTEGRATION_ENABLED = process.env.NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION === "true";
+
 const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
   [ChannelType.TELEGRAM]: {
     href: "/instructions/telegram.pdf",
@@ -490,6 +492,9 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   };
 
   const handleGenerateWebchatCode = async (channel: BotChannel) => {
+    if (!WIDGET_INTEGRATION_ENABLED) {
+      return;
+    }
     const form = forms[channel.id];
     if (!form) return;
 
@@ -538,6 +543,14 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   };
 
   const renderWebchatSettings = (channel: BotChannel) => {
+    if (!WIDGET_INTEGRATION_ENABLED) {
+      return (
+        <div className={styles.webchatSettings}>
+          <p className={styles.subtitle}>Скоро</p>
+        </div>
+      );
+    }
+
     const code = webchatCodes[channel.id] ?? "";
 
     return (
