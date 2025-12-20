@@ -9,12 +9,26 @@
    - `ADMIN_EMAIL` и `ADMIN_PASSWORD` — опционально для первичного создания администратора; если они не заданы, bootstrap будет пропущен.
    - `CHANNEL_CONFIG_SECRET_KEY` для шифрования конфигов каналов.
    - `INTERNAL_API_KEY` — секретный ключ для доступа к `/diagnostics`.
+   - CORS:
+     - `CORS_ALLOW_ORIGINS` — список доменов через запятую (поддерживаются пробелы). В debug или если переменная не задана, по умолчанию `http://localhost:3000,http://127.0.0.1:3000`.
+     - `CORS_ALLOW_CREDENTIALS` — `true`/`false` (по умолчанию `true`).
+     - `CORS_ALLOW_METHODS` — список HTTP-методов через запятую (по умолчанию `*`).
+     - `CORS_ALLOW_HEADERS` — список заголовков через запятую (по умолчанию `*`).
    - Telegram-авторизация:
      - `AUTH_TELEGRAM_ONLY` — `true`, чтобы отключить парольный вход и смену пароля (по умолчанию `false`).
      - `TELEGRAM_AUTH_BOT_TOKEN` и `TELEGRAM_AUTH_BOT_USERNAME` — токен и username бота, через которого подтверждается вход.
      - `TELEGRAM_WEBHOOK_SECRET` — секрет, требуемый для вызова вебхука.
      - `TELEGRAM_WEBHOOK_PATH` — путь для вебхука (по умолчанию `/auth/telegram/webhook`).
      - `PUBLIC_BASE_URL` — публичный URL сервера для генерации ссылки вебхука.
+
+### Правила и примеры для CORS
+- В production (`DEBUG=false`) при `CORS_ALLOW_CREDENTIALS=true` требуется явный список доменов; `*` или пустое значение вызовет ошибку при старте приложения.
+- В debug `*` допустим только вместе с `CORS_ALLOW_CREDENTIALS=false`. Без заданного списка автоматически используются локальные origin `http://localhost:3000` и `http://127.0.0.1:3000`.
+- Примеры:
+  - `CORS_ALLOW_ORIGINS=https://example.com, https://admin.example.com`
+  - `CORS_ALLOW_ORIGINS=*` и `CORS_ALLOW_CREDENTIALS=false` (debug)
+  - `CORS_ALLOW_METHODS=GET, POST, OPTIONS`
+  - `CORS_ALLOW_HEADERS=Authorization, Content-Type`
 
 ## Запуск backend
 Команды следует выполнять из каталога `backend/`.
