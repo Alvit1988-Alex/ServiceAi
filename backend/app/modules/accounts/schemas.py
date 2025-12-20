@@ -20,6 +20,10 @@ class ListResponse(BaseModel, Generic[T]):
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str | None = None
+    telegram_id: int | None = None
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     role: UserRole
     is_active: bool = True
 
@@ -30,6 +34,10 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     full_name: str | None = None
+    telegram_id: int | None = None
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     role: UserRole | None = None
     is_active: bool | None = None
     password: str | None = None

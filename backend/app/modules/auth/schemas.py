@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
+from app.modules.auth.models import PendingLoginStatus
 
 
 class Token(BaseModel):
@@ -32,3 +33,30 @@ class ChangePasswordRequest(BaseModel):
 
 class LoginResponse(Token):
     pass
+
+
+class PendingLoginResponse(BaseModel):
+    token: str
+    status: PendingLoginStatus
+    expires_at: datetime
+    telegram_deeplink: str
+
+
+class PendingStatusResponse(BaseModel):
+    status: PendingLoginStatus
+    expires_at: datetime
+    access_token: str | None = None
+    refresh_token: str | None = None
+
+
+class TelegramConfirmRequest(BaseModel):
+    token: str
+    telegram_id: int
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class TelegramWebhookResponse(BaseModel):
+    ok: bool
+    message: str

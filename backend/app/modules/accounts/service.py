@@ -22,6 +22,10 @@ class UsersService:
             email=obj_in.email,
             password_hash=hash_password(obj_in.password),
             full_name=obj_in.full_name,
+            telegram_id=obj_in.telegram_id,
+            username=obj_in.username,
+            first_name=obj_in.first_name,
+            last_name=obj_in.last_name,
             role=obj_in.role,
             is_active=obj_in.is_active,
         )

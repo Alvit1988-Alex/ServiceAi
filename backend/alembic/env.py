@@ -28,6 +28,7 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 def _include_models() -> None:
     """Ensure all model modules are imported for Alembic's autogeneration."""
     import app.modules.accounts.models  # noqa: F401
+    import app.modules.auth.models  # noqa: F401
     import app.modules.ai.models  # noqa: F401
     import app.modules.bots.models  # noqa: F401
     import app.modules.channels.models  # noqa: F401
