@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +16,16 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "ServiceAI Backend"
-    debug: bool = False
+    env: str = Field(
+        default="development",
+        validation_alias=AliasChoices("APP_ENV", "ENV", "env"),
+        description="Application environment (development or production).",
+    )
+    debug: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("DEBUG", "debug"),
+        description="Enable debug features; ignored in production.",
+    )
 
     database_url: str = Field(
         ...,
@@ -153,6 +162,36 @@ class Settings(BaseSettings):
     def _normalize_cors_allow_headers(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
+
+    @field_validator("env", mode="before")
+    @classmethod
+    def _normalize_env(cls, value: str | None) -> str:
+        if value is None:
+            return "development"
+
+        normalized = str(value).strip().lower()
+        if normalized not in {"development", "production"}:
+            raise ValueError("ENV must be one of: development, production")
+
+        return normalized
+
+    @field_validator("debug")
+    @classmethod
+    def _enforce_debug_environment(cls, value: bool, info: ValidationInfo) -> bool:
+        env = (info.data.get("env") or "development").lower()
+
+        if env == "production" and value:
+            raise ValueError("DEBUG cannot be enabled when ENV=production")
+
+        return value
+
+    @property
+    def is_development(self) -> bool:
+        return self.env == "development"
+
+    @property
+    def runtime_debug(self) -> bool:
+        return self.debug and self.is_development
 
 
 settings = Settings()
