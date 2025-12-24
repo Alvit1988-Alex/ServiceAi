@@ -9,6 +9,7 @@ import {
 } from "./types";
 
 interface ListDialogsParams {
+  [key: string]: unknown;
   status?: DialogStatus;
   channel_type?: ChannelType;
   assigned_admin_id?: number;
@@ -20,6 +21,7 @@ interface ListDialogsParams {
 }
 
 interface SearchDialogsParams {
+  [key: string]: unknown;
   query?: string;
   status?: DialogStatus;
   assigned_admin_id?: number;
