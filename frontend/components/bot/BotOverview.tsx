@@ -1,11 +1,11 @@
 "use client";
 
-import { Bot } from "@/app/api/types";
+import { BotDTO } from "@/store/bots.store";
 
 import styles from "./BotOverview.module.css";
 
 interface BotOverviewProps {
-  bot: Bot;
+  bot: BotDTO;
 }
 
 function formatDate(value: string): string {
@@ -24,6 +24,13 @@ function formatDate(value: string): string {
 }
 
 export default function BotOverview({ bot }: BotOverviewProps) {
+  const accountIdValue =
+    typeof bot.account_id === "number" ? `#${bot.account_id}` : "—";
+  const createdAtValue =
+    typeof bot.created_at === "string" ? formatDate(bot.created_at) : "—";
+  const updatedAtValue =
+    typeof bot.updated_at === "string" ? formatDate(bot.updated_at) : "—";
+
   return (
     <article className={styles.card}>
       <h2 className={styles.title}>{bot.name}</h2>
@@ -40,15 +47,15 @@ export default function BotOverview({ bot }: BotOverviewProps) {
         </div>
         <div className={styles.metaItem}>
           <span className={styles.label}>Аккаунт</span>
-          <span className={styles.value}>#{bot.account_id}</span>
+          <span className={styles.value}>{accountIdValue}</span>
         </div>
         <div className={styles.metaItem}>
           <span className={styles.label}>Создан</span>
-          <span className={styles.value}>{formatDate(bot.created_at)}</span>
+          <span className={styles.value}>{createdAtValue}</span>
         </div>
         <div className={styles.metaItem}>
           <span className={styles.label}>Обновлен</span>
-          <span className={styles.value}>{formatDate(bot.updated_at)}</span>
+          <span className={styles.value}>{updatedAtValue}</span>
         </div>
       </div>
     </article>
