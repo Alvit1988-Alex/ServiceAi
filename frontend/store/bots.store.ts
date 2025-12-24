@@ -187,9 +187,17 @@ export const useBotsStore = create<BotsState>((set, get) => ({
 
     try {
       const newBot = await createBotApi({ name, description });
+      const newBotDto: BotDTO = {
+        id: newBot.id,
+        name: newBot.name,
+        description: newBot.description ?? null,
+        account_id: newBot.account_id,
+        created_at: newBot.created_at,
+        updated_at: newBot.updated_at,
+      };
 
       set((state) => ({
-        bots: [...state.bots, newBot],
+        bots: [...state.bots, newBotDto],
         loadingBots: false,
       }));
     } catch (error) {
