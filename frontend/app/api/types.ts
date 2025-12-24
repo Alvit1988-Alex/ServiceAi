@@ -183,6 +183,11 @@ export interface DialogShort extends Dialog {
 export type DialogSearchResponse = ListResponse<DialogShort>;
 
 export interface DialogDetail extends Dialog {
+  /**
+   * Опционально: бэкенд может вернуть last_message как в DialogShort,
+   * а фронт использует это как fallback.
+   */
+  last_message?: DialogMessage | null;
   messages: DialogMessage[];
 }
 
