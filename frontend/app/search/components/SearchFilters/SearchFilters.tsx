@@ -12,6 +12,7 @@ interface FilterValues {
   status: DialogStatus | "";
   operatorId: string;
   channelType: ChannelType | "";
+  page?: number;
 }
 
 interface SearchFiltersProps {

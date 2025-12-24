@@ -117,6 +117,7 @@ const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
     { key: "token", label: "Token" },
     { key: "secret", label: "Webhook secret" },
   ],
+  [ChannelType.WEBCHAT]: [],
 };
 
 function buildConfigState(channel: BotChannel): ChannelConfigState {
