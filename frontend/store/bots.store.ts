@@ -7,6 +7,10 @@ import { create } from "zustand";
 export interface BotDTO {
   id: number;
   name: string;
+  description?: string | null;
+  account_id?: number;
+  created_at?: string;
+  updated_at?: string;
   // остальные поля нам на фронте сейчас не важны
   [key: string]: unknown;
 }
