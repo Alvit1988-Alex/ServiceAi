@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 
-import { Bot, ChannelType, DialogStatus } from "@/app/api/types";
+import { ChannelType, DialogStatus } from "@/app/api/types";
+import { BotDTO } from "@/store/bots.store";
 
 import styles from "./SearchFilters.module.css";
 
@@ -14,7 +15,7 @@ interface FilterValues {
 }
 
 interface SearchFiltersProps {
-  bots: Bot[];
+  bots: BotDTO[];
   selectedBotId: number | null;
   loadingBots: boolean;
   filters: FilterValues;
