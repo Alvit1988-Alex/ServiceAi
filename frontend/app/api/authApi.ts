@@ -1,6 +1,5 @@
+import { API_BASE_URL } from "./config";
 import { AuthTokens, PendingLoginResponse, PendingStatusResponse, User } from "./types";
-
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 
 export async function login(email: string, password: string): Promise<AuthTokens> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
