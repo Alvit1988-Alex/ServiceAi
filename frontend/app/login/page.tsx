@@ -26,6 +26,7 @@ export default function LoginPage() {
   } = useAuthStore();
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     void initFromStorage();
@@ -59,13 +60,21 @@ export default function LoginPage() {
     };
   }, [stopTelegramLoginPolling]);
 
-  const handleStart = async () => {
+  const isPendingValid =
+    pendingDeeplink && pendingExpiresAt && new Date(pendingExpiresAt) > new Date();
+
+  const ensurePendingLogin = async () => {
     setLocalError(null);
     try {
-      await startTelegramLogin();
+      if (isPendingValid) {
+        return pendingDeeplink;
+      }
+      const pending = await startTelegramLogin();
+      return pending.telegram_deeplink;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось подготовить вход";
       setLocalError(message);
+      return null;
     }
   };
 
@@ -87,8 +96,28 @@ export default function LoginPage() {
         </div>
 
         <div className={styles.loginForm}>
-          <div className={styles.actions}>
-            <Button type="button" onClick={handleStart} disabled={loading || polling}>
+          <div className={`${styles.actions} ${styles.loginActions}`}>
+            <Button
+              type="button"
+              onClick={async () => {
+                setShowQr(false);
+                const deeplink = await ensurePendingLogin();
+                if (deeplink) {
+                  window.open(deeplink, "_blank", "noopener,noreferrer");
+                }
+              }}
+              disabled={loading || polling}
+            >
+              {loading || polling ? "Готовим ссылку..." : "Войти через Telegram"}
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                setShowQr(true);
+                await ensurePendingLogin();
+              }}
+              disabled={loading || polling}
+            >
               {loading || polling ? "Готовим QR..." : "Показать QR для входа"}
             </Button>
           </div>
@@ -97,14 +126,14 @@ export default function LoginPage() {
             <p className={styles.errorText}>{localError || error}</p>
           )}
 
-          {pendingDeeplink && (
-            <div className={styles.fieldGroup}>
+          {pendingDeeplink && showQr && (
+            <div className={`${styles.fieldGroup} ${styles.qrBlock}`}>
               <p className={styles.fieldLabel}>Отсканируйте QR в Telegram</p>
               {qrImage ? (
                 <img
                   src={qrImage}
                   alt="QR для входа через Telegram"
-                  style={{ width: "240px", height: "240px" }}
+                  className={styles.qrImage}
                 />
               ) : (
                 <p className={styles.errorText}>Не удалось сгенерировать QR. Попробуйте еще раз.</p>
@@ -128,7 +157,8 @@ export default function LoginPage() {
 
           {!pendingDeeplink && isInitialized && (
             <p className={styles.loginDescription}>
-              Нажмите кнопку выше, чтобы сгенерировать QR для входа через Telegram.
+              Выберите удобный способ входа через Telegram. Мы подготовим ссылку или QR-код для
+              подтверждения.
             </p>
           )}
         </div>

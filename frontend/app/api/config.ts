@@ -1,4 +1,7 @@
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
+const normalizedApiBaseUrl = rawApiBaseUrl ? rawApiBaseUrl.replace(/\/$/, "") : "/api";
+
+export const API_BASE_URL = normalizedApiBaseUrl;
 
 export function buildWsUrl(path: string): string {
   const base = API_BASE_URL;

@@ -9,7 +9,7 @@ import {
   createPendingLogin,
   getPendingStatus,
 } from "@/app/api/authApi";
-import { AuthTokens, PendingLoginStatus, User } from "@/app/api/types";
+import { AuthTokens, PendingLoginResponse, PendingLoginStatus, User } from "@/app/api/types";
 
 export const AUTH_STORAGE_KEY = "serviceai_auth";
 
@@ -32,7 +32,7 @@ interface AuthState {
   logout: () => void;
   refreshSession: () => Promise<void>;
   initFromStorage: () => Promise<void>;
-  startTelegramLogin: () => Promise<void>;
+  startTelegramLogin: () => Promise<PendingLoginResponse>;
   pollPendingLogin: () => Promise<void>;
   stopTelegramLoginPolling: () => void;
 }
@@ -226,6 +226,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         loading: false,
       });
       schedulePoll(() => void get().pollPendingLogin());
+      return pending;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось подготовить вход";
       set({
