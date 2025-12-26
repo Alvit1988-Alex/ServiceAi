@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import re
 import secrets
 from typing import Optional
 
@@ -41,6 +42,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _now() -> datetime:
     return datetime.utcnow()
+
+
+def _normalize_telegram_email_username(raw_value: str, telegram_id: int) -> str:
+    normalized = raw_value.strip().lower()
+    normalized = re.sub(r"[^a-z0-9_.-]+", "_", normalized)
+    normalized = normalized.strip("_")
+    if not normalized:
+        normalized = str(telegram_id)
+    return normalized
 
 
 def _telegram_webhook_path() -> str:
@@ -234,8 +244,9 @@ async def _find_or_create_user(
     if existing:
         return existing
 
-    email_username = username or str(telegram_id)
-    email = f"{email_username}@telegram.local"
+    email_username = _normalize_telegram_email_username(username or str(telegram_id), telegram_id)
+    # .local is reserved/special-use and rejected by email validators.
+    email = f"{email_username}@telegram-login.example.com"
     password = secrets.token_urlsafe(16)
     full_name_parts = [part for part in (first_name, last_name) if part]
     full_name = " ".join(full_name_parts) if full_name_parts else None
