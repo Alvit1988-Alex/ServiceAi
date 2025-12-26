@@ -20,14 +20,25 @@ def upgrade() -> None:
     op.create_unique_constraint("uq_users_telegram_id", "users", ["telegram_id"])
     op.create_index("ix_users_telegram_id", "users", ["telegram_id"], unique=False)
 
-    pending_login_status_enum = sa.Enum("pending", "confirmed", "expired", name="pending_login_status")
+    pending_login_status_enum = sa.Enum(
+        "pending",
+        "confirmed",
+        "expired",
+        name="pending_login_status",
+        create_type=False,
+    )
     pending_login_status_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "pending_logins",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("token", sa.String(length=255), nullable=False),
-        sa.Column("status", pending_login_status_enum, nullable=False, server_default="pending"),
+        sa.Column(
+            "status",
+            pending_login_status_enum,
+            nullable=False,
+            server_default=sa.text("'pending'"),
+        ),
         sa.Column("telegram_id", sa.BigInteger(), nullable=True),
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("ip", sa.String(length=64), nullable=True),
@@ -54,4 +65,4 @@ def downgrade() -> None:
     op.drop_column("users", "username")
     op.drop_column("users", "telegram_id")
 
-    op.execute("DROP TYPE IF EXISTS pending_login_status")
+    op.execute("DROP TYPE IF EXISTS pending_login_status CASCADE")
