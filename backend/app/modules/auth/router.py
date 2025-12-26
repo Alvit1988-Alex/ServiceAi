@@ -190,7 +190,7 @@ def _mask_bot_token(token: str | None) -> str:
 
 
 async def _mark_expired(pending: PendingLogin, session: AsyncSession) -> PendingLogin:
-    pending.status = PendingLoginStatus.EXPIRED
+    pending.status = PendingLoginStatus.EXPIRED.value
     session.add(pending)
     await session.commit()
     await session.refresh(pending)
@@ -202,7 +202,7 @@ async def _create_pending_login(request: Request, session: AsyncSession) -> Pend
     expires_at = _expires_at()
     pending = PendingLogin(
         token=token,
-        status=PendingLoginStatus.PENDING,
+        status=PendingLoginStatus.PENDING.value,
         expires_at=expires_at,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
@@ -285,7 +285,7 @@ async def _confirm_pending(
 
     pending.telegram_id = payload.telegram_id
     pending.user_id = user.id
-    pending.status = PendingLoginStatus.CONFIRMED
+    pending.status = PendingLoginStatus.CONFIRMED.value
     session.add(pending)
     await session.commit()
     await session.refresh(pending)

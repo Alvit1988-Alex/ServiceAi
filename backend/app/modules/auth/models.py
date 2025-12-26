@@ -32,7 +32,7 @@ class PendingLogin(Base):
             values_callable=lambda enum: [entry.value for entry in enum],
         ),
         nullable=False,
-        default=PendingLoginStatus.PENDING,
+        default=PendingLoginStatus.PENDING.value,
     )
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
