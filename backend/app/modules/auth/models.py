@@ -26,7 +26,13 @@ class PendingLogin(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     status: Mapped[PendingLoginStatus] = mapped_column(
-        SQLEnum(PendingLoginStatus, name="pending_login_status"), nullable=False, default=PendingLoginStatus.PENDING
+        SQLEnum(
+            PendingLoginStatus,
+            name="pending_login_status",
+            values_callable=lambda enum: [entry.value for entry in enum],
+        ),
+        nullable=False,
+        default=PendingLoginStatus.PENDING,
     )
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
