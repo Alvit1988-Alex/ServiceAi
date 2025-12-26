@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "0002_telegram_auth"
@@ -20,14 +21,28 @@ def upgrade() -> None:
     op.create_unique_constraint("uq_users_telegram_id", "users", ["telegram_id"])
     op.create_index("ix_users_telegram_id", "users", ["telegram_id"], unique=False)
 
-    pending_login_status_enum = sa.Enum(
+    pending_login_status_enum = postgresql.ENUM(
         "pending",
         "confirmed",
         "expired",
         name="pending_login_status",
         create_type=False,
     )
-    pending_login_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE t.typname = 'pending_login_status'
+            ) THEN
+                CREATE TYPE pending_login_status AS ENUM ('pending', 'confirmed', 'expired');
+            END IF;
+        END$$;
+        """
+    )
 
     op.create_table(
         "pending_logins",
