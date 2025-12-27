@@ -17,12 +17,16 @@ class BotsService:
     async def create(self, session: AsyncSession, obj_in: BotCreateInternal) -> Bot:
         channels_service = ChannelsService()
 
-        async with session.begin():
+        try:
             db_obj = Bot(account_id=obj_in.account_id, name=obj_in.name, description=obj_in.description)
             session.add(db_obj)
             await session.flush()
 
             await channels_service.create_default_channels(session=session, bot_id=db_obj.id)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
         await session.refresh(db_obj)
         return db_obj

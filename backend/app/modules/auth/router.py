@@ -334,15 +334,15 @@ async def _consume_pending_login(session: AsyncSession, pending: PendingLogin) -
     if locked_pending is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending login not found")
 
-    should_issue_tokens = locked_pending.consumed_at is None
-    if should_issue_tokens:
+    if locked_pending.consumed_at is None:
         locked_pending.consumed_at = _now()
         session.add(locked_pending)
-
-    await session.commit()
+        await session.commit()
+        await session.refresh(locked_pending)
+        return locked_pending, True
 
     await session.refresh(locked_pending)
-    return locked_pending, should_issue_tokens
+    return locked_pending, False
 
 
 @router.post("/pending", response_model=PendingLoginResponse)
