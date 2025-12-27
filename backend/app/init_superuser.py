@@ -60,7 +60,7 @@ async def create_initial_admin() -> None:
         user_in = UserCreate(
             email=admin_email,
             full_name=admin_full_name,
-            role=UserRole.ADMIN,
+            role=UserRole.admin,
             is_active=True,
             password=admin_password,
         )

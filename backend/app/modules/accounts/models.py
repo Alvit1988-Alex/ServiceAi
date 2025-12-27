@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 
 class UserRole(str, Enum):
-    ADMIN = "admin"
-    OWNER = "owner"
-    OPERATOR = "operator"
+    admin = "admin"
+    owner = "owner"
+    operator = "operator"
 
 
 def utcnow() -> datetime:

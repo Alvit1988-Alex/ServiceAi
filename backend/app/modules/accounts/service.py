@@ -33,7 +33,7 @@ class UsersService:
         await session.commit()
         await session.refresh(db_obj)
 
-        if db_obj.role != UserRole.OPERATOR:
+        if db_obj.role != UserRole.operator:
             await self.accounts_service.get_or_create_for_owner(session=session, owner=db_obj)
 
         return db_obj
