@@ -330,15 +330,16 @@ async def _consume_pending_login(session: AsyncSession, pending: PendingLogin) -
     if pending.status != PendingLoginStatus.CONFIRMED or not pending.user_id:
         return pending, False
 
-    async with session.begin():
-        locked_pending = await _lock_pending_by_id(session=session, pending_id=pending.id)
-        if locked_pending is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending login not found")
+    locked_pending = await _lock_pending_by_id(session=session, pending_id=pending.id)
+    if locked_pending is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending login not found")
 
-        should_issue_tokens = locked_pending.consumed_at is None
-        if should_issue_tokens:
-            locked_pending.consumed_at = _now()
-            session.add(locked_pending)
+    should_issue_tokens = locked_pending.consumed_at is None
+    if should_issue_tokens:
+        locked_pending.consumed_at = _now()
+        session.add(locked_pending)
+
+    await session.commit()
 
     await session.refresh(locked_pending)
     return locked_pending, should_issue_tokens
