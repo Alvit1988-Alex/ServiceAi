@@ -224,11 +224,11 @@ async def _create_pending_login(request: Request, session: AsyncSession) -> Pend
 
 
 async def _ensure_pending_valid(pending: PendingLogin, session: AsyncSession) -> PendingLogin:
-    if pending.status == PendingLoginStatus.PENDING and pending.expires_at <= _now():
+    if pending.status == PendingLoginStatus.PENDING.value and pending.expires_at <= _now():
         pending = await _mark_expired(pending, session)
-    if pending.status == PendingLoginStatus.EXPIRED:
+    if pending.status == PendingLoginStatus.EXPIRED.value:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Pending login expired")
-    if pending.status == PendingLoginStatus.CONFIRMED:
+    if pending.status == PendingLoginStatus.CONFIRMED.value:
         return pending
     return pending
 
@@ -283,7 +283,7 @@ async def _confirm_pending(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending login not found")
 
     await _ensure_pending_valid(pending, session)
-    if pending.status == PendingLoginStatus.CONFIRMED:
+    if pending.status == PendingLoginStatus.CONFIRMED.value:
         return pending
 
     user = await _find_or_create_user(
@@ -327,7 +327,7 @@ async def _send_telegram_confirmation_message(chat_id: int | str, text: str) -> 
 
 
 async def _consume_pending_login(session: AsyncSession, pending: PendingLogin) -> tuple[PendingLogin, bool]:
-    if pending.status != PendingLoginStatus.CONFIRMED or not pending.user_id:
+    if pending.status != PendingLoginStatus.CONFIRMED.value or not pending.user_id:
         return pending, False
 
     locked_pending = await _lock_pending_by_id(session=session, pending_id=pending.id)
@@ -372,7 +372,7 @@ async def get_pending_status(
 
     access_token = None
     refresh_token = None
-    if pending.status == PendingLoginStatus.CONFIRMED and pending.user_id:
+    if pending.status == PendingLoginStatus.CONFIRMED.value and pending.user_id:
         pending, should_issue_tokens = await _consume_pending_login(session=session, pending=pending)
         if should_issue_tokens:
             access_token = create_access_token(subject=pending.user_id)
