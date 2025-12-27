@@ -110,12 +110,12 @@ def run(coro):
 
 async def _create_base_entities(maker: Callable[[], AsyncSessionWrapper]):
     async with maker() as session:
-        owner = User(email="owner@example.com", password_hash="x", role=UserRole.ADMIN)
+        owner = User(email="owner@example.com", password_hash="x", role=UserRole.admin)
         account = Account(name="Test Account", owner=owner)
         bot = Bot(name="Test Bot", description=None, account=account)
-        operator = User(email="operator@example.com", password_hash="y", role=UserRole.OPERATOR)
+        operator = User(email="operator@example.com", password_hash="y", role=UserRole.operator)
         another_operator = User(
-            email="operator2@example.com", password_hash="z", role=UserRole.OPERATOR
+            email="operator2@example.com", password_hash="z", role=UserRole.operator
         )
 
         session.add_all([owner, account, bot, operator, another_operator])

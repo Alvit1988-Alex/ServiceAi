@@ -262,7 +262,7 @@ async def _find_or_create_user(
             username=username,
             first_name=first_name,
             last_name=last_name,
-            role=UserRole.OWNER,
+            role=UserRole.owner,
             is_active=True,
         ),
     )
