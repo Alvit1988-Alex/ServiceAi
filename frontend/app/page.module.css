@@ -24,6 +24,8 @@
 .loginDescription {
   color: var(--color-text-muted);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .loginForm {
@@ -49,6 +51,8 @@
 .qrImage {
   width: 240px;
   height: 240px;
+  max-width: 100%;
+  height: auto;
 }
 
 .fieldInput {
@@ -121,6 +125,19 @@
 @media (max-width: 640px) {
   .loginSection {
     padding: 1.25rem;
+  }
+
+  .loginForm {
+    max-width: 100%;
+  }
+
+  .loginActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .loginActions > * {
+    width: 100%;
   }
 }
 

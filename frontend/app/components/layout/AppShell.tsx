@@ -1,6 +1,7 @@
 "use client";
 
 import type { PropsWithChildren } from "react";
+import { usePathname } from "next/navigation";
 
 import { Sidebar } from "./Sidebar";
 import Topbar from "./Topbar";
@@ -12,6 +13,17 @@ import Topbar from "./Topbar";
  * Без zustand, без useEffect, только верстка.
  */
 export default function AppShell({ children }: PropsWithChildren) {
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/login" || pathname.startsWith("/login/");
+
+  if (isAuthPage) {
+    return (
+      <div style={{ minHeight: "100vh" }}>
+        <main style={{ minHeight: "100vh" }}>{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-layout" style={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar />
