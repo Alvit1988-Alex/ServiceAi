@@ -415,29 +415,63 @@ async def telegram_webhook(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ) -> TelegramWebhookResponse:
-    secret = request.query_params.get("secret") or request.headers.get("X-Telegram-Secret")
+    secret = request.query_params.get("secret")
+    if not secret:
+        # Telegram sends the secret token in the official header.
+        secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") or request.headers.get(
+            "X-Telegram-Secret"
+        )
     if not settings.telegram_webhook_secret or secret != settings.telegram_webhook_secret:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
 
     if not settings.telegram_auth_bot_token:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Telegram bot token is not configured",
-        )
+        # Avoid 500 responses for Telegram retries; just log in debug.
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Telegram bot token is not configured")  # noqa: T201
+        return TelegramWebhookResponse(ok=True, message="Bot token is not configured")
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        # Telegram should receive 200 even if payload is invalid.
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Invalid Telegram webhook payload")  # noqa: T201
+        return TelegramWebhookResponse(ok=True, message="Invalid payload")
     message = payload.get("message") or {}
     text = message.get("text") or ""
     chat = message.get("chat") or {}
     from_user = message.get("from") or {}
 
+    if text.startswith("/start") and not text.startswith("/start login_"):
+        info_text = (
+            "Для входа откройте сайт, нажмите “Войти через Telegram”, "
+            "затем вернитесь в этот чат и нажмите кнопку входа/Start по ссылке."
+        )
+        chat_id = chat.get("id") or from_user.get("id")
+        if chat_id:
+            background_tasks.add_task(_send_telegram_confirmation_message, chat_id, info_text)
+        return TelegramWebhookResponse(ok=True, message="Start message handled")
+
     if not text.startswith("/start login_"):
         return TelegramWebhookResponse(ok=True, message="Ignored non-login message")
 
     if not from_user.get("id"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Telegram user identifier")
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Missing Telegram user identifier")  # noqa: T201
+        return TelegramWebhookResponse(ok=True, message="Missing Telegram user identifier")
 
     token = text.replace("/start login_", "").strip()
+    if not token:
+        expired_text = (
+            "Ссылка для входа устарела. Вернитесь на сайт и нажмите “Войти через Telegram” ещё раз."
+        )
+        chat_id = chat.get("id") or from_user.get("id")
+        if chat_id:
+            background_tasks.add_task(_send_telegram_confirmation_message, chat_id, expired_text)
+        return TelegramWebhookResponse(ok=True, message="Login token missing")
     confirm_payload = TelegramConfirmRequest(
         token=token,
         telegram_id=int(from_user.get("id")),
@@ -446,7 +480,16 @@ async def telegram_webhook(
         last_name=from_user.get("last_name"),
     )
 
-    pending = await _confirm_pending(session=session, payload=confirm_payload)
+    try:
+        pending = await _confirm_pending(session=session, payload=confirm_payload)
+    except HTTPException:
+        expired_text = (
+            "Ссылка для входа устарела. Вернитесь на сайт и нажмите “Войти через Telegram” ещё раз."
+        )
+        chat_id = chat.get("id") or from_user.get("id")
+        if chat_id:
+            background_tasks.add_task(_send_telegram_confirmation_message, chat_id, expired_text)
+        return TelegramWebhookResponse(ok=True, message="Login token invalid")
 
     reply_text = "✅ Вход подтвержден. Вернитесь в браузер, чтобы продолжить."
     chat_id = chat.get("id") or from_user.get("id")
