@@ -62,6 +62,13 @@ export enum ChannelType {
   WEBCHAT = "webchat",
 }
 
+export const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
+  ChannelType.TELEGRAM,
+  ChannelType.WEBCHAT,
+  ChannelType.AVITO,
+  ChannelType.MAX,
+];
+
 export type WebhookStatus = "ok" | "pending" | "error";
 
 export interface BotChannel {

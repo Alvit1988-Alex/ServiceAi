@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { API_BASE_URL } from "@/app/api/config";
-import { BotChannel, ChannelType } from "@/app/api/types";
+import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
 
 import styles from "./BotChannels.module.css";
 
@@ -35,14 +35,6 @@ const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
 };
-
-const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
-  ChannelType.TELEGRAM,
-  ChannelType.WEBCHAT,
-  ChannelType.WHATSAPP_GREEN,
-  ChannelType.AVITO,
-  ChannelType.MAX,
-];
 
 const WIDGET_INTEGRATION_ENABLED = process.env.NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION === "true";
 
