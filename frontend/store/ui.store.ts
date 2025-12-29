@@ -59,6 +59,7 @@ interface UiState {
 
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  initTheme: () => void;
 
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
@@ -86,6 +87,19 @@ export const useUiStore = create<UiState>((set, get) => ({
     const nextTheme = get().theme === "light" ? "dark" : "light";
     get().setTheme(nextTheme);
   },
+
+  initTheme: (() => {
+    let didInit = false;
+
+    return () => {
+      if (didInit) return;
+      didInit = true;
+
+      const theme = readThemeFromStorage();
+      set({ theme });
+      applyTheme(theme);
+    };
+  })(),
 
   setSidebarCollapsed: (collapsed: boolean) => {
     set({ sidebarCollapsed: collapsed });
