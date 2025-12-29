@@ -25,15 +25,16 @@ const STATUS_LABELS: Record<DialogStatus, string> = {
   [DialogStatus.WAIT_USER]: "Ожидает пользователя",
 };
 
-const CHANNEL_LABELS: Record<ChannelType, string> = {
+const CHANNEL_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.TELEGRAM]: "Telegram",
-  [ChannelType.WHATSAPP_GREEN]: "WhatsApp Business (Green)",
-  [ChannelType.WHATSAPP_360]: "WhatsApp 360dialog",  
-  [ChannelType.WHATSAPP_CUSTOM]: "WhatsApp кастом",
   [ChannelType.AVITO]: "Avito",
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
 };
+
+function getChannelLabel(channelType: ChannelType): string {
+  return CHANNEL_LABELS[channelType] ?? "—";
+}
 
 function formatDate(date: string | null | undefined): string {
   if (!date) return "—";
@@ -106,7 +107,7 @@ export function SearchResults({
               items.map((dialog) => (
                 <tr key={dialog.id} className={styles.row} onClick={() => onRowClick(dialog)}>
                   <td>#{dialog.id}</td>
-                  <td>{CHANNEL_LABELS[dialog.channel_type]}</td>
+                  <td>{getChannelLabel(dialog.channel_type)}</td>
                   <td>{STATUS_LABELS[dialog.status]}</td>
                   <td>{dialog.external_chat_id}</td>
                   <td>{dialog.assigned_admin_id ?? "—"}</td>
