@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { ChannelType, DialogStatus } from "@/app/api/types";
+import { ChannelType, DialogStatus, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
 import { BotDTO } from "@/store/bots.store";
 
 import styles from "./SearchFilters.module.css";
@@ -41,7 +41,7 @@ export function SearchFilters({
   onSubmit,
 }: SearchFiltersProps) {
   const statusOptions = useMemo(() => Object.values(DialogStatus), []);
-  const channelOptions = useMemo(() => Object.values(ChannelType), []);
+  const channelOptions = useMemo(() => VISIBLE_CHANNEL_TYPES, []);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

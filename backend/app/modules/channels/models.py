@@ -30,6 +30,7 @@ def channel_type_enum() -> SQLEnum:
         ChannelType,
         name="channel_type",
         values_callable=lambda enum: [item.value for item in enum],
+        native_enum=True,
         validate_strings=True,
     )
 

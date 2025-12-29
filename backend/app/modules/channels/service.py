@@ -47,14 +47,11 @@ class ChannelsService:
     async def create_default_channels(
         self, session: AsyncSession, bot_id: int, channel_types: list[ChannelType] | None = None
     ) -> list[BotChannel]:
-        """Create default inactive channels for a bot without committing the transaction."""
+        """Create default active channels for a bot without committing the transaction."""
 
         default_types = channel_types or [
             ChannelType.TELEGRAM,
             ChannelType.WEBCHAT,
-            ChannelType.WHATSAPP_GREEN,
-            ChannelType.WHATSAPP_360,
-            ChannelType.WHATSAPP_CUSTOM,
             ChannelType.AVITO,
             ChannelType.MAX,
         ]
@@ -66,7 +63,7 @@ class ChannelsService:
                 bot_id=bot_id,
                 channel_type=channel_type,
                 config=encrypt_config(prepared_config),
-                is_active=False,
+                is_active=True,
             )
             session.add(channel)
             channels.append(channel)
