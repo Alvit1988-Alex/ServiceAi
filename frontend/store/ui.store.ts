@@ -15,27 +15,34 @@ function getSystemTheme(): Theme {
     : "light";
 }
 
-function readThemeFromStorage(): Theme {
+function readThemeFromStorage(
+  options: { includeHtmlTheme?: boolean } = {},
+): Theme {
   if (typeof window === "undefined") return "light";
 
+  const { includeHtmlTheme = true } = options;
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (stored === "light" || stored === "dark") {
     return stored;
   }
 
-  const htmlTheme = document.documentElement.getAttribute("data-theme");
-  if (htmlTheme === "light" || htmlTheme === "dark") {
-    return htmlTheme;
+  if (includeHtmlTheme) {
+    const htmlTheme = document.documentElement.getAttribute("data-theme");
+    if (htmlTheme === "light" || htmlTheme === "dark") {
+      return htmlTheme;
+    }
   }
 
   return getSystemTheme();
 }
 
-function applyTheme(theme: Theme) {
+function applyTheme(theme: Theme, options: { persist?: boolean } = {}) {
   if (typeof window === "undefined") return;
 
   document.documentElement.setAttribute("data-theme", theme);
-  window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  if (options.persist !== false) {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }
 }
 
 function readSidebarFromStorage(): boolean {
@@ -58,8 +65,10 @@ interface UiState {
   initialized: boolean;
 
   setTheme: (theme: Theme) => void;
+  setThemeForced: (theme: Theme) => void;
   toggleTheme: () => void;
   initTheme: () => void;
+  restoreTheme: () => void;
 
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
@@ -83,6 +92,11 @@ export const useUiStore = create<UiState>((set, get) => ({
     applyTheme(theme);
   },
 
+  setThemeForced: (theme: Theme) => {
+    set({ theme });
+    applyTheme(theme, { persist: false });
+  },
+
   toggleTheme: () => {
     const nextTheme = get().theme === "light" ? "dark" : "light";
     get().setTheme(nextTheme);
@@ -100,6 +114,12 @@ export const useUiStore = create<UiState>((set, get) => ({
       applyTheme(theme);
     };
   })(),
+
+  restoreTheme: () => {
+    const theme = readThemeFromStorage({ includeHtmlTheme: false });
+    set({ theme });
+    applyTheme(theme);
+  },
 
   setSidebarCollapsed: (collapsed: boolean) => {
     set({ sidebarCollapsed: collapsed });
