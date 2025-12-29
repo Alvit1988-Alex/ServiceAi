@@ -25,12 +25,21 @@ class ChannelType(str, Enum):
     WEBCHAT = "webchat"
 
 
+def channel_type_enum() -> SQLEnum:
+    return SQLEnum(
+        ChannelType,
+        name="channel_type",
+        values_callable=lambda enum: [item.value for item in enum],
+        validate_strings=True,
+    )
+
+
 class BotChannel(Base):
     __tablename__ = "bot_channels"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False, index=True)
-    channel_type: Mapped[ChannelType] = mapped_column(SQLEnum(ChannelType, name="channel_type"), nullable=False, index=True)
+    channel_type: Mapped[ChannelType] = mapped_column(channel_type_enum(), nullable=False, index=True)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
