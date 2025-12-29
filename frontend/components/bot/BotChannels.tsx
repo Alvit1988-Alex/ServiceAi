@@ -26,11 +26,8 @@ interface ChannelField {
   type?: "text" | "textarea";
 }
 
-const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
+const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.TELEGRAM]: "Telegram",
-  [ChannelType.WHATSAPP_GREEN]: "WhatsApp Green API",
-  [ChannelType.WHATSAPP_360]: "WhatsApp 360dialog",
-  [ChannelType.WHATSAPP_CUSTOM]: "WhatsApp Custom",
   [ChannelType.AVITO]: "Avito",
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
@@ -47,10 +44,6 @@ const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary:
     href: "/instructions/webchat.pdf",
     summary: "Как вставить код виджета чата на сайт.",
   },
-  [ChannelType.WHATSAPP_GREEN]: {
-    href: "/instructions/whatsapp_green.pdf",
-    summary: "Настройка WhatsApp Green API и вебхука.",
-  },
   [ChannelType.AVITO]: {
     href: "/instructions/avito.pdf",
     summary: "Подключение Avito и настройка вебхука.",
@@ -61,39 +54,9 @@ const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary:
   },
 };
 
-const CHANNEL_FIELDS: Record<ChannelType, ChannelField[]> = {
+const CHANNEL_FIELDS: Partial<Record<ChannelType, ChannelField[]>> = {
   [ChannelType.TELEGRAM]: [
     { key: "token", label: "API token", placeholder: "123456:ABC..." },
-  ],
-  [ChannelType.WHATSAPP_GREEN]: [
-    { key: "send_message_url", label: "Send message URL" },
-    { key: "api_base_url", label: "API base URL" },
-    { key: "send_message_path", label: "Send message path" },
-    { key: "api_token", label: "API token" },
-    { key: "secret", label: "Webhook secret" },
-  ],
-  [ChannelType.WHATSAPP_360]: [
-    { key: "send_message_url", label: "Send message URL" },
-    { key: "api_base_url", label: "API base URL" },
-    { key: "send_message_path", label: "Send message path" },
-    { key: "auth_token", label: "Auth token" },
-    { key: "secret", label: "Webhook secret" },
-    { key: "webhook_secret", label: "Webhook secret (альт.)" },
-  ],
-  [ChannelType.WHATSAPP_CUSTOM]: [
-    { key: "send_message_url", label: "Send message URL" },
-    { key: "auth_token", label: "Auth token" },
-    { key: "token", label: "Token" },
-    { key: "secret", label: "Webhook secret" },
-    { key: "webhook_secret", label: "Webhook secret (альт.)" },
-    { key: "api_key_header", label: "API key header" },
-    { key: "api_key", label: "API key" },
-    {
-      key: "extra_headers",
-      label: "Дополнительные заголовки (JSON)",
-      type: "textarea",
-      placeholder: '{"X-Header": "value"}',
-    },
   ],
   [ChannelType.AVITO]: [
     { key: "client_id", label: "Client ID" },
@@ -636,6 +599,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       {!loading && !error && visibleChannels.map((channel) => {
         const form = forms[channel.id];
         const instruction = CHANNEL_INSTRUCTIONS[channel.channel_type];
+        const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
         return (
           <form
             key={channel.id}
@@ -644,7 +608,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           >
             <div className={styles.cardHeader}>
               <div>
-                <div className={styles.badge}>{CHANNEL_TYPE_LABELS[channel.channel_type]}</div>
+                <div className={styles.badge}>{channelLabel}</div>
                 <div className={styles.channelMeta}>ID: {channel.id}</div>
               </div>
               <label className={styles.switch}>
