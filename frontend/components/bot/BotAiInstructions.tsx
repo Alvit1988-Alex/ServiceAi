@@ -42,7 +42,7 @@ export default function BotAiInstructions({ botId }: BotAiInstructionsProps) {
     if (currentInstructions) {
       setSystemPrompt(currentInstructions.system_prompt ?? "");
     }
-  }, [currentInstructions?.system_prompt, botId]);
+  }, [currentInstructions]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

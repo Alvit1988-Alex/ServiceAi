@@ -52,6 +52,13 @@ pip install .
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## Release checklist
+- Установите зависимости backend: `poetry install`.
+- Для опциональных AI-фичей установите доп. зависимости: `poetry install --with ai`.
+- Если AI-зависимости не установлены или не заданы креды, AI отключается и диалоги переходят в режим оператора.
+- Загрузка PDF/DOCX требует `PyMuPDF` и `python-docx` (ставятся через `--with ai`).
+- Ограничения знаний: размер файла до 2MB, общая квота 10MB.
+
 ## Миграции базы данных (Alembic)
 Файлы конфигурации находятся в `backend/alembic.ini` и `backend/alembic/`. Убедитесь, что `DATABASE_URL` указывает на нужную базу.
 

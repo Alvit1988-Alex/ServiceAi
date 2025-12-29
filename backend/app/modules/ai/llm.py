@@ -57,13 +57,13 @@ class OpenAILLMClient(LLMClient):
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            logger.error("OpenAI API key is not configured")
+            logger.warning("OpenAI API key is not configured")
             return ""
 
         try:
             from openai import AsyncOpenAI
         except ImportError:
-            logger.error("openai package is not installed")
+            logger.warning("openai package is not installed")
             return ""
 
         client = AsyncOpenAI(api_key=api_key)
