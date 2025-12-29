@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import async_session_factory
 from app.modules.accounts.models import User
 from app.modules.bots.models import Bot
 from app.modules.bots.service import BotsService
@@ -84,6 +85,52 @@ class DiagnosticsService:
     def __init__(self) -> None:
         self.bots_service = BotsService()
         self.channels_service = ChannelsService()
+
+    async def log_integration(
+        self,
+        *,
+        account_id: int | None,
+        bot_id: int | None,
+        channel_type: str,
+        direction: str,
+        operation: str,
+        status: str,
+        error_message: str | None = None,
+        latency_ms: int | None = None,
+        http_status: int | None = None,
+        endpoint: str | None = None,
+        provider: str | None = None,
+        external_id: str | None = None,
+        request_id: str | None = None,
+        error_code: str | None = None,
+        retry_count: int = 0,
+    ) -> None:
+        async with async_session_factory() as session:
+            resolved_account_id = account_id
+            if resolved_account_id is None and bot_id is not None:
+                result = await session.execute(select(Bot.account_id).where(Bot.id == bot_id))
+                resolved_account_id = result.scalar_one_or_none()
+            if resolved_account_id is None:
+                resolved_account_id = 0
+
+            await log_integration_event(
+                session,
+                account_id=resolved_account_id,
+                bot_id=bot_id,
+                channel_type=channel_type,
+                direction=direction,
+                operation=operation,
+                status=status,
+                error_code=error_code,
+                error_message=error_message,
+                latency_ms=latency_ms,
+                external_id=external_id,
+                request_id=request_id,
+                retry_count=retry_count,
+                http_status=http_status,
+                endpoint=endpoint,
+                provider=provider,
+            )
 
     @staticmethod
     def parse_since(since: str | None) -> datetime | None:
@@ -509,3 +556,8 @@ class DiagnosticsService:
             for record in records
         ]
 
+
+def get_diagnostics_service() -> DiagnosticsService:
+    """Dependency injection helper for DiagnosticsService."""
+
+    return DiagnosticsService()

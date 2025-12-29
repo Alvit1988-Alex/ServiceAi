@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -10,15 +12,81 @@ import httpx
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class EmbeddingsClient:
     """Base interface for embeddings clients."""
 
     async def embed_text(self, text: str) -> list[float]:
-        raise NotImplementedError
+        if not text:
+            return []
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OpenAI API key is not configured")
+            return []
+
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            logger.error("openai package is not installed")
+            return []
+
+        client = AsyncOpenAI(api_key=api_key)
+        model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+        try:
+            response = await client.embeddings.create(model=model, input=text)
+        except Exception as exc:  # pragma: no cover - runtime dependency
+            logger.error("OpenAI embedding request failed", exc_info=exc)
+            return []
+
+        data = getattr(response, "data", None) or []
+        if not data:
+            logger.error("OpenAI embedding response missing data")
+            return []
+
+        embedding = getattr(data[0], "embedding", None)
+        if embedding is None:
+            return []
+
+        return list(map(float, embedding))
 
     async def embed_many(self, texts: list[str]) -> list[list[float]]:
-        raise NotImplementedError
+        if not texts:
+            return []
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OpenAI API key is not configured")
+            return []
+
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            logger.error("openai package is not installed")
+            return []
+
+        client = AsyncOpenAI(api_key=api_key)
+        model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+        try:
+            response = await client.embeddings.create(model=model, input=texts)
+        except Exception as exc:  # pragma: no cover - runtime dependency
+            logger.error("OpenAI embedding batch request failed", exc_info=exc)
+            return []
+
+        data = getattr(response, "data", None) or []
+        embeddings: list[list[float]] = [[] for _ in texts]
+        for item in data:
+            index = getattr(item, "index", None)
+            embedding = getattr(item, "embedding", None)
+            if embedding is None or index is None:
+                continue
+            if 0 <= index < len(embeddings):
+                embeddings[index] = list(map(float, embedding))
+        return embeddings
 
 
 class GigaChatEmbeddingsClient(EmbeddingsClient):

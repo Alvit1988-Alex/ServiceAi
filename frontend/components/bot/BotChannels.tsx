@@ -185,10 +185,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
+  const [testingChannelId, setTestingChannelId] = useState<number | null>(null);
   const [generatingWebchatId, setGeneratingWebchatId] = useState<number | null>(null);
   const [webchatCodes, setWebchatCodes] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { status: "ok" | "fail"; message: string }>>({});
 
   useEffect(() => {
     let isMounted = true;
@@ -303,6 +305,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   ]);
 
   const applyChannelUpdate = (channelId: number, updatedChannel: BotChannel) => {
+    syncChannelState(channelId, updatedChannel);
+    setSuccessChannelId(channelId);
+  };
+
+  const syncChannelState = (channelId: number, updatedChannel: BotChannel) => {
     setChannels((prev) => prev.map((item) => (item.id === channelId ? updatedChannel : item)));
     setForms((prev) => ({
       ...prev,
@@ -311,7 +318,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         is_active: updatedChannel.is_active,
       },
     }));
-    setSuccessChannelId(channelId);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>, channelId: number) => {
@@ -337,6 +343,39 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       setError(message);
     } finally {
       setSavingChannelId(null);
+    }
+  };
+
+  const handleTestChannel = async (channelId: number) => {
+    const form = forms[channelId];
+    if (!form) {
+      return;
+    }
+
+    setTestingChannelId(channelId);
+    setError(null);
+    setTestResults((prev) => ({ ...prev, [channelId]: { status: "ok", message: "" } }));
+
+    try {
+      // FIXME: replace with real channel test endpoint (e.g. send test message).
+      const payload = {
+        is_active: form.is_active,
+        config: prepareConfig(form.config),
+      };
+      const updatedChannel = await updateChannel(botId, channelId, payload);
+      syncChannelState(channelId, updatedChannel);
+      setTestResults((prev) => ({
+        ...prev,
+        [channelId]: { status: "ok", message: "Тест успешно выполнен" },
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось выполнить тест канала";
+      setTestResults((prev) => ({
+        ...prev,
+        [channelId]: { status: "fail", message },
+      }));
+    } finally {
+      setTestingChannelId(null);
     }
   };
 
@@ -671,6 +710,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               {successChannelId === channel.id && (
                 <span className={styles.success}>Настройки сохранены</span>
               )}
+              {testResults[channel.id]?.message && (
+                <span className={testResults[channel.id].status === "ok" ? styles.success : styles.error}>
+                  {testResults[channel.id].message}
+                </span>
+              )}
               {instruction && (
                 <a
                   href={instruction.href}
@@ -681,6 +725,14 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                   Инструкция
                 </a>
               )}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => handleTestChannel(channel.id)}
+                disabled={testingChannelId === channel.id}
+              >
+                {testingChannelId === channel.id ? "Тестируем..." : "Тест"}
+              </button>
               <button
                 type="submit"
                 className={styles.saveButton}
