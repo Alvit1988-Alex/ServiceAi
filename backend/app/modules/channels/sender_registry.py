@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
 
 import httpx
@@ -9,9 +10,11 @@ from sqlalchemy import select
 
 from app.database import async_session_factory
 from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.service import ChannelsService
+from app.modules.channels.telegram_handler import send_telegram_message
+from app.modules.diagnostics.service import get_diagnostics_service
 from app.modules.dialogs.models import Dialog
 from app.modules.dialogs.websocket_manager import manager
-from app.modules.channels.service import ChannelsService
 
 logger = logging.getLogger(__name__)
 
@@ -74,25 +77,49 @@ class TelegramSender(BaseChannelSender):
             )
             return
 
-        payload = {"chat_id": external_chat_id, "text": text}
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                if not data.get("ok", False):
-                    logger.error(
-                        "Telegram API returned unsuccessful response",
-                        extra={
-                            "bot_id": bot_id,
-                            "channel_id": channel.id,
-                            "status": response.status_code,
-                            "response": data,
-                        },
-                    )
+            start = time.perf_counter()
+            response = await send_telegram_message(token=token, chat_id=external_chat_id, text=text)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get("ok", False):
+                logger.error(
+                    "Telegram API returned unsuccessful response",
+                    extra={
+                        "bot_id": bot_id,
+                        "channel_id": channel.id,
+                        "status": response.status_code,
+                        "response": data,
+                    },
+                )
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                await get_diagnostics_service().log_integration(
+                    account_id=None,
+                    bot_id=bot_id,
+                    channel_type=ChannelType.TELEGRAM.value,
+                    direction="out",
+                    operation="send_message",
+                    status="fail",
+                    error_message="Telegram API returned ok=false",
+                    latency_ms=latency_ms,
+                    http_status=response.status_code,
+                    endpoint="sendMessage",
+                )
+            else:
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                await get_diagnostics_service().log_integration(
+                    account_id=None,
+                    bot_id=bot_id,
+                    channel_type=ChannelType.TELEGRAM.value,
+                    direction="out",
+                    operation="send_message",
+                    status="ok",
+                    latency_ms=latency_ms,
+                    http_status=response.status_code,
+                    endpoint="sendMessage",
+                )
         except httpx.HTTPStatusError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Telegram API responded with HTTP error",
                 exc_info=exc,
@@ -102,16 +129,52 @@ class TelegramSender(BaseChannelSender):
                     "status": exc.response.status_code if exc.response else None,
                 },
             )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.TELEGRAM.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                http_status=exc.response.status_code if exc.response else None,
+                endpoint="sendMessage",
+            )
         except httpx.RequestError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to reach Telegram API",
                 exc_info=exc,
                 extra={"bot_id": bot_id, "channel_id": channel.id},
             )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.TELEGRAM.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                endpoint="sendMessage",
+            )
         except Exception:  # pragma: no cover - safeguard for unexpected errors
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.exception(
                 "Unexpected error while sending Telegram message",
                 extra={"bot_id": bot_id, "channel_id": channel.id},
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.TELEGRAM.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message="Unexpected error while sending Telegram message",
+                latency_ms=latency_ms,
+                endpoint="sendMessage",
             )
 
 
@@ -192,10 +255,24 @@ class WhatsappGreenSender(BaseChannelSender):
         payload = {"chatId": external_chat_id, "message": text}
 
         try:
+            start = time.perf_counter()
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.post(send_message_url, json=payload)
                 response.raise_for_status()
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                await get_diagnostics_service().log_integration(
+                    account_id=None,
+                    bot_id=bot_id,
+                    channel_type=ChannelType.WHATSAPP_GREEN.value,
+                    direction="out",
+                    operation="send_message",
+                    status="ok",
+                    latency_ms=latency_ms,
+                    http_status=response.status_code,
+                    endpoint="send_message",
+                )
         except httpx.HTTPStatusError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "WhatsApp Green API responded with HTTP error",
                 exc_info=exc,
@@ -207,7 +284,20 @@ class WhatsappGreenSender(BaseChannelSender):
                     "response": exc.response.text if exc.response else None,
                 },
             )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.WHATSAPP_GREEN.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                http_status=exc.response.status_code if exc.response else None,
+                endpoint="send_message",
+            )
         except httpx.RequestError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to reach WhatsApp Green API",
                 exc_info=exc,
@@ -217,7 +307,19 @@ class WhatsappGreenSender(BaseChannelSender):
                     "chat_id": external_chat_id,
                 },
             )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.WHATSAPP_GREEN.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                endpoint="send_message",
+            )
         except Exception:  # pragma: no cover - safeguard for unexpected errors
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.exception(
                 "Unexpected error while sending WhatsApp Green message",
                 extra={
@@ -225,6 +327,17 @@ class WhatsappGreenSender(BaseChannelSender):
                     "channel_id": channel.id,
                     "chat_id": external_chat_id,
                 },
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.WHATSAPP_GREEN.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message="Unexpected error while sending WhatsApp Green message",
+                latency_ms=latency_ms,
+                endpoint="send_message",
             )
 
 
@@ -303,6 +416,7 @@ class Whatsapp360Sender(BaseChannelSender):
         headers = {"Authorization": f"Bearer {auth_token}"}
 
         try:
+            start = time.perf_counter()
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.post(send_message_url, json=payload, headers=headers)
                 if not response.is_success:
@@ -316,11 +430,49 @@ class Whatsapp360Sender(BaseChannelSender):
                             "response": response.text,
                         },
                     )
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.WHATSAPP_360.value,
+                        direction="out",
+                        operation="send_message",
+                        status="fail",
+                        error_message="WhatsApp 360 API returned unsuccessful response",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
+                else:
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.WHATSAPP_360.value,
+                        direction="out",
+                        operation="send_message",
+                        status="ok",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
         except httpx.HTTPError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to send WhatsApp 360 message",
                 exc_info=exc,
                 extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.WHATSAPP_360.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                endpoint="send_message",
             )
 
 
@@ -396,6 +548,7 @@ class WhatsappCustomSender(BaseChannelSender):
             headers.update(extra_headers)
 
         try:
+            start = time.perf_counter()
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.post(
                     send_message_url, json=payload, headers=headers
@@ -411,11 +564,49 @@ class WhatsappCustomSender(BaseChannelSender):
                             "response": response.text,
                         },
                     )
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.WHATSAPP_CUSTOM.value,
+                        direction="out",
+                        operation="send_message",
+                        status="fail",
+                        error_message="WhatsApp custom API returned unsuccessful response",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
+                else:
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.WHATSAPP_CUSTOM.value,
+                        direction="out",
+                        operation="send_message",
+                        status="ok",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
         except httpx.HTTPError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to send WhatsApp custom message",
                 exc_info=exc,
                 extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.WHATSAPP_CUSTOM.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                endpoint="send_message",
             )
 
 
@@ -481,6 +672,7 @@ class MaxSender(BaseChannelSender):
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         try:
+            start = time.perf_counter()
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.post(send_message_url, json=payload, headers=headers)
                 if not response.is_success:
@@ -494,11 +686,49 @@ class MaxSender(BaseChannelSender):
                             "response": response.text,
                         },
                     )
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.MAX.value,
+                        direction="out",
+                        operation="send_message",
+                        status="fail",
+                        error_message="Max API returned unsuccessful response",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
+                else:
+                    latency_ms = int((time.perf_counter() - start) * 1000)
+                    await get_diagnostics_service().log_integration(
+                        account_id=None,
+                        bot_id=bot_id,
+                        channel_type=ChannelType.MAX.value,
+                        direction="out",
+                        operation="send_message",
+                        status="ok",
+                        latency_ms=latency_ms,
+                        http_status=response.status_code,
+                        endpoint="send_message",
+                    )
         except httpx.HTTPError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to send Max message",
                 exc_info=exc,
                 extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id},
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.MAX.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                endpoint="send_message",
             )
 
 

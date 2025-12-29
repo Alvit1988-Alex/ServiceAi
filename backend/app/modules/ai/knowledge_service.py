@@ -1,6 +1,8 @@
 """Knowledge base service for storing files and embedding their content."""
 from __future__ import annotations
 
+import mimetypes
+import os
 from typing import Callable
 from uuid import uuid4
 
@@ -23,8 +25,8 @@ class KnowledgeService:
         | None = None,
         embeddings_client: EmbeddingsClient | None = None,
         storage: FileStorage | None = None,
-        max_file_size_bytes: int = 5 * 1024 * 1024,
-        total_quota_bytes: int = 50 * 1024 * 1024,
+        max_file_size_bytes: int = 2 * 1024 * 1024,
+        total_quota_bytes: int = 10 * 1024 * 1024,
     ):
         self._session_factory = db_session_factory or async_session_factory
         self._embeddings = embeddings_client or GigaChatEmbeddingsClient()
@@ -36,29 +38,35 @@ class KnowledgeService:
         content_bytes = await file.read()
         await self._validate_quota(bot_id=bot_id, new_file_size=len(content_bytes))
 
-        filename = f"{uuid4().hex}_{file.filename}"
-        self._storage.save(filename, content_bytes)
+        filename = f"{uuid4().hex}_{os.path.basename(file.filename or 'file')}"
+        file_path = self._storage.save(bot_id, filename, content_bytes)
+        mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or ""
 
-        text_content = self._extract_text(content_bytes)
-        chunks = self._chunk_text(text_content)
-        embeddings = await self._embeddings.embed_many(chunks) if chunks else []
+        text_content = self._extract_text(str(file_path), mime_type)
+        chunks = self._split_to_chunks(text_content)
+
+        embeddings: list[tuple[str, list[float]]] = []
+        for chunk in chunks:
+            if chunk.strip():
+                embedding = await self._embeddings.embed_text(chunk)
+                if not embedding:
+                    continue
+                embeddings.append((chunk, embedding))
 
         async with self._session() as session:
             knowledge_file = KnowledgeFile(
                 bot_id=bot_id,
-                file_name=filename,
+                file_name=os.path.basename(str(file_path)),
                 original_name=file.filename or "file",
-                mime_type=file.content_type,
+                mime_type=mime_type,
                 size_bytes=len(content_bytes),
-                chunks_count=len(chunks),
+                chunks_count=len(embeddings),
             )
             session.add(knowledge_file)
             await session.flush()
 
-            knowledge_chunks: list[KnowledgeChunk] = []
-            for idx, chunk_text in enumerate(chunks):
-                embedding = embeddings[idx] if idx < len(embeddings) else []
-                knowledge_chunks.append(
+            for idx, (chunk_text, embedding) in enumerate(embeddings):
+                session.add(
                     KnowledgeChunk(
                         file_id=knowledge_file.id,
                         bot_id=bot_id,
@@ -67,9 +75,6 @@ class KnowledgeService:
                         embedding=embedding,
                     )
                 )
-
-            if knowledge_chunks:
-                session.add_all(knowledge_chunks)
 
             await session.commit()
             await session.refresh(knowledge_file)
@@ -105,28 +110,95 @@ class KnowledgeService:
             await session.delete(knowledge_file)
             await session.commit()
 
-        self._storage.delete(knowledge_file.file_name)
+        self._storage.delete(bot_id, knowledge_file.file_name)
 
-    def _chunk_text(
-        self, text: str, max_chunk_size: int = 1200, overlap: int = 200
-    ) -> list[str]:
-        normalized = "\n".join(line.strip() for line in text.splitlines())
-        paragraphs = [p.strip() for p in normalized.split("\n\n") if p.strip()]
+    @staticmethod
+    def _extract_text(file_path: str, mime_type: str) -> str:
+        if not os.path.exists(file_path):
+            return ""
 
+        if mime_type in ["application/pdf", "application/x-pdf"]:
+            try:
+                import fitz
+            except ImportError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="PDF support requires PyMuPDF",
+                ) from exc
+
+            try:
+                doc = fitz.open(file_path)
+                text = ""
+                for page in doc:
+                    text += page.get_text()
+                doc.close()
+                return text
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to extract text from PDF",
+                ) from exc
+
+        if mime_type in [
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ]:
+            try:
+                from docx import Document
+            except ImportError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="DOCX support requires python-docx",
+                ) from exc
+
+            try:
+                doc = Document(file_path)
+                return "\n".join(paragraph.text for paragraph in doc.paragraphs)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to extract text from DOCX",
+                ) from exc
+
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+            return handle.read()
+
+    def _split_to_chunks(self, text: str, max_chunk_size: int = 1000) -> list[str]:
         chunks: list[str] = []
         current = ""
-        for paragraph in paragraphs:
-            if len(current) + len(paragraph) + 2 <= max_chunk_size:
-                current = f"{current}\n\n{paragraph}" if current else paragraph
-            else:
-                if current:
+
+        for paragraph in text.split("\n"):
+            if not paragraph.strip():
+                continue
+            sentences = paragraph.split(". ")
+            for sentence in sentences:
+                sentence_text = sentence.strip()
+                if not sentence_text:
+                    continue
+
+                if len(sentence_text) > max_chunk_size:
+                    if current:
+                        chunks.append(current.strip())
+                        current = ""
+                    for i in range(0, len(sentence_text), max_chunk_size):
+                        chunks.append(sentence_text[i : i + max_chunk_size])
+                    continue
+
+                sentence_with_suffix = f"{sentence_text}. "
+                if current and len(current) + len(sentence_with_suffix) <= max_chunk_size:
+                    current = f"{current}{sentence_with_suffix}"
+                elif not current:
+                    if len(sentence_with_suffix) <= max_chunk_size:
+                        current = sentence_with_suffix
+                    else:
+                        current = sentence_text
+                else:
                     chunks.append(current.strip())
-                remaining = paragraph
-                while len(remaining) > max_chunk_size:
-                    chunk = remaining[:max_chunk_size]
-                    chunks.append(chunk)
-                    remaining = remaining[max_chunk_size - overlap :]
-                current = remaining
+                    if len(sentence_with_suffix) <= max_chunk_size:
+                        current = sentence_with_suffix
+                    else:
+                        current = sentence_text
+
         if current:
             chunks.append(current.strip())
 
@@ -152,10 +224,6 @@ class KnowledgeService:
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="Knowledge base storage quota exceeded",
             )
-
-    @staticmethod
-    def _extract_text(content_bytes: bytes) -> str:
-        return content_bytes.decode(errors="ignore")
 
     def _session(self) -> AsyncSession:
         return self._session_factory()

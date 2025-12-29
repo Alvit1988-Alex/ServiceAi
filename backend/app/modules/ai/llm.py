@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import base64
+import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -21,6 +25,63 @@ class LLMClient:
         context_chunks: list[str],
     ) -> str:
         raise NotImplementedError
+
+
+class OpenAILLMClient(LLMClient):
+    """Optional OpenAI LLM client for chat completions."""
+
+    async def generate(
+        self,
+        system_prompt: str,
+        history: list[dict[str, str]],
+        question: str,
+        context_chunks: list[str],
+    ) -> str:
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        for item in history:
+            messages.append(item)
+
+        if context_chunks:
+            context_text = "\n".join(context_chunks)
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Контекст знаний:\n{context_text}",
+                }
+            )
+
+        messages.append({"role": "user", "content": question})
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OpenAI API key is not configured")
+            return ""
+
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            logger.error("openai package is not installed")
+            return ""
+
+        client = AsyncOpenAI(api_key=api_key)
+        model = os.getenv("OPENAI_CHAT_MODEL", "gpt-3.5-turbo")
+
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+            )
+        except Exception as exc:  # pragma: no cover - runtime dependency
+            logger.error("LLM generate error", exc_info=exc)
+            return ""
+
+        try:
+            return (response.choices[0].message.content or "").strip()
+        except Exception:  # pragma: no cover - defensive parse
+            return ""
 
 
 class GigaChatLLMClient(LLMClient):

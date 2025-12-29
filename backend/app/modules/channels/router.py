@@ -1,6 +1,7 @@
 """Channels router."""
 import json
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_web
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
 from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
 from app.modules.channels.models import ChannelType
+from app.modules.diagnostics.service import DiagnosticsService, get_diagnostics_service
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
 from app.modules.dialogs.service import DialogsService
 from app.modules.dialogs.websocket_manager import manager
@@ -42,6 +44,27 @@ def _ensure_channel_available(channel) -> None:
 def _validate_secret(expected: str | None, provided: str | None, detail: str) -> None:
     if expected and expected != provided:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+async def _log_incoming_event(
+    *,
+    diagnostics_service: DiagnosticsService,
+    bot_id: int,
+    channel_type: ChannelType,
+    status: str,
+    latency_ms: int | None = None,
+    error_message: str | None = None,
+) -> None:
+    await diagnostics_service.log_integration(
+        account_id=None,
+        bot_id=bot_id,
+        channel_type=channel_type.value,
+        direction="in",
+        operation="webhook_receive",
+        status=status,
+        error_message=error_message,
+        latency_ms=latency_ms,
+    )
 
 
 async def _process_and_broadcast(
@@ -78,6 +101,9 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
         message_payload = DialogMessageOut.model_validate(message).model_dump()
         await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
         await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
+
+        if message_payload.get("payload", {}).get("system"):
+            continue
 
         await manager.broadcast_to_webchat(
             bot_id=dialog_payload["bot_id"],
@@ -180,22 +206,45 @@ async def telegram_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret_token") or channel.config.get("token")
-    provided_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    _validate_secret(expected_secret, provided_secret, "Invalid Telegram secret token")
+        expected_secret = channel.config.get("secret_token") or channel.config.get("token")
+        provided_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        _validate_secret(expected_secret, provided_secret, "Invalid Telegram secret token")
 
-    normalized = normalize_telegram_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+        normalized = normalize_telegram_update(bot_id=bot_id, channel_id=channel_id, update=payload)
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.TELEGRAM,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.TELEGRAM,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"ok": True}
 
@@ -214,24 +263,47 @@ async def whatsapp_green_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
-    provided_secret = _extract_provided_secret(request=request, payload=payload)
-    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp Green secret")
+        expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+        provided_secret = _extract_provided_secret(request=request, payload=payload)
+        _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp Green secret")
 
-    normalized = normalize_whatsapp_green_notification(
-        bot_id=bot_id, channel_id=channel_id, notification=payload
-    )
+        normalized = normalize_whatsapp_green_notification(
+            bot_id=bot_id, channel_id=channel_id, notification=payload
+        )
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.WHATSAPP_GREEN,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.WHATSAPP_GREEN,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"status": "ok"}
 
@@ -246,22 +318,45 @@ async def whatsapp_360_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
-    provided_secret = _extract_provided_secret(request=request, payload=payload)
-    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp 360 secret")
+        expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+        provided_secret = _extract_provided_secret(request=request, payload=payload)
+        _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp 360 secret")
 
-    normalized = normalize_whatsapp_360_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
+        normalized = normalize_whatsapp_360_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.WHATSAPP_360,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.WHATSAPP_360,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"status": "ok"}
 
@@ -276,24 +371,47 @@ async def whatsapp_custom_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
-    provided_secret = _extract_provided_secret(request=request, payload=payload)
-    _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp custom secret")
+        expected_secret = channel.config.get("secret") or channel.config.get("webhook_secret")
+        provided_secret = _extract_provided_secret(request=request, payload=payload)
+        _validate_secret(expected_secret, provided_secret, "Invalid WhatsApp custom secret")
 
-    normalized = normalize_whatsapp_custom_webhook(
-        bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
-    )
+        normalized = normalize_whatsapp_custom_webhook(
+            bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
+        )
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.WHATSAPP_CUSTOM,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.WHATSAPP_CUSTOM,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"status": "ok"}
 
@@ -307,82 +425,105 @@ async def avito_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    raw_body = await request.body()
-
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
-
-    expected_secret = channel.config.get("webhook_secret") or channel.config.get("secret")
-    provided_secret = request.query_params.get("secret")
-
-    if not expected_secret:
-        logger.warning(
-            "Avito webhook secret is not configured; rejecting webhook",
-            extra={"bot_id": bot_id, "channel_id": channel_id},
-        )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Avito webhook secret not configured")
-
-    if expected_secret != provided_secret:
-        logger.warning(
-            "Invalid Avito webhook secret",
-            extra={"bot_id": bot_id, "channel_id": channel_id},
-        )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Avito webhook secret")
-
+    start = time.perf_counter()
     try:
-        payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+        raw_body = await request.body()
 
-    normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    payload_meta = normalized.payload or {}
-    if payload_meta.get("skip_processing"):
+        expected_secret = channel.config.get("webhook_secret") or channel.config.get("secret")
+        provided_secret = request.query_params.get("secret")
+
+        if not expected_secret:
+            logger.warning(
+                "Avito webhook secret is not configured; rejecting webhook",
+                extra={"bot_id": bot_id, "channel_id": channel_id},
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Avito webhook secret not configured")
+
+        if expected_secret != provided_secret:
+            logger.warning(
+                "Invalid Avito webhook secret",
+                extra={"bot_id": bot_id, "channel_id": channel_id},
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Avito webhook secret")
+
+        try:
+            payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+
+        normalized = normalize_avito_update(bot_id=bot_id, channel_id=channel_id, update=payload)
+
+        payload_meta = normalized.payload or {}
+        if payload_meta.get("skip_processing"):
+            logger.info(
+                "Avito webhook skipped",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel_id,
+                    "conversation_id": normalized.external_chat_id,
+                    "item_id": normalized.item_id,
+                    "reason": payload_meta.get("skip_reason"),
+                },
+            )
+            return {"status": "skipped", "reason": payload_meta.get("skip_reason")}
+
         logger.info(
-            "Avito webhook skipped",
+            "Avito webhook received",
             extra={
                 "bot_id": bot_id,
                 "channel_id": channel_id,
                 "conversation_id": normalized.external_chat_id,
                 "item_id": normalized.item_id,
-                "reason": payload_meta.get("skip_reason"),
             },
         )
-        return {"status": "skipped", "reason": payload_meta.get("skip_reason")}
 
-    logger.info(
-        "Avito webhook received",
-        extra={
-            "bot_id": bot_id,
-            "channel_id": channel_id,
-            "conversation_id": normalized.external_chat_id,
-            "item_id": normalized.item_id,
-        },
-    )
-
-    should_reply, reason = channels_service.should_reply_to_avito_message(
-        channel.config, normalized.item_id
-    )
-    if not should_reply:
-        logger.info(
-            "Avito message filtered",
-            extra={
-                "bot_id": bot_id,
-                "channel_id": channel_id,
-                "conversation_id": normalized.external_chat_id,
-                "item_id": normalized.item_id,
-                "reason": reason,
-            },
+        should_reply, reason = channels_service.should_reply_to_avito_message(
+            channel.config, normalized.item_id
         )
-        return {"status": "filtered", "reason": reason}
+        if not should_reply:
+            logger.info(
+                "Avito message filtered",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel_id,
+                    "conversation_id": normalized.external_chat_id,
+                    "item_id": normalized.item_id,
+                    "reason": reason,
+                },
+            )
+            return {"status": "filtered", "reason": reason}
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.AVITO,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.AVITO,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"result": "ok"}
 
@@ -397,24 +538,47 @@ async def max_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("token")
-    provided_secret = _extract_provided_secret(request=request, payload=payload)
-    _validate_secret(expected_secret, provided_secret, "Invalid Max webhook secret")
+        expected_secret = channel.config.get("secret") or channel.config.get("token")
+        provided_secret = _extract_provided_secret(request=request, payload=payload)
+        _validate_secret(expected_secret, provided_secret, "Invalid Max webhook secret")
 
-    normalized = normalize_max_webhook(
-        bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
-    )
+        normalized = normalize_max_webhook(
+            bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
+        )
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.MAX,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.MAX,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"status": "ok"}
 
@@ -429,21 +593,44 @@ async def webchat_webhook(
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
-    _ensure_channel_available(channel)
-    channel = channels_service.decrypt(channel)
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
 
-    expected_secret = channel.config.get("secret") or channel.config.get("token")
-    provided_secret = _extract_provided_secret(request=request, payload=payload, header_name="X-Webchat-Secret")
-    _validate_secret(expected_secret, provided_secret, "Invalid webchat secret")
+        expected_secret = channel.config.get("secret") or channel.config.get("token")
+        provided_secret = _extract_provided_secret(request=request, payload=payload, header_name="X-Webchat-Secret")
+        _validate_secret(expected_secret, provided_secret, "Invalid webchat secret")
 
-    normalized = normalize_webchat_message(bot_id=bot_id, channel_id=channel_id, payload=payload)
+        normalized = normalize_webchat_message(bot_id=bot_id, channel_id=channel_id, payload=payload)
 
-    await _process_and_broadcast(
-        normalized=normalized,
-        dialogs_service=dialogs_service,
-        ai_service=ai_service,
-        session=session,
+        await _process_and_broadcast(
+            normalized=normalized,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            session=session,
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.WEBCHAT,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.WEBCHAT,
+        status="ok",
+        latency_ms=latency_ms,
     )
     return {"status": "ok"}

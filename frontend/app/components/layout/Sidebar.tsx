@@ -9,9 +9,6 @@ import styles from "./Sidebar.module.css";
 const navItems = [
   { label: "Дашборд", href: "/" },
   { label: "Боты", href: "/bots" },
-  { label: "Диалоги", href: "#" },
-  { label: "AI-настройки", href: "#" },
-  { label: "База знаний", href: "#" },
   { label: "Поиск", href: "/search" },
   { label: "Настройки", href: "/settings" },
 ];

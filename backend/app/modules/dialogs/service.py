@@ -269,6 +269,38 @@ class DialogsService:
                 bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or ""
             )
 
+            if answer.answer is None or answer.answer == "":
+                dialog.status = DialogStatus.WAIT_OPERATOR
+                dialog.updated_at = datetime.utcnow()
+
+                system_message = DialogMessage(
+                    dialog_id=dialog.id,
+                    sender=MessageSender.BOT,
+                    text="Бот временно не может ответить, передаем оператору...",
+                    payload={"system": True},
+                )
+                session.add_all([dialog, system_message])
+                await session.commit()
+                await session.refresh(dialog)
+                await session.refresh(system_message)
+
+                dialog_payload = DialogOut.model_validate(dialog).model_dump()
+                message_payload = DialogMessageOut.model_validate(system_message).model_dump()
+                admin_targets = (
+                    [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
+                )
+
+                await ws_manager.broadcast_to_admins(
+                    {"event": "message_created", "data": message_payload},
+                    admin_ids=admin_targets,
+                )
+                await ws_manager.broadcast_to_admins(
+                    {"event": "dialog_updated", "data": dialog_payload},
+                    admin_ids=admin_targets,
+                )
+
+                return dialog
+
             if answer.can_answer and answer.answer:
                 message, updated_dialog, _dialog_created = await self.add_message(
                     session=session,
@@ -406,6 +438,21 @@ class DialogsService:
             dialog_id=dialog.id,
             question=incoming_message.text or "",
         )
+
+        if answer.answer is None or answer.answer == "":
+            dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.updated_at = datetime.utcnow()
+            system_message = DialogMessage(
+                dialog_id=dialog.id,
+                sender=MessageSender.BOT,
+                text="Бот временно не может ответить, передаем оператору...",
+                payload={"system": True},
+            )
+            session.add_all([dialog, system_message])
+            await session.commit()
+            await session.refresh(dialog)
+            await session.refresh(system_message)
+            return user_message, system_message, dialog, dialog_created
 
         if answer.can_answer and answer.answer:
             bot_message = DialogMessage(

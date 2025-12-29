@@ -13,15 +13,17 @@ class FileStorage:
         self._base_dir = base_dir
         ensure_dir(self._base_dir)
 
-    def save(self, name: str, content: bytes) -> Path:
-        path = self._base_dir / name
+    def save(self, bot_id: int, name: str, content: bytes) -> Path:
+        bot_dir = self._base_dir / str(bot_id)
+        ensure_dir(bot_dir)
+        path = bot_dir / name
         path.write_bytes(content)
         return path
 
-    def delete(self, name: str) -> None:
-        path = self._base_dir / name
+    def delete(self, bot_id: int, name: str) -> None:
+        path = self._base_dir / str(bot_id) / name
         if path.exists():
             path.unlink()
 
-    def path_for(self, name: str) -> Path:
-        return self._base_dir / name
+    def path_for(self, bot_id: int, name: str) -> Path:
+        return self._base_dir / str(bot_id) / name
