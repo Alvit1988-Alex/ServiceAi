@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.modules.accounts.models import User
-from app.modules.channels.models import ChannelType
+from app.modules.channels.models import ChannelType, channel_type_enum
 
 
 def utcnow() -> datetime:
@@ -32,7 +32,7 @@ class Dialog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False, index=True)
     channel_type: Mapped[ChannelType] = mapped_column(
-        SQLEnum(ChannelType, name="channel_type"), nullable=False, index=True
+        channel_type_enum(), nullable=False, index=True
     )
     external_chat_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     external_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)

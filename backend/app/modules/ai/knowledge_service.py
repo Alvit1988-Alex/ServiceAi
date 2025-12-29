@@ -1,6 +1,7 @@
 """Knowledge base service for storing files and embedding their content."""
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 from typing import Callable
@@ -15,6 +16,8 @@ from app.database import async_session_factory
 from app.modules.ai.embeddings import EmbeddingsClient, GigaChatEmbeddingsClient
 from app.modules.ai.models import KnowledgeChunk, KnowledgeFile
 from app.modules.ai.storage import FileStorage
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeService:
@@ -120,11 +123,9 @@ class KnowledgeService:
         if mime_type in ["application/pdf", "application/x-pdf"]:
             try:
                 import fitz
-            except ImportError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="PDF support requires PyMuPDF",
-                ) from exc
+            except ImportError:
+                logger.warning("PDF extraction skipped: PyMuPDF is not installed")
+                return ""
 
             try:
                 doc = fitz.open(file_path)
@@ -134,10 +135,8 @@ class KnowledgeService:
                 doc.close()
                 return text
             except Exception as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to extract text from PDF",
-                ) from exc
+                logger.warning("Failed to extract text from PDF", exc_info=exc)
+                return ""
 
         if mime_type in [
             "application/msword",
@@ -145,23 +144,23 @@ class KnowledgeService:
         ]:
             try:
                 from docx import Document
-            except ImportError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="DOCX support requires python-docx",
-                ) from exc
+            except ImportError:
+                logger.warning("DOCX extraction skipped: python-docx is not installed")
+                return ""
 
             try:
                 doc = Document(file_path)
                 return "\n".join(paragraph.text for paragraph in doc.paragraphs)
             except Exception as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to extract text from DOCX",
-                ) from exc
+                logger.warning("Failed to extract text from DOCX", exc_info=exc)
+                return ""
 
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
-            return handle.read()
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+                return handle.read()
+        except Exception as exc:
+            logger.warning("Failed to read text file for knowledge base", exc_info=exc)
+            return ""
 
     def _split_to_chunks(self, text: str, max_chunk_size: int = 1000) -> list[str]:
         chunks: list[str] = []
