@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { Button } from "../components/Button/Button";
@@ -200,10 +201,13 @@ export default function LoginPage() {
             <div className={`${styles.fieldGroup} ${styles.qrBlock}`}>
               <p className={styles.fieldLabel}>Отсканируйте QR в Telegram</p>
               {qrImage ? (
-                <img
+                <Image
                   src={qrImage}
                   alt="QR для входа через Telegram"
                   className={styles.qrImage}
+                  width={240}
+                  height={240}
+                  unoptimized
                 />
               ) : (
                 <p className={styles.errorText}>Не удалось сгенерировать QR. Попробуйте еще раз.</p>

@@ -1,6 +1,7 @@
 """AI service integrating instructions, RAG and LLM."""
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from sqlalchemy import select
@@ -13,6 +14,9 @@ from app.modules.ai.llm import GigaChatLLMClient, LLMClient
 from app.modules.ai.rag import RAGService
 from app.modules.ai.schemas import AIAnswer
 from app.modules.dialogs.models import DialogMessage, MessageSender
+
+logger = logging.getLogger(__name__)
+_AI_DISABLED_LOGGED = False
 
 
 class AIService:
@@ -47,19 +51,37 @@ class AIService:
 
         history = await self._load_history(dialog_id=dialog_id)
 
-        relevant_chunks = await self._rag_service.find_relevant_chunks(
-            bot_id=bot_id, question=user_message
-        )
+        try:
+            relevant_chunks = await self._rag_service.find_relevant_chunks(
+                bot_id=bot_id, question=user_message
+            )
+        except RuntimeError as exc:
+            self._log_ai_disabled(exc)
+            return AIAnswer(
+                can_answer=False,
+                answer=None,
+                confidence=0.0,
+                used_chunk_ids=[],
+            )
         chunk_texts = [chunk.text for chunk, _ in relevant_chunks]
         used_chunk_ids = [chunk.id for chunk, _ in relevant_chunks]
         confidence = max((score for _, score in relevant_chunks), default=0.0)
 
-        answer_text = await self._llm_client.generate(
-            system_prompt=system_prompt,
-            history=history,
-            question=user_message,
-            context_chunks=chunk_texts,
-        )
+        try:
+            answer_text = await self._llm_client.generate(
+                system_prompt=system_prompt,
+                history=history,
+                question=user_message,
+                context_chunks=chunk_texts,
+            )
+        except RuntimeError as exc:
+            self._log_ai_disabled(exc)
+            return AIAnswer(
+                can_answer=False,
+                answer=None,
+                confidence=confidence,
+                used_chunk_ids=used_chunk_ids,
+            )
 
         can_answer = bool(answer_text) and (
             confidence >= self._confidence_threshold or not used_chunk_ids
@@ -124,6 +146,13 @@ class AIService:
 
     def _session(self) -> AsyncSession:
         return self._session_factory()
+
+    def _log_ai_disabled(self, exc: Exception) -> None:
+        global _AI_DISABLED_LOGGED
+        if _AI_DISABLED_LOGGED:
+            return
+        _AI_DISABLED_LOGGED = True
+        logger.info("AI is not configured; falling back to operator mode. %s", exc)
 
 
 def get_ai_service() -> AIService:

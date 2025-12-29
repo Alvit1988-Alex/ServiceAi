@@ -71,7 +71,7 @@ export default function BotKnowledge({ botId }: BotKnowledgeProps) {
     loadKnowledge(botId);
   }, [botId, loadKnowledge]);
 
-  const knowledgeItems = knowledgeByBot[botId] ?? [];
+  const knowledgeItems = useMemo(() => knowledgeByBot[botId] ?? [], [knowledgeByBot, botId]);
   const pagination = knowledgePaginationByBot[botId] ?? getPaginationFallback(knowledgeItems);
   const totalPages = Math.max(1, Math.ceil((pagination.total || knowledgeItems.length) / pagination.per_page));
 
