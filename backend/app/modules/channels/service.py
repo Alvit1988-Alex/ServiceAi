@@ -295,6 +295,10 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
 
     base_url = settings.public_base_url
     if channel.is_active and not base_url:
+        logger.warning(
+            "Public base URL is not configured; Telegram webhook sync skipped",
+            extra={"bot_id": channel.bot_id, "channel_id": channel.id},
+        )
         return "pending", "Public base URL is not configured"
 
     webhook_url = None
