@@ -1,6 +1,11 @@
 import { httpClient } from "./httpClient";
 import { BotChannel, ChannelType, ListResponse } from "./types";
 
+interface WebchatEmbedResponse {
+  embed_code: string;
+  url: string;
+}
+
 interface BotChannelCreatePayload {
   channel_type: ChannelType;
   config: Record<string, unknown>;
@@ -93,4 +98,14 @@ export async function deleteChannel(botId: number, channelId: number): Promise<v
   if (!response.ok) {
     throw new Error(await getErrorMessage(response, "Не удалось удалить канал"));
   }
+}
+
+export async function fetchWebchatEmbedCode(botId: number): Promise<WebchatEmbedResponse> {
+  const response = await httpClient(`/bots/${botId}/channels/webchat/embed`);
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось загрузить код Webchat"));
+  }
+
+  return (await response.json()) as WebchatEmbedResponse;
 }
