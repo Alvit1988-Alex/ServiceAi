@@ -432,6 +432,13 @@ class DialogsService:
         await session.refresh(dialog)
         await session.refresh(user_message)
 
+        if (
+            dialog.assigned_admin_id is not None
+            and dialog.locked_until is not None
+            and dialog.locked_until > now
+        ):
+            return user_message, None, dialog, dialog_created
+
         bot_message: DialogMessage | None = None
         answer = await ai_service.answer(
             bot_id=incoming_message.bot_id,
