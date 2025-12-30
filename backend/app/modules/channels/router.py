@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
 from app.modules.ai.service import AIService, get_ai_service
@@ -52,6 +53,19 @@ async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> B
     stmt = (
         select(BotChannel)
         .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.TELEGRAM)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+    )
+    result = await session.execute(stmt)
+    channel = result.scalars().first()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    return channel
+
+
+async def _get_webchat_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
+    stmt = (
+        select(BotChannel)
+        .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.WEBCHAT)
         .order_by(BotChannel.is_active.desc(), BotChannel.id)
     )
     result = await session.execute(stmt)
@@ -179,6 +193,31 @@ async def get_channel(
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return service.decrypt(channel)
+
+
+@router.get("/webchat/embed")
+async def get_webchat_embed(
+    bot_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    channel = await _get_webchat_channel_for_bot(session=session, bot_id=bot_id)
+    _ensure_channel_available(channel)
+
+    base_url = settings.front_base_url or settings.public_base_url
+    if not base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+
+    webchat_url = f"{base_url.rstrip('/')}/webchat?bot_id={bot_id}"
+    embed_code = (
+        f'<iframe src="{webchat_url}" '
+        'style="width: 100%; height: 600px; border: 0;" '
+        'loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>'
+    )
+    return {"embed_code": embed_code, "url": webchat_url}
 
 
 @router.patch("/{channel_id}", response_model=BotChannelOut)
