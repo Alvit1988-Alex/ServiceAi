@@ -99,7 +99,8 @@ class TelegramSender(BaseChannelSender):
                         "bot_id": bot_id,
                         "channel_id": channel.id,
                         "status": response.status_code,
-                        "response": data,
+                        "provider": "telegram",
+                        "endpoint": "sendMessage",
                     },
                 )
                 latency_ms = int((time.perf_counter() - start) * 1000)
