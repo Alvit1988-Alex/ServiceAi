@@ -126,7 +126,19 @@ async def create_channel(
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
     channel = await service.create(session=session, bot_id=bot_id, obj_in=data)
-    return service.decrypt(channel)
+    decrypted = service.decrypt(channel)
+
+    if decrypted.channel_type == ChannelType.TELEGRAM:
+        status, error = await sync_telegram_webhook(decrypted)
+        decrypted.config = dict(decrypted.config or {})
+        if status:
+            decrypted.config["webhook_status"] = status
+        if error:
+            decrypted.config["webhook_error"] = error
+        elif "webhook_error" in decrypted.config:
+            decrypted.config.pop("webhook_error")
+
+    return decrypted
 
 
 @router.get("", response_model=ListResponse[BotChannelOut])
@@ -166,7 +178,7 @@ async def update_channel(
     channel = await service.get(session=session, bot_id=bot_id, channel_id=channel_id)
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    updated = await service.update(session=session, db_obj=channel, obj_in=data)
+    updated = await service.update(session=session, db_obj=channel, obj_in=data, sync_telegram_on_activate=False)
     decrypted = service.decrypt(updated)
 
     if decrypted.channel_type == ChannelType.TELEGRAM:
