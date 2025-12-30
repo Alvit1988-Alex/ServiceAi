@@ -303,7 +303,7 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
 
     webhook_url = None
     if channel.is_active:
-        webhook_url = f"{base_url.rstrip('/')}/bots/{channel.bot_id}/channels/webhooks/telegram/{channel.id}"
+        webhook_url = f"{base_url.rstrip('/')}/webhooks/telegram/{channel.bot_id}"
 
     api_url = f"https://api.telegram.org/bot{token}"
     try:

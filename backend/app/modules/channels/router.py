@@ -4,6 +4,7 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
@@ -24,7 +25,7 @@ from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
 from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
-from app.modules.channels.models import ChannelType
+from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.diagnostics.service import DiagnosticsService, get_diagnostics_service
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
 from app.modules.dialogs.service import DialogsService
@@ -32,6 +33,7 @@ from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
 
 router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
+webhooks_router = APIRouter(tags=["channels"])
 logger = logging.getLogger(__name__)
 AVITO_SIGNATURE_HEADER = "X-Avito-Signature"
 
@@ -44,6 +46,19 @@ def _ensure_channel_available(channel) -> None:
 def _validate_secret(expected: str | None, provided: str | None, detail: str) -> None:
     if expected and expected != provided:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
+    stmt = (
+        select(BotChannel)
+        .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.TELEGRAM)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+    )
+    result = await session.execute(stmt)
+    channel = result.scalars().first()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    return channel
 
 
 async def _log_incoming_event(
@@ -259,6 +274,31 @@ async def telegram_webhook(
         latency_ms=latency_ms,
     )
     return {"ok": True}
+
+
+@webhooks_router.post("/webhooks/telegram/{bot_id}")
+async def telegram_webhook_alias(
+    bot_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
+) -> dict:
+    channel = await _get_telegram_channel_for_bot(session=session, bot_id=bot_id)
+    return await telegram_webhook(
+        bot_id=bot_id,
+        channel_id=channel.id,
+        payload=payload,
+        request=request,
+        session=session,
+        channels_service=channels_service,
+        dialogs_service=dialogs_service,
+        ai_service=ai_service,
+        diagnostics_service=diagnostics_service,
+    )
 
 
 def _extract_provided_secret(request: Request, payload: dict, header_name: str = "X-Webhook-Secret") -> str | None:
