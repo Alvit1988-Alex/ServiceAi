@@ -1,12 +1,16 @@
 """Dialogs API router."""
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
-from app.modules.channels.models import ChannelType
+from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
 from app.modules.dialogs.service import DialogLockError, DialogMessagesService, DialogsService
@@ -388,12 +392,61 @@ async def ws_admin(websocket: WebSocket, token: str) -> None:
 
 
 @router.websocket("/ws/webchat/{bot_id}/{session_id}")
-async def ws_webchat(websocket: WebSocket, bot_id: int, session_id: str) -> None:
+async def ws_webchat(
+    websocket: WebSocket,
+    bot_id: int,
+    session_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+) -> None:
     await manager.register_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
     try:
+        result = await session.execute(
+            select(BotChannel)
+            .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.WEBCHAT)
+            .order_by(BotChannel.is_active.desc(), BotChannel.id)
+        )
+        channel = result.scalars().first()
+        if not channel:
+            await websocket.send_json({"type": "error", "message": "Channel not found"})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
         while True:
-            await websocket.receive_text()
+            raw_message = await websocket.receive_text()
+            try:
+                data = json.loads(raw_message)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
+                continue
+
+            if data.get("type") != "user_message":
+                await websocket.send_json({"type": "error", "message": "Unsupported message type"})
+                continue
+
+            text = (data.get("text") or "").strip()
+            if not text:
+                await websocket.send_json({"type": "error", "message": "Empty message"})
+                continue
+
+            payload = dict(data)
+            payload["text"] = text
+            payload.setdefault("session_id", session_id)
+
+            normalized = normalize_webchat_message(
+                bot_id=bot_id,
+                channel_id=channel.id,
+                payload=payload,
+            )
+            await dialogs_service.process_incoming_message(
+                session=session,
+                incoming_message=normalized,
+                ai_service=ai_service,
+            )
     except WebSocketDisconnect:
+        pass
+    finally:
         await manager.unregister_webchat(bot_id=bot_id, session_id=session_id, ws=websocket)
 
 
