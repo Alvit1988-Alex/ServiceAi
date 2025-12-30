@@ -6,6 +6,7 @@ import secrets
 from typing import Any
 
 import httpx
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,12 @@ class ChannelsService:
 
     async def create(self, session: AsyncSession, bot_id: int, obj_in: BotChannelCreate) -> BotChannel:
         prepared_config = self._prepare_config(obj_in.channel_type, obj_in.config)
+        if obj_in.channel_type == ChannelType.TELEGRAM:
+            token = prepared_config.get("token")
+            if token:
+                bot_username = await self._validate_telegram_token(token)
+                if bot_username:
+                    prepared_config["bot_username"] = bot_username
         db_obj = BotChannel(
             bot_id=bot_id,
             channel_type=obj_in.channel_type,
@@ -89,6 +96,20 @@ class ChannelsService:
         previous_active = db_obj.is_active
         previous_config = decrypt_config(db_obj.config)
         data = obj_in.model_dump(exclude_unset=True)
+        if db_obj.channel_type == ChannelType.TELEGRAM:
+            config_update = data.get("config")
+            next_config = config_update if config_update is not None else previous_config
+            token = (next_config or {}).get("token")
+            should_validate = bool(token) and (
+                (data.get("is_active") is True and not previous_active)
+                or (config_update is not None and token != previous_config.get("token"))
+            )
+            if should_validate:
+                bot_username = await self._validate_telegram_token(token)
+                if bot_username:
+                    next_config = dict(next_config or {})
+                    next_config["bot_username"] = bot_username
+                    data["config"] = next_config
         if "config" in data:
             prepared_config = self._prepare_config(db_obj.channel_type, data["config"])
             data["config"] = encrypt_config(prepared_config)
@@ -144,6 +165,38 @@ class ChannelsService:
 
         return prepared
 
+    @staticmethod
+    async def _validate_telegram_token(token: str) -> str | None:
+        url = f"https://api.telegram.org/bot{token}/getMe"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(url)
+            if response.status_code in {401, 403}:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Неверный токен Telegram",
+                )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Не удалось проверить токен Telegram",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Не удалось проверить токен Telegram",
+            ) from exc
+
+        payload = response.json()
+        if not payload.get("ok"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Не удалось проверить токен Telegram",
+            )
+
+        result = payload.get("result") or {}
+        return result.get("username")
 
     @staticmethod
     def should_reply_to_avito_message(config: dict[str, Any] | None, item_id: str | None) -> tuple[bool, str | None]:
