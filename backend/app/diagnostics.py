@@ -61,7 +61,10 @@ def main() -> int:
         response = httpx.get(
             url,
             params=params,
-            headers={"X-Internal-Key": internal_key},
+            headers={
+                "X-Internal-Api-Key": internal_key,
+                "X-Internal-Key": internal_key,
+            },
             timeout=15.0,
         )
     except httpx.TimeoutException:
