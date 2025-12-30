@@ -24,14 +24,34 @@ function buildTelegramLinks(deeplink: string | null) {
       return { webLink: deeplink, tgLink: null };
     }
 
+    if (url.hostname === "telegram.me") {
+      url.hostname = "t.me";
+    }
+
     return {
-      webLink: deeplink,
-      tgLink: `tg://resolve?domain=${botUsername}&start=${startParam}`,
+      webLink: url.toString(),
+      tgLink: null,
     };
   } catch {
     return { webLink: deeplink, tgLink: null };
   }
 }
+
+const hasValidBotStart = (link: string | null) => {
+  if (!link) {
+    return false;
+  }
+
+  try {
+    const url = new URL(link);
+    const botUsername = url.pathname.replace("/", "");
+    const startParam = url.searchParams.get("start");
+
+    return Boolean(botUsername && startParam);
+  } catch {
+    return false;
+  }
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -53,11 +73,11 @@ export default function LoginPage() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  const { webLink, tgLink } = useMemo(
+  const { webLink } = useMemo(
     () => buildTelegramLinks(pendingDeeplink),
     [pendingDeeplink],
   );
-  const qrLink = tgLink ?? webLink;
+  const qrLink = webLink;
 
   useEffect(() => {
     void initFromStorage();
@@ -132,11 +152,7 @@ export default function LoginPage() {
               type="button"
               onClick={async () => {
                 setShowQr(false);
-                if (tgLink) {
-                  window.location.href = tgLink;
-                  return;
-                }
-                if (webLink) {
+                if (webLink && hasValidBotStart(webLink)) {
                   window.open(webLink, "_blank", "noopener,noreferrer");
                   return;
                 }
@@ -144,12 +160,7 @@ export default function LoginPage() {
                 if (!deeplink) {
                   return;
                 }
-                const { tgLink: resolvedTgLink, webLink: resolvedWebLink } =
-                  buildTelegramLinks(deeplink);
-                if (resolvedTgLink) {
-                  window.location.href = resolvedTgLink;
-                  return;
-                }
+                const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
                 if (resolvedWebLink) {
                   window.open(resolvedWebLink, "_blank", "noopener,noreferrer");
                 }
@@ -162,7 +173,7 @@ export default function LoginPage() {
               type="button"
               variant="secondary"
               onClick={async () => {
-                if (webLink) {
+                if (webLink && hasValidBotStart(webLink)) {
                   window.open(webLink, "_blank", "noopener,noreferrer");
                   return;
                 }
@@ -183,7 +194,7 @@ export default function LoginPage() {
               type="button"
               onClick={async () => {
                 setShowQr(true);
-                if (!isPendingValid) {
+                if (!isPendingValid || !hasValidBotStart(webLink)) {
                   await ensurePendingLogin();
                 }
               }}
@@ -221,17 +232,10 @@ export default function LoginPage() {
                   <li>Вернитесь в браузер — вход завершится автоматически.</li>
                 </ol>
               </div>
-              {tgLink && (
-                <p className={styles.loginDescription}>
-                  <a href={tgLink} target="_blank" rel="noreferrer">
-                    Открыть в Telegram
-                  </a>
-                </p>
-              )}
               {webLink && (
                 <p className={styles.loginDescription}>
                   <a href={webLink} target="_blank" rel="noreferrer">
-                    Если не открылось — откройте в браузере
+                    Открыть в браузере
                   </a>
                 </p>
               )}
