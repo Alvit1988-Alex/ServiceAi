@@ -92,6 +92,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),
         description="Publicly accessible base URL used for building webhooks",
     )
+    front_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FRONT_BASE_URL", "front_base_url"),
+        description="Publicly accessible frontend base URL used for building webchat embed links",
+    )
 
     # Internal security
     channel_config_secret_key: str = Field(
