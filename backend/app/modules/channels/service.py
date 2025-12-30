@@ -92,6 +92,8 @@ class ChannelsService:
         session: AsyncSession,
         db_obj: BotChannel,
         obj_in: BotChannelUpdate,
+        *,
+        sync_telegram_on_activate: bool = True,
     ) -> BotChannel:
         previous_active = db_obj.is_active
         previous_config = decrypt_config(db_obj.config)
@@ -130,6 +132,14 @@ class ChannelsService:
             previous_active=previous_active,
             previous_config=previous_config,
         )
+
+        if (
+            sync_telegram_on_activate
+            and decrypted.channel_type == ChannelType.TELEGRAM
+            and decrypted.is_active
+            and not previous_active
+        ):
+            await sync_telegram_webhook(decrypted)
 
         return decrypted
 
