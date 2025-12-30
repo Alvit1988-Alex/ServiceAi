@@ -68,6 +68,16 @@ class TelegramSender(BaseChannelSender):
         if not channel:
             logger.warning("No Telegram channel configured for bot", extra={"bot_id": bot_id})
             return
+        if attachments:
+            logger.warning(
+                "Telegram attachments are not supported yet; ignoring",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "attachments_count": len(attachments),
+                },
+            )
 
         token = channel.config.get("token") or channel.config.get("bot_token")
         if not token:
@@ -207,7 +217,7 @@ class WhatsappGreenSender(BaseChannelSender):
             return
 
         if attachments:
-            logger.info(
+            logger.warning(
                 "WhatsApp Green attachments are not supported yet; ignoring",
                 extra={
                     "bot_id": bot_id,
@@ -383,7 +393,7 @@ class Whatsapp360Sender(BaseChannelSender):
             return
 
         if attachments:
-            logger.info(
+            logger.warning(
                 "WhatsApp 360 attachments are not supported yet; ignoring",
                 extra={
                     "bot_id": bot_id,
@@ -517,6 +527,16 @@ class WhatsappCustomSender(BaseChannelSender):
                 extra={"bot_id": bot_id, "chat_id": external_chat_id},
             )
             return
+        if attachments:
+            logger.warning(
+                "WhatsApp custom attachments are not supported yet; ignoring",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "attachments_count": len(attachments),
+                },
+            )
 
         config = channel.config or {}
         send_message_url = config.get("send_message_url")
@@ -647,6 +667,16 @@ class MaxSender(BaseChannelSender):
         if not channel:
             logger.warning("No Max channel configured for bot", extra={"bot_id": bot_id})
             return
+        if attachments:
+            logger.warning(
+                "Max attachments are not supported yet; ignoring",
+                extra={
+                    "bot_id": bot_id,
+                    "channel_id": channel.id,
+                    "chat_id": external_chat_id,
+                    "attachments_count": len(attachments),
+                },
+            )
 
         config = channel.config or {}
         token = config.get("auth_token") or config.get("token")
