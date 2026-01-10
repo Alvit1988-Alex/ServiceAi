@@ -15,6 +15,7 @@ from app.modules.channels import router as channels_router
 from app.modules.dialogs import router as dialogs_router
 from app.modules.stats import router as stats_router
 from app.modules.diagnostics import router as diagnostics_router
+from app.modules.webchat.router import router as webchat_router
 
 
 app = FastAPI(
@@ -58,6 +59,7 @@ app.include_router(dialogs_router.router)
 app.include_router(ai_router.router)
 app.include_router(stats_router.router)
 app.include_router(diagnostics_router.router)
+app.include_router(webchat_router)
 
 
 @app.get("/health", tags=["system"])

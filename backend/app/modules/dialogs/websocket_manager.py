@@ -54,6 +54,9 @@ class WebSocketManager:
         if not connections:
             self._webchat_connections.pop(key, None)
 
+    async def send_to_webchat(self, bot_id: int, session_id: str, message: dict) -> None:
+        await self.broadcast_to_webchat(bot_id=bot_id, session_id=session_id, message=message)
+
     async def broadcast_new_message(
         self,
         *,
