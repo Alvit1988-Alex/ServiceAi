@@ -1,0 +1,208 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+
+import { API_BASE_URL } from "@/app/api/config";
+import { connect, disconnect, sendMessage } from "@/app/ws/webchat";
+
+import styles from "./webchat.module.css";
+
+type ChatMessage = {
+  id: string;
+  sender: "user" | "bot";
+  text: string;
+};
+
+type InitResponse = {
+  session_id: string;
+  ws_url: string;
+  bot: {
+    id: number;
+    name: string;
+  };
+};
+
+function createId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const rand = Math.random() * 16;
+    const value = char === "x" ? rand : (rand % 4) + 8;
+    return Math.floor(value).toString(16);
+  });
+}
+
+function parseIncomingMessage(data: unknown): { sender: "user" | "bot"; text: string } | null {
+  if (!data) return null;
+
+  if (typeof data === "string") {
+    return { sender: "bot", text: data };
+  }
+
+  if (typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    const nested = record.data as Record<string, unknown> | undefined;
+    const payload = record.payload as Record<string, unknown> | undefined;
+    const nestedPayload = nested?.payload as Record<string, unknown> | undefined;
+
+    const senderRaw = (nested?.sender ?? record.sender) as string | undefined;
+    const sender = senderRaw === "user" ? "user" : "bot";
+    const text =
+      (nested?.text as string | undefined) ??
+      (record.text as string | undefined) ??
+      (nestedPayload?.text as string | undefined) ??
+      (payload?.text as string | undefined);
+
+    if (text) {
+      return { sender, text };
+    }
+  }
+
+  return null;
+}
+
+export default function EmbeddedWebchatPage() {
+  const params = useParams();
+  const botIdParam = typeof params?.botId === "string" ? params.botId : "";
+  const botId = useMemo(() => {
+    const parsed = Number(botIdParam);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [botIdParam]);
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [botName, setBotName] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!botId) {
+      setError("Некорректный botId");
+      return;
+    }
+
+    const storageKey = `webchat_session_${botId}`;
+
+    setIsLoading(true);
+    setError(null);
+
+    fetch(`${API_BASE_URL}/webchat/init`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ bot_id: botId }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось инициализировать чат");
+        }
+        return (await response.json()) as InitResponse;
+      })
+      .then((data) => {
+        const nextSessionId = data.session_id || createId();
+        setSessionId(nextSessionId);
+        setWsUrl(data.ws_url);
+        setBotName(data.bot.name);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(storageKey, nextSessionId);
+        }
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Ошибка запуска чата";
+        setError(message);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [botId]);
+
+  useEffect(() => {
+    if (!wsUrl) {
+      return;
+    }
+
+    connect(wsUrl, (data) => {
+      const parsed = parseIncomingMessage(data);
+      if (!parsed || parsed.sender === "user") {
+        return;
+      }
+      setMessages((prev) => [...prev, { id: createId(), sender: parsed.sender, text: parsed.text }]);
+    });
+
+    return () => {
+      disconnect();
+    };
+  }, [wsUrl]);
+
+  const handleSend = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+
+    sendMessage(text);
+    setMessages((prev) => [...prev, { id: createId(), sender: "user", text }]);
+    setInputValue("");
+  };
+
+  if (error) {
+    return (
+      <div className={styles.errorState}>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <div className={styles.title}>{botName ?? "Webchat"}</div>
+        {isLoading && <div className={styles.status}>Подключение...</div>}
+        {!isLoading && sessionId && <div className={styles.status}>Сессия {sessionId.slice(0, 8)}</div>}
+      </header>
+      <div className={styles.messages}>
+        {messages.length === 0 ? (
+          <div className={styles.empty}>Напишите первый вопрос — бот ответит здесь.</div>
+        ) : (
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`${styles.message} ${
+                message.sender === "user" ? styles.messageUser : styles.messageBot
+              }`}
+            >
+              <span>{message.text}</span>
+            </div>
+          ))
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <div className={styles.inputBar}>
+        <input
+          value={inputValue}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Введите сообщение..."
+          className={styles.input}
+          type="text"
+        />
+        <button type="button" className={styles.sendButton} onClick={handleSend}>
+          Отправить
+        </button>
+      </div>
+    </div>
+  );
+}

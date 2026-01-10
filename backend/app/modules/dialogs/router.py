@@ -10,7 +10,7 @@ from app.dependencies import get_db_session
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
 from app.modules.channels.models import BotChannel, ChannelType
-from app.modules.channels.webchat_handler import normalize_webchat_message
+from app.modules.channels.webchat_handler import handle_webchat_ws_message
 from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
 from app.modules.dialogs.service import DialogLockError, DialogMessagesService, DialogsService
@@ -430,19 +430,16 @@ async def ws_webchat(
                 await websocket.send_json({"type": "error", "message": "Empty message"})
                 continue
 
-            payload = dict(data)
-            payload["text"] = text
-            payload.setdefault("session_id", session_id)
-
-            normalized = normalize_webchat_message(
+            await handle_webchat_ws_message(
                 bot_id=bot_id,
                 channel_id=channel.id,
-                payload=payload,
-            )
-            await dialogs_service.process_incoming_message(
+                session_id=session_id,
+                data=data,
+                text=text,
                 session=session,
-                incoming_message=normalized,
+                dialogs_service=dialogs_service,
                 ai_service=ai_service,
+                manager=manager,
             )
     except WebSocketDisconnect:
         pass

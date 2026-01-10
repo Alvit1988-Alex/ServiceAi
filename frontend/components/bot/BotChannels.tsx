@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { fetchWebchatEmbedCode, listChannels, updateChannel } from "@/app/api/channelsApi";
+import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
 
 import styles from "./BotChannels.module.css";
@@ -31,8 +31,6 @@ const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
 };
-
-const WIDGET_INTEGRATION_ENABLED = process.env.NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION === "true";
 
 const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
   [ChannelType.TELEGRAM]: {
@@ -139,7 +137,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
-  const [loadingWebchatId, setLoadingWebchatId] = useState<number | null>(null);
   const [webchatCodes, setWebchatCodes] = useState<Record<number, string>>({});
   const [channelErrors, setChannelErrors] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -422,40 +419,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
-  useEffect(() => {
-    if (!WIDGET_INTEGRATION_ENABLED) {
-      return;
+  const resolveWidgetScriptUrl = () => {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/static/webchat.js`;
     }
-
-    const webchatChannels = channels.filter((channel) => channel.channel_type === ChannelType.WEBCHAT);
-    if (webchatChannels.length === 0) {
-      return;
+    const rawBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+    if (rawBaseUrl) {
+      let base = rawBaseUrl.replace(/\/$/, "");
+      if (base.endsWith("/api")) {
+        base = base.slice(0, -4);
+      }
+      return `${base}/static/webchat.js`;
     }
+    return "/static/webchat.js";
+  };
 
-    let cancelled = false;
-    webchatChannels.forEach((channel) => {
-      setLoadingWebchatId(channel.id);
-      fetchWebchatEmbedCode(botId)
-        .then((data) => {
-          if (cancelled) return;
-          setWebchatCodes((prev) => ({ ...prev, [channel.id]: data.embed_code }));
-          setChannelErrors((prev) => ({ ...prev, [channel.id]: "" }));
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          const message = err instanceof Error ? err.message : "Не удалось загрузить код Webchat";
-          setChannelErrors((prev) => ({ ...prev, [channel.id]: message }));
-        })
-        .finally(() => {
-          if (cancelled) return;
-          setLoadingWebchatId((prev) => (prev === channel.id ? null : prev));
-        });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [botId, channels]);
+  const buildWebchatEmbedCode = (targetBotId: number) => {
+    const scriptSrc = resolveWidgetScriptUrl();
+    return `<script src=\"${scriptSrc}\" data-bot=\"${targetBotId}\"></script>`;
+  };
 
   const handleCopyWebchatCode = async (channelId: number) => {
     const code = webchatCodes[channelId];
@@ -472,15 +454,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }
   };
 
-  const renderWebchatSettings = (channel: BotChannel) => {
-    if (!WIDGET_INTEGRATION_ENABLED) {
-      return (
-        <div className={styles.webchatSettings}>
-          <p className={styles.subtitle}>Скоро</p>
-        </div>
-      );
-    }
+  const handleGenerateWebchatCode = (channelId: number) => {
+    setWebchatCodes((prev) => ({ ...prev, [channelId]: buildWebchatEmbedCode(botId) }));
+    setChannelErrors((prev) => ({ ...prev, [channelId]: "" }));
+  };
 
+  const renderWebchatSettings = (channel: BotChannel) => {
     const code = webchatCodes[channel.id] ?? "";
 
     return (
@@ -489,11 +468,18 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           Вставьте готовый сниппет на сайт, чтобы подключить Webchat.
         </p>
         <div className={styles.webchatCodeBlock}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => handleGenerateWebchatCode(channel.id)}
+          >
+            Получить код
+          </button>
           <textarea
             className={styles.textarea}
             readOnly
             value={code}
-            placeholder={loadingWebchatId === channel.id ? "Загружаем код..." : "Код будет доступен после загрузки"}
+            placeholder="Код будет доступен после нажатия кнопки"
             rows={8}
           />
           <button
