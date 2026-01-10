@@ -419,34 +419,33 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
-  const resolveWidgetScriptUrl = () => {
+  const PLACEHOLDER_ORIGIN = "https://ВАШ_ДОМЕН";
+
+  const buildWebchatEmbedCode = (scriptSrc: string, targetBotId: number) =>
+    `<script src=\"${scriptSrc}\" data-bot=\"${targetBotId}\"></script>`;
+
+  const resolveDisplayScriptUrl = () => {
     if (typeof window !== "undefined") {
       return `${window.location.origin}/static/webchat.js`;
     }
-    const rawBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-    if (rawBaseUrl) {
-      let base = rawBaseUrl.replace(/\/$/, "");
-      if (base.endsWith("/api")) {
-        base = base.slice(0, -4);
-      }
-      return `${base}/static/webchat.js`;
-    }
-    return "/static/webchat.js";
+    return `${PLACEHOLDER_ORIGIN}/static/webchat.js`;
   };
 
-  const buildWebchatEmbedCode = (targetBotId: number) => {
-    const scriptSrc = resolveWidgetScriptUrl();
-    return `<script src=\"${scriptSrc}\" data-bot=\"${targetBotId}\"></script>`;
+  const resolveCopyScriptUrl = () => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return `${window.location.origin}/static/webchat.js`;
   };
 
   const handleCopyWebchatCode = async (channelId: number) => {
-    const code = webchatCodes[channelId];
-    if (!code || typeof navigator === "undefined" || !navigator.clipboard) {
+    const scriptSrc = resolveCopyScriptUrl();
+    if (!scriptSrc || typeof navigator === "undefined" || !navigator.clipboard) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(code);
+      await navigator.clipboard.writeText(buildWebchatEmbedCode(scriptSrc, botId));
       setSuccessChannelId(channelId);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось скопировать код";
@@ -455,7 +454,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   };
 
   const handleGenerateWebchatCode = (channelId: number) => {
-    setWebchatCodes((prev) => ({ ...prev, [channelId]: buildWebchatEmbedCode(botId) }));
+    const scriptSrc = resolveDisplayScriptUrl();
+    setWebchatCodes((prev) => ({ ...prev, [channelId]: buildWebchatEmbedCode(scriptSrc, botId) }));
     setChannelErrors((prev) => ({ ...prev, [channelId]: "" }));
   };
 

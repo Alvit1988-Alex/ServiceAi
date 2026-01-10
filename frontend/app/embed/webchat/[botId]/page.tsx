@@ -23,6 +23,23 @@ type InitResponse = {
   };
 };
 
+function buildInitUrl(baseUrl: string): { primary: string; fallback?: string } {
+  const normalized = baseUrl.replace(/\/$/, "");
+
+  if (normalized.endsWith("/api")) {
+    const withoutApi = normalized.slice(0, -4);
+    const fallbackBase = withoutApi === "" ? "" : withoutApi;
+    return {
+      primary: `${normalized}/webchat/init`,
+      fallback: `${fallbackBase}/webchat/init`,
+    };
+  }
+
+  return {
+    primary: `${normalized}/webchat/init`,
+  };
+}
+
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -95,20 +112,35 @@ export default function EmbeddedWebchatPage() {
     setIsLoading(true);
     setError(null);
 
-    fetch(`${API_BASE_URL}/webchat/init`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ bot_id: botId }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Не удалось инициализировать чат");
+    const initUrls = buildInitUrl(API_BASE_URL);
+
+    const initChat = async () => {
+      try {
+        const response = await fetch(initUrls.primary, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ bot_id: botId }),
+        });
+
+        let finalResponse = response;
+
+        if (response.status === 404 && initUrls.fallback) {
+          finalResponse = await fetch(initUrls.fallback, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ bot_id: botId }),
+          });
         }
-        return (await response.json()) as InitResponse;
-      })
-      .then((data) => {
+
+        if (!finalResponse.ok) {
+          throw new Error("Init failed");
+        }
+
+        const data = (await finalResponse.json()) as InitResponse;
         const nextSessionId = data.session_id || createId();
         setSessionId(nextSessionId);
         setWsUrl(data.ws_url);
@@ -116,14 +148,14 @@ export default function EmbeddedWebchatPage() {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(storageKey, nextSessionId);
         }
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : "Ошибка запуска чата";
-        setError(message);
-      })
-      .finally(() => {
+      } catch (_error) {
+        setError("Ошибка подключения");
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    initChat();
   }, [botId]);
 
   useEffect(() => {
