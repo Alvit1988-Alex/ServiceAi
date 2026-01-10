@@ -17,11 +17,11 @@
     return;
   }
 
-  var baseUrl = "";
+  var origin = "";
   try {
-    baseUrl = new URL(script.src).origin;
+    origin = new URL(script.src).origin;
   } catch (e) {
-    baseUrl = "";
+    origin = "";
   }
 
   var container = document.createElement("div");
@@ -43,7 +43,7 @@
   button.style.boxShadow = "0 8px 20px rgba(37, 99, 235, 0.3)";
 
   var iframe = document.createElement("iframe");
-  iframe.src = baseUrl + "/embed/webchat/" + botId;
+  iframe.src = origin + "/embed/webchat/" + botId;
   iframe.style.width = "360px";
   iframe.style.height = "520px";
   iframe.style.border = "1px solid #e5e7eb";
