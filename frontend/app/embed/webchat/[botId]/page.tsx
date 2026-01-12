@@ -25,25 +25,13 @@ type InitResponse = {
 
 type InitErrorDetails = {
   url: string;
-  status?: number;
-  message?: string;
+  status: number | null;
+  hint: string;
 };
 
-function buildInitUrl(baseUrl: string): { primary: string; fallback?: string } {
+function buildInitUrl(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/$/, "");
-
-  if (normalized.endsWith("/api")) {
-    const withoutApi = normalized.slice(0, -4);
-    const fallbackBase = withoutApi === "" ? "" : withoutApi;
-    return {
-      primary: `${normalized}/webchat/init`,
-      fallback: `${fallbackBase}/webchat/init`,
-    };
-  }
-
-  return {
-    primary: `${normalized}/webchat/init`,
-  };
+  return `${normalized}/webchat/init`;
 }
 
 function createId(): string {
@@ -128,11 +116,11 @@ export default function EmbeddedWebchatPage() {
     setError(null);
     setErrorDetails(null);
 
-    const initUrls = buildInitUrl(API_BASE_URL);
+    const initUrl = buildInitUrl(API_BASE_URL);
+    const errorHint = "Проверь nginx proxy для /api → backend";
 
     const initChat = async () => {
-      let requestUrl = initUrls.primary;
-      let initErrorDetails: InitErrorDetails | null = null;
+      const requestUrl = initUrl;
       try {
         const response = await fetch(requestUrl, {
           method: "POST",
@@ -142,25 +130,13 @@ export default function EmbeddedWebchatPage() {
           body: JSON.stringify({ bot_id: botId }),
         });
 
-        let finalResponse = response;
-
-        if (response.status === 404 && initUrls.fallback) {
-          requestUrl = initUrls.fallback;
-          finalResponse = await fetch(requestUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ bot_id: botId }),
-          });
+        if (!response.ok) {
+          setErrorDetails({ url: requestUrl, status: response.status, hint: errorHint });
+          setError("Ошибка подключения");
+          return;
         }
 
-        if (!finalResponse.ok) {
-          initErrorDetails = { url: requestUrl, status: finalResponse.status };
-          throw new Error("Init failed");
-        }
-
-        const data = (await finalResponse.json()) as InitResponse;
+        const data = (await response.json()) as InitResponse;
         const nextSessionId = data.session_id || createId();
         setSessionId(nextSessionId);
         setWsUrl(data.ws_url);
@@ -168,14 +144,8 @@ export default function EmbeddedWebchatPage() {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(storageKey, nextSessionId);
         }
-      } catch (caughtError) {
-        if (!initErrorDetails) {
-          initErrorDetails = {
-            url: requestUrl,
-            message: caughtError instanceof Error ? caughtError.message : "Unknown error",
-          };
-        }
-        setErrorDetails(initErrorDetails);
+      } catch {
+        setErrorDetails({ url: requestUrl, status: null, hint: errorHint });
         setError("Ошибка подключения");
       } finally {
         setIsLoading(false);
@@ -249,7 +219,7 @@ export default function EmbeddedWebchatPage() {
             <div className={styles.errorDetails}>
               <div>URL: {errorDetails.url}</div>
               <div>Status: {errorDetails.status ?? "no response"}</div>
-              <div>Hint: Проверь nginx proxy для /api → backend</div>
+              <div>Hint: {errorDetails.hint}</div>
             </div>
           )}
         </div>
