@@ -1,7 +1,9 @@
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
   background: var(--bg);
   font-family: "Inter", "Segoe UI", sans-serif;
 }
@@ -123,6 +125,11 @@
 
 .sendButton:hover {
   opacity: 0.9;
+}
+
+.sendButton:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .errorState {

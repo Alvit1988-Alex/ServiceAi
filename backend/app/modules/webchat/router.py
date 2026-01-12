@@ -50,7 +50,6 @@ async def init_webchat(
         .where(
             Bot.id == payload.bot_id,
             BotChannel.channel_type == ChannelType.WEBCHAT,
-            BotChannel.is_active.is_(True),
         )
     )
     result = await session.execute(stmt)

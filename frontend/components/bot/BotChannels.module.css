@@ -250,6 +250,12 @@
   gap: 16px;
 }
 
+.webchatPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 @media (max-width: 900px) {
   .webchatLayout {
     grid-template-columns: 1fr;
@@ -263,7 +269,10 @@
   border-radius: 50%;
   overflow: hidden;
   border: 1px solid #ccc;
-  cursor: grab;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .avatarEditor img {
@@ -271,6 +280,78 @@
   left: 50%;
   top: 50%;
   will-change: transform;
+}
+
+.avatarPlaceholder {
+  font-size: 2rem;
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.webchatPreviewFrame {
+  width: 100%;
+}
+
+.previewButton {
+  display: none;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text);
+  border-radius: calc(var(--border-radius) - 2px);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.previewOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.previewModal {
+  width: min(100%, 960px);
+  height: 100%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.previewHeader {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-start;
+}
+
+.previewIframe {
+  flex: 1;
+  border: none;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .webchatPreviewFrame {
+    display: none;
+  }
+
+  .previewButton {
+    display: inline-flex;
+    justify-content: center;
+  }
+
+  .previewModal {
+    width: 100%;
+  }
 }
 
 .webchatActions {
