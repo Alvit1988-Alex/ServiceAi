@@ -19,8 +19,8 @@ export default function AppShell({ children }: PropsWithChildren) {
 
   if (isAuthPage || isEmbedPage) {
     return (
-      <div style={{ minHeight: "100vh" }}>
-        <main style={{ minHeight: "100vh" }}>{children}</main>
+      <div style={{ height: "100vh", minHeight: "100vh" }}>
+        <main style={{ height: "100vh", minHeight: "100vh" }}>{children}</main>
       </div>
     );
   }

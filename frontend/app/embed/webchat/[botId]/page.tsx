@@ -96,11 +96,6 @@ export default function EmbeddedWebchatPage() {
   const [uiName, setUiName] = useState("");
   const [uiTheme, setUiTheme] = useState<"light" | "dark" | "neutral">("light");
   const [uiAvatar, setUiAvatar] = useState<string | null>(null);
-  const [uiAvatarTransform, setUiAvatarTransform] = useState<{
-    x: number;
-    y: number;
-    scale: number;
-  } | null>(null);
   const previewMessages = useMemo(
     () => [
       { id: "preview-1", sender: "user" as const, text: "Здравствуйте!" },
@@ -211,7 +206,7 @@ export default function EmbeddedWebchatPage() {
         name: string;
         theme: "light" | "dark" | "neutral";
         avatarDataUrl: string | null;
-        avatarTransform: { x: number; y: number; scale: number } | null;
+        avatarTransform?: { x: number; y: number; scale: number } | null;
       };
       setUiName(payload.name ?? "");
       const nextTheme =
@@ -220,7 +215,6 @@ export default function EmbeddedWebchatPage() {
           : "light";
       setUiTheme(nextTheme);
       setUiAvatar(payload.avatarDataUrl ?? null);
-      setUiAvatarTransform(payload.avatarTransform ?? null);
     };
 
     window.addEventListener("message", handleMessage);
@@ -257,7 +251,6 @@ export default function EmbeddedWebchatPage() {
   }
 
   const resolvedName = uiName.trim() !== "" ? uiName : botName ?? "Webchat";
-  const resolvedTransform = uiAvatarTransform ?? { x: 0, y: 0, scale: 1 };
   const themeClass = styles[`theme${uiTheme.charAt(0).toUpperCase()}${uiTheme.slice(1)}`];
 
   return (
@@ -266,13 +259,7 @@ export default function EmbeddedWebchatPage() {
         <div className={styles.headerMain}>
           {uiAvatar && (
             <div className={styles.avatar}>
-              <img
-                src={uiAvatar}
-                alt=""
-                style={{
-                  transform: `translate(calc(-50% + ${resolvedTransform.x}px), calc(-50% + ${resolvedTransform.y}px)) scale(${resolvedTransform.scale})`,
-                }}
-              />
+              <img src={uiAvatar} alt="" />
             </div>
           )}
           <div className={styles.title}>{resolvedName}</div>

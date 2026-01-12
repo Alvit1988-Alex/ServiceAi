@@ -35,9 +35,7 @@
     name: name,
     theme: theme,
     avatarDataUrl: normalizedAvatar,
-    avatarTransform: normalizedAvatar
-      ? { x: avatarX, y: avatarY, scale: avatarScale }
-      : null,
+    avatarTransform: null,
   };
 
   var origin = "";
