@@ -12,7 +12,6 @@ type ChannelConfigState = Record<string, unknown>;
 
 interface ChannelFormState {
   config: ChannelConfigState;
-  is_active: boolean;
 }
 
 interface BotChannelsProps {
@@ -142,20 +141,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const modalIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [wcName, setWcName] = useState("");
   const [wcTheme, setWcTheme] = useState<"light" | "dark" | "neutral">("light");
   const [wcAvatar, setWcAvatar] = useState<string | null>(null);
+  const [wcAvatarError, setWcAvatarError] = useState<string | null>(null);
   const [wcAvatarTransform, setWcAvatarTransform] = useState<{
     x: number;
     y: number;
     scale: number;
   } | null>({ x: 0, y: 0, scale: 1 });
   const [generatedCode, setGeneratedCode] = useState<string>("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const avatarDragRef = useRef<{
     startX: number;
     startY: number;
     originX: number;
     originY: number;
+    moved: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -170,7 +174,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         if (!isMounted) return;
         setChannels(items);
         const nextForms = Object.fromEntries(
-          items.map((channel) => [channel.id, { config: buildConfigState(channel), is_active: channel.is_active }]),
+          items.map((channel) => [channel.id, { config: buildConfigState(channel) }]),
         );
         setForms(nextForms);
         setAllowedItemInputs({});
@@ -256,13 +260,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     });
   };
 
-  const handleActiveToggle = (channelId: number, isActive: boolean) => {
-    setForms((prev) => ({
-      ...prev,
-      [channelId]: { ...prev[channelId], is_active: isActive },
-    }));
-  };
-
   const INTERNAL_KEYS = new Set(["secret_token", "webhook_status", "webhook_error", "secret"]);
   const AVITO_HIDDEN_KEYS = new Set([
     "send_message_url",
@@ -282,7 +279,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       ...prev,
       [channelId]: {
         config: buildConfigState(updatedChannel),
-        is_active: updatedChannel.is_active,
       },
     }));
   };
@@ -300,7 +296,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
     try {
       const payload = {
-        is_active: form.is_active,
         config: prepareConfig(form.config),
       };
       const updatedChannel = await updateChannel(botId, channelId, payload);
@@ -438,21 +433,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
   const sendWebchatConfig = () => {
-    const targetWindow = iframeRef.current?.contentWindow;
-    if (!targetWindow) return;
+    const targets = [iframeRef.current?.contentWindow, modalIframeRef.current?.contentWindow].filter(
+      Boolean,
+    ) as Window[];
+    if (targets.length === 0) return;
     const resolvedTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
-    targetWindow.postMessage(
-      {
-        type: "SERVICEAI_WEBCHAT_CONFIG",
-        payload: {
-          name: wcName,
-          theme: wcTheme,
-          avatarDataUrl: wcAvatar,
-          avatarTransform: wcAvatar ? resolvedTransform : null,
+    targets.forEach((targetWindow) => {
+      targetWindow.postMessage(
+        {
+          type: "SERVICEAI_WEBCHAT_CONFIG",
+          payload: {
+            name: wcName,
+            theme: wcTheme,
+            avatarDataUrl: wcAvatar,
+            avatarTransform: wcAvatar ? resolvedTransform : null,
+          },
         },
-      },
-      "*",
-    );
+        "*",
+      );
+    });
   };
 
   useEffect(() => {
@@ -463,8 +462,13 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     function handleMouseMove(this: Window, event: globalThis.MouseEvent) {
       if (!avatarDragRef.current) return;
       const { startX, startY, originX, originY } = avatarDragRef.current;
-      const nextX = clampValue(originX + (event.clientX - startX), -80, 80);
-      const nextY = clampValue(originY + (event.clientY - startY), -80, 80);
+      const scale = wcAvatarTransform?.scale ?? 1;
+      const limit = 80 * scale;
+      const nextX = clampValue(originX + (event.clientX - startX), -limit, limit);
+      const nextY = clampValue(originY + (event.clientY - startY), -limit, limit);
+      if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) {
+        avatarDragRef.current.moved = true;
+      }
       setWcAvatarTransform((prev) => ({
         x: nextX,
         y: nextY,
@@ -483,22 +487,52 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, []);
+  }, [wcAvatarTransform]);
 
   const renderWebchatSettings = (channel: BotChannel) => {
+    const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+
     const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = typeof reader.result === "string" ? reader.result : null;
-        setWcAvatar(result);
+      if (file.size > MAX_AVATAR_SIZE) {
+        setWcAvatarError("Файл слишком большой. Максимум 2 МБ.");
+        event.target.value = "";
+        return;
+      }
+
+      setWcAvatarError(null);
+      const imageUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      image.onload = () => {
+        const maxSide = Math.max(image.width, image.height);
+        const scale = maxSide > 1024 ? 1024 / maxSide : 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        const context = canvas.getContext("2d");
+        if (!context) {
+          URL.revokeObjectURL(imageUrl);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        setWcAvatar(dataUrl);
         setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
+        URL.revokeObjectURL(imageUrl);
+        event.target.value = "";
       };
-      reader.readAsDataURL(file);
+
+      image.onerror = () => {
+        URL.revokeObjectURL(imageUrl);
+        setWcAvatarError("Не удалось прочитать файл.");
+      };
+
+      image.src = imageUrl;
     };
 
-  const handleAvatarMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const handleAvatarMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!wcAvatar || !wcAvatarTransform) return;
       event.preventDefault();
       avatarDragRef.current = {
@@ -506,6 +540,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         startY: event.clientY,
         originX: wcAvatarTransform.x,
         originY: wcAvatarTransform.y,
+        moved: false,
       };
     };
 
@@ -570,21 +605,39 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor={`webchat-avatar-${channel.id}`}>
-              Аватар
-            </label>
+            <span className={styles.fieldLabel}>Аватар</span>
             <input
+              ref={avatarInputRef}
               id={`webchat-avatar-${channel.id}`}
               type="file"
               accept="image/*"
+              className={styles.hiddenFileInput}
               onChange={handleAvatarUpload}
             />
           </div>
 
           <div className={styles.field}>
             <span className={styles.fieldLabel}>Редактор аватара</span>
-            <div className={styles.avatarEditor} onMouseDown={handleAvatarMouseDown}>
-              {wcAvatar && (
+            <div
+              className={styles.avatarEditor}
+              onMouseDown={handleAvatarMouseDown}
+              onClick={() => {
+                if (avatarDragRef.current?.moved) {
+                  avatarDragRef.current.moved = false;
+                  return;
+                }
+                avatarInputRef.current?.click();
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  avatarInputRef.current?.click();
+                }
+              }}
+            >
+              {wcAvatar ? (
                 <img
                   src={wcAvatar}
                   alt="Avatar preview"
@@ -592,8 +645,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                     transform: `translate(calc(-50% + ${displayTransform.x}px), calc(-50% + ${displayTransform.y}px)) scale(${displayTransform.scale})`,
                   }}
                 />
+              ) : (
+                <span className={styles.avatarPlaceholder}>+</span>
               )}
             </div>
+            {wcAvatarError && <span className={styles.error}>{wcAvatarError}</span>}
           </div>
 
           <div className={styles.field}>
@@ -622,7 +678,10 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             <button
               type="button"
               className={styles.secondaryButton}
-              onClick={() => setWcAvatarTransform({ x: 0, y: 0, scale: 1 })}
+              onClick={() => {
+                setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
+                setWcAvatarError(null);
+              }}
             >
               Сброс
             </button>
@@ -632,6 +691,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               onClick={() => {
                 setWcAvatar(null);
                 setWcAvatarTransform(null);
+                setWcAvatarError(null);
               }}
             >
               Удалить
@@ -652,18 +712,50 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             )}
           </div>
         </div>
-        <iframe
-          ref={iframeRef}
-          src={`/embed/webchat/${channel.bot_id}`}
-          title="Webchat preview"
-          onLoad={sendWebchatConfig}
-          style={{
-            width: "100%",
-            height: "520px",
-            border: "1px solid #e5e7eb",
-            borderRadius: "16px",
-          }}
-        />
+        <div className={styles.webchatPreview}>
+          <iframe
+            ref={iframeRef}
+            src={`/embed/webchat/${channel.bot_id}?preview=1`}
+            title="Webchat preview"
+            onLoad={sendWebchatConfig}
+            className={styles.webchatPreviewFrame}
+            style={{
+              width: "100%",
+              height: "520px",
+              border: "1px solid #e5e7eb",
+              borderRadius: "16px",
+            }}
+          />
+          <button
+            type="button"
+            className={styles.previewButton}
+            onClick={() => setIsPreviewOpen(true)}
+          >
+            Посмотреть превью
+          </button>
+        </div>
+        {isPreviewOpen && (
+          <div className={styles.previewOverlay}>
+            <div className={styles.previewModal}>
+              <div className={styles.previewHeader}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setIsPreviewOpen(false)}
+                >
+                  Назад
+                </button>
+              </div>
+              <iframe
+                ref={modalIframeRef}
+                src={`/embed/webchat/${channel.bot_id}?preview=1`}
+                title="Webchat preview full"
+                onLoad={sendWebchatConfig}
+                className={styles.previewIframe}
+              />
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -716,7 +808,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       )}
 
       {!loading && !loadError && visibleChannels.map((channel) => {
-        const form = forms[channel.id];
         const instruction = CHANNEL_INSTRUCTIONS[channel.channel_type];
         const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
         const channelError = channelErrors[channel.id];
@@ -731,14 +822,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 <div className={styles.badge}>{channelLabel}</div>
                 <div className={styles.channelMeta}>ID: {channel.id}</div>
               </div>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={form?.is_active ?? false}
-                  onChange={(event) => handleActiveToggle(channel.id, event.target.checked)}
-                />
-                <span>Активен</span>
-              </label>
             </div>
 
             {channel.channel_type === ChannelType.WEBCHAT
@@ -764,7 +847,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               )}
               <span className={styles.actionHint}>
                 Тестирование канала будет добавлено позже. Сейчас доступно только сохранение
-                конфигурации и включение/выключение.
+                конфигурации.
               </span>
               <button
                 type="button"

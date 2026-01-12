@@ -42,7 +42,7 @@ class BotChannel(Base):
     bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False, index=True)
     channel_type: Mapped[ChannelType] = mapped_column(channel_type_enum(), nullable=False, index=True)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

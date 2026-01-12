@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
 import { API_BASE_URL } from "@/app/api/config";
 import { connect, disconnect, sendMessage } from "@/app/ws/webchat";
@@ -76,11 +76,13 @@ function parseIncomingMessage(data: unknown): { sender: "user" | "bot"; text: st
 
 export default function EmbeddedWebchatPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const botIdParam = typeof params?.botId === "string" ? params.botId : "";
   const botId = useMemo(() => {
     const parsed = Number(botIdParam);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [botIdParam]);
+  const previewMode = searchParams.get("preview") === "1";
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
@@ -99,6 +101,19 @@ export default function EmbeddedWebchatPage() {
     y: number;
     scale: number;
   } | null>(null);
+  const previewMessages = useMemo(
+    () => [
+      { id: "preview-1", sender: "user" as const, text: "Здравствуйте!" },
+      {
+        id: "preview-2",
+        sender: "bot" as const,
+        text: "Привет! Я помогу с вопросами. Напишите, что нужно.",
+      },
+      { id: "preview-3", sender: "user" as const, text: "Хочу понять, как работает сервис." },
+      { id: "preview-4", sender: "bot" as const, text: "Просто задайте вопрос — я отвечу здесь." },
+    ],
+    [],
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,11 +125,24 @@ export default function EmbeddedWebchatPage() {
       return;
     }
 
+    if (previewMode) {
+      setMessages(previewMessages);
+      setInputValue("");
+      setSessionId(null);
+      setWsUrl(null);
+      setBotName(null);
+      setError(null);
+      setErrorDetails(null);
+      setIsLoading(false);
+      return;
+    }
+
     const storageKey = `webchat_session_${botId}`;
 
     setIsLoading(true);
     setError(null);
     setErrorDetails(null);
+    setMessages([]);
 
     const initUrl = buildInitUrl(API_BASE_URL);
     const errorHint = "Проверь nginx proxy для /api → backend";
@@ -153,10 +181,10 @@ export default function EmbeddedWebchatPage() {
     };
 
     initChat();
-  }, [botId]);
+  }, [botId, previewMode, previewMessages]);
 
   useEffect(() => {
-    if (!wsUrl) {
+    if (!wsUrl || previewMode) {
       return;
     }
 
@@ -171,7 +199,7 @@ export default function EmbeddedWebchatPage() {
     return () => {
       disconnect();
     };
-  }, [wsUrl]);
+  }, [wsUrl, previewMode]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -202,6 +230,7 @@ export default function EmbeddedWebchatPage() {
   }, []);
 
   const handleSend = () => {
+    if (previewMode) return;
     const text = inputValue.trim();
     if (!text) return;
 
@@ -248,8 +277,10 @@ export default function EmbeddedWebchatPage() {
           )}
           <div className={styles.title}>{resolvedName}</div>
         </div>
-        {isLoading && <div className={styles.status}>Подключение...</div>}
-        {!isLoading && sessionId && <div className={styles.status}>Сессия {sessionId.slice(0, 8)}</div>}
+        {!previewMode && isLoading && <div className={styles.status}>Подключение...</div>}
+        {!previewMode && !isLoading && sessionId && (
+          <div className={styles.status}>Сессия {sessionId.slice(0, 8)}</div>
+        )}
       </header>
       <div className={styles.messages}>
         {messages.length === 0 ? (
@@ -281,8 +312,9 @@ export default function EmbeddedWebchatPage() {
           placeholder="Введите сообщение..."
           className={styles.input}
           type="text"
+          disabled={previewMode}
         />
-        <button type="button" className={styles.sendButton} onClick={handleSend}>
+        <button type="button" className={styles.sendButton} onClick={handleSend} disabled={previewMode}>
           Отправить
         </button>
       </div>
