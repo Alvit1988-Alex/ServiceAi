@@ -23,6 +23,12 @@ type InitResponse = {
   };
 };
 
+type InitErrorDetails = {
+  url: string;
+  status?: number;
+  message?: string;
+};
+
 function buildInitUrl(baseUrl: string): { primary: string; fallback?: string } {
   const normalized = baseUrl.replace(/\/$/, "");
 
@@ -94,6 +100,7 @@ export default function EmbeddedWebchatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<InitErrorDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [uiName, setUiName] = useState("");
@@ -119,12 +126,15 @@ export default function EmbeddedWebchatPage() {
 
     setIsLoading(true);
     setError(null);
+    setErrorDetails(null);
 
     const initUrls = buildInitUrl(API_BASE_URL);
 
     const initChat = async () => {
+      let requestUrl = initUrls.primary;
+      let initErrorDetails: InitErrorDetails | null = null;
       try {
-        const response = await fetch(initUrls.primary, {
+        const response = await fetch(requestUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -135,7 +145,8 @@ export default function EmbeddedWebchatPage() {
         let finalResponse = response;
 
         if (response.status === 404 && initUrls.fallback) {
-          finalResponse = await fetch(initUrls.fallback, {
+          requestUrl = initUrls.fallback;
+          finalResponse = await fetch(requestUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -145,6 +156,7 @@ export default function EmbeddedWebchatPage() {
         }
 
         if (!finalResponse.ok) {
+          initErrorDetails = { url: requestUrl, status: finalResponse.status };
           throw new Error("Init failed");
         }
 
@@ -156,7 +168,14 @@ export default function EmbeddedWebchatPage() {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(storageKey, nextSessionId);
         }
-      } catch (_error) {
+      } catch (caughtError) {
+        if (!initErrorDetails) {
+          initErrorDetails = {
+            url: requestUrl,
+            message: caughtError instanceof Error ? caughtError.message : "Unknown error",
+          };
+        }
+        setErrorDetails(initErrorDetails);
         setError("Ошибка подключения");
       } finally {
         setIsLoading(false);
@@ -224,7 +243,16 @@ export default function EmbeddedWebchatPage() {
   if (error) {
     return (
       <div className={styles.errorState}>
-        <p>{error}</p>
+        <div>
+          <p>{error}</p>
+          {errorDetails && (
+            <div className={styles.errorDetails}>
+              <div>URL: {errorDetails.url}</div>
+              <div>Status: {errorDetails.status ?? "no response"}</div>
+              <div>Hint: Проверь nginx proxy для /api → backend</div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

@@ -137,6 +137,13 @@
   text-align: center;
 }
 
+.errorDetails {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #7f1d1d;
+  line-height: 1.4;
+}
+
 .themeLight {
   --bg: #f6f7fb;
   --surface: #ffffff;
