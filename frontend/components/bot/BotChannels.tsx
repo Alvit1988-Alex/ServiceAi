@@ -1,7 +1,6 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
@@ -147,20 +146,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [wcTheme, setWcTheme] = useState<"light" | "dark" | "neutral">("light");
   const [wcAvatar, setWcAvatar] = useState<string | null>(null);
   const [wcAvatarError, setWcAvatarError] = useState<string | null>(null);
-  const [wcAvatarTransform, setWcAvatarTransform] = useState<{
-    x: number;
-    y: number;
-    scale: number;
-  } | null>({ x: 0, y: 0, scale: 1 });
   const [generatedCode, setGeneratedCode] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const avatarDragRef = useRef<{
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-    moved: boolean;
-  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -430,14 +417,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
-  const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
   const sendWebchatConfig = () => {
     const targets = [iframeRef.current?.contentWindow, modalIframeRef.current?.contentWindow].filter(
       Boolean,
     ) as Window[];
     if (targets.length === 0) return;
-    const resolvedTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
     targets.forEach((targetWindow) => {
       targetWindow.postMessage(
         {
@@ -446,7 +430,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             name: wcName,
             theme: wcTheme,
             avatarDataUrl: wcAvatar,
-            avatarTransform: wcAvatar ? resolvedTransform : null,
+            avatarTransform: null,
           },
         },
         "*",
@@ -456,43 +440,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
   useEffect(() => {
     sendWebchatConfig();
-  }, [wcName, wcTheme, wcAvatar, wcAvatarTransform]);
-
-  useEffect(() => {
-    function handleMouseMove(this: Window, event: globalThis.MouseEvent) {
-      if (!avatarDragRef.current) return;
-      const { startX, startY, originX, originY } = avatarDragRef.current;
-      const scale = wcAvatarTransform?.scale ?? 1;
-      const limit = 80 * scale;
-      const nextX = clampValue(originX + (event.clientX - startX), -limit, limit);
-      const nextY = clampValue(originY + (event.clientY - startY), -limit, limit);
-      if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) {
-        avatarDragRef.current.moved = true;
-      }
-      setWcAvatarTransform((prev) => ({
-        x: nextX,
-        y: nextY,
-        scale: prev?.scale ?? 1,
-      }));
-    }
-
-    function handleMouseUp(this: Window) {
-      avatarDragRef.current = null;
-    }
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [wcAvatarTransform]);
+  }, [wcName, wcTheme, wcAvatar]);
 
   const renderWebchatSettings = (channel: BotChannel) => {
     const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
     const MAX_INPUT_PX = 4000;
-    const MAX_AVATAR_CANVAS_SIDE = 512;
+    const AVATAR_CANVAS_SIZE = 200;
 
     const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -515,19 +468,23 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           event.target.value = "";
           return;
         }
-        const scale = maxSide > MAX_AVATAR_CANVAS_SIDE ? MAX_AVATAR_CANVAS_SIDE / maxSide : 1;
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(image.width * scale);
-        canvas.height = Math.round(image.height * scale);
+        canvas.width = AVATAR_CANVAS_SIZE;
+        canvas.height = AVATAR_CANVAS_SIZE;
         const context = canvas.getContext("2d");
         if (!context) {
           URL.revokeObjectURL(imageUrl);
           return;
         }
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const scale = Math.min(AVATAR_CANVAS_SIZE / image.width, AVATAR_CANVAS_SIZE / image.height);
+        const targetWidth = Math.round(image.width * scale);
+        const targetHeight = Math.round(image.height * scale);
+        const offsetX = Math.round((AVATAR_CANVAS_SIZE - targetWidth) / 2);
+        const offsetY = Math.round((AVATAR_CANVAS_SIZE - targetHeight) / 2);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, offsetX, offsetY, targetWidth, targetHeight);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         setWcAvatar(dataUrl);
-        setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
         setWcAvatarError(null);
         URL.revokeObjectURL(imageUrl);
         event.target.value = "";
@@ -541,25 +498,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       image.src = imageUrl;
     };
 
-    const handleAvatarMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!wcAvatar || !wcAvatarTransform) return;
-      event.preventDefault();
-      avatarDragRef.current = {
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: wcAvatarTransform.x,
-        originY: wcAvatarTransform.y,
-        moved: false,
-      };
-    };
-
     const handleGenerate = () => {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const resolvedTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
       const dataAvatar = wcAvatar ?? "";
-      const dataX = wcAvatar ? String(resolvedTransform.x) : "0";
-      const dataY = wcAvatar ? String(resolvedTransform.y) : "0";
-      const dataScale = wcAvatar ? String(resolvedTransform.scale) : "1";
+      const dataX = "0";
+      const dataY = "0";
+      const dataScale = "1";
 
       setGeneratedCode(
         `<script
@@ -575,7 +519,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       );
     };
 
-    const displayTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
     const themeGroupName = `webchat-theme-${channel.id}`;
 
     return (
@@ -629,12 +572,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             <span className={styles.fieldLabel}>Редактор аватара</span>
             <div
               className={styles.avatarEditor}
-              onMouseDown={handleAvatarMouseDown}
               onClick={() => {
-                if (avatarDragRef.current?.moved) {
-                  avatarDragRef.current.moved = false;
-                  return;
-                }
                 avatarInputRef.current?.click();
               }}
               role="button"
@@ -647,13 +585,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               }}
             >
               {wcAvatar ? (
-                <img
-                  src={wcAvatar}
-                  alt="Avatar preview"
-                  style={{
-                    transform: `translate(calc(-50% + ${displayTransform.x}px), calc(-50% + ${displayTransform.y}px)) scale(${displayTransform.scale})`,
-                  }}
-                />
+                <img src={wcAvatar} alt="Avatar preview" />
               ) : (
                 <span className={styles.avatarPlaceholder}>+</span>
               )}
@@ -661,34 +593,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             {wcAvatarError && <span className={styles.error}>{wcAvatarError}</span>}
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor={`webchat-scale-${channel.id}`}>
-              Масштаб
-            </label>
-            <input
-              id={`webchat-scale-${channel.id}`}
-              type="range"
-              min={1}
-              max={3}
-              step={0.01}
-              value={displayTransform.scale}
-              onChange={(event) => {
-                const nextScale = Number(event.target.value);
-                setWcAvatarTransform((prev) => ({
-                  x: prev?.x ?? 0,
-                  y: prev?.y ?? 0,
-                  scale: nextScale,
-                }));
-              }}
-            />
-          </div>
-
           <div className={styles.inlineInputs}>
             <button
               type="button"
               className={styles.secondaryButton}
               onClick={() => {
-                setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
                 setWcAvatarError(null);
               }}
             >
@@ -699,7 +608,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               className={styles.secondaryButton}
               onClick={() => {
                 setWcAvatar(null);
-                setWcAvatarTransform(null);
                 setWcAvatarError(null);
               }}
             >

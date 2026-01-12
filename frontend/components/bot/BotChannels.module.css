@@ -246,7 +246,7 @@
 
 .webchatLayout {
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: 1fr 360px;
   gap: 16px;
 }
 
@@ -264,8 +264,8 @@
 
 .avatarEditor {
   position: relative;
-  width: 160px;
-  height: 160px;
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
   overflow: hidden;
   border: 1px solid #ccc;
@@ -276,10 +276,11 @@
 }
 
 .avatarEditor img {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  will-change: transform;
+  position: static;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }
 
 .avatarPlaceholder {
@@ -294,6 +295,7 @@
 
 .webchatPreviewFrame {
   width: 100%;
+  display: block;
 }
 
 .previewButton {
