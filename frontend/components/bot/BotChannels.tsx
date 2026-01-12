@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
@@ -459,7 +460,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   }, [wcName, wcTheme, wcAvatar, wcAvatarTransform]);
 
   useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
+    function handleMouseMove(this: Window, event: globalThis.MouseEvent) {
       if (!avatarDragRef.current) return;
       const { startX, startY, originX, originY } = avatarDragRef.current;
       const nextX = clampValue(originX + (event.clientX - startX), -80, 80);
@@ -469,11 +470,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         y: nextY,
         scale: prev?.scale ?? 1,
       }));
-    };
+    }
 
-    const handleMouseUp = () => {
+    function handleMouseUp(this: Window) {
       avatarDragRef.current = null;
-    };
+    }
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
@@ -497,7 +498,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       reader.readAsDataURL(file);
     };
 
-    const handleAvatarMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+  const handleAvatarMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!wcAvatar || !wcAvatarTransform) return;
       event.preventDefault();
       avatarDragRef.current = {
