@@ -244,6 +244,35 @@
   gap: 0.75rem;
 }
 
+.webchatLayout {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .webchatLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.avatarEditor {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #ccc;
+  cursor: grab;
+}
+
+.avatarEditor img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  will-change: transform;
+}
+
 .webchatActions {
   display: flex;
   justify-content: flex-start;

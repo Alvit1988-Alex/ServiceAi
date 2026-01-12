@@ -96,6 +96,14 @@ export default function EmbeddedWebchatPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [uiName, setUiName] = useState("");
+  const [uiTheme, setUiTheme] = useState<"light" | "dark" | "neutral">("light");
+  const [uiAvatar, setUiAvatar] = useState<string | null>(null);
+  const [uiAvatarTransform, setUiAvatarTransform] = useState<{
+    x: number;
+    y: number;
+    scale: number;
+  } | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -176,6 +184,34 @@ export default function EmbeddedWebchatPage() {
     };
   }, [wsUrl]);
 
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; payload?: unknown } | null;
+      if (!data || data.type !== "SERVICEAI_WEBCHAT_CONFIG" || !data.payload) {
+        return;
+      }
+      const payload = data.payload as {
+        name: string;
+        theme: "light" | "dark" | "neutral";
+        avatarDataUrl: string | null;
+        avatarTransform: { x: number; y: number; scale: number } | null;
+      };
+      setUiName(payload.name ?? "");
+      const nextTheme =
+        payload.theme === "dark" || payload.theme === "neutral" || payload.theme === "light"
+          ? payload.theme
+          : "light";
+      setUiTheme(nextTheme);
+      setUiAvatar(payload.avatarDataUrl ?? null);
+      setUiAvatarTransform(payload.avatarTransform ?? null);
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, []);
+
   const handleSend = () => {
     const text = inputValue.trim();
     if (!text) return;
@@ -193,10 +229,27 @@ export default function EmbeddedWebchatPage() {
     );
   }
 
+  const resolvedName = uiName.trim() !== "" ? uiName : botName ?? "Webchat";
+  const resolvedTransform = uiAvatarTransform ?? { x: 0, y: 0, scale: 1 };
+  const themeClass = styles[`theme${uiTheme.charAt(0).toUpperCase()}${uiTheme.slice(1)}`];
+
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${themeClass}`}>
       <header className={styles.header}>
-        <div className={styles.title}>{botName ?? "Webchat"}</div>
+        <div className={styles.headerMain}>
+          {uiAvatar && (
+            <div className={styles.avatar}>
+              <img
+                src={uiAvatar}
+                alt=""
+                style={{
+                  transform: `translate(calc(-50% + ${resolvedTransform.x}px), calc(-50% + ${resolvedTransform.y}px)) scale(${resolvedTransform.scale})`,
+                }}
+              />
+            </div>
+          )}
+          <div className={styles.title}>{resolvedName}</div>
+        </div>
         {isLoading && <div className={styles.status}>Подключение...</div>}
         {!isLoading && sessionId && <div className={styles.status}>Сессия {sessionId.slice(0, 8)}</div>}
       </header>

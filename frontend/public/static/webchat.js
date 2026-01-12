@@ -17,6 +17,29 @@
     return;
   }
 
+  var theme = script.getAttribute("data-theme") || "light";
+  if (theme !== "light" && theme !== "dark" && theme !== "neutral") {
+    theme = "light";
+  }
+  var name = script.getAttribute("data-name") || "";
+  var avatarDataUrl = script.getAttribute("data-avatar") || "";
+  var avatarX = parseFloat(script.getAttribute("data-avatar-x") || "0");
+  var avatarY = parseFloat(script.getAttribute("data-avatar-y") || "0");
+  var avatarScale = parseFloat(script.getAttribute("data-avatar-scale") || "1");
+  if (!Number.isFinite(avatarX)) avatarX = 0;
+  if (!Number.isFinite(avatarY)) avatarY = 0;
+  if (!Number.isFinite(avatarScale)) avatarScale = 1;
+
+  var normalizedAvatar = avatarDataUrl === "" ? null : avatarDataUrl;
+  var cfg = {
+    name: name,
+    theme: theme,
+    avatarDataUrl: normalizedAvatar,
+    avatarTransform: normalizedAvatar
+      ? { x: avatarX, y: avatarY, scale: avatarScale }
+      : null,
+  };
+
   var origin = "";
   try {
     origin = new URL(script.src).origin;
@@ -53,6 +76,15 @@
   iframe.style.background = "#ffffff";
 
   var isOpen = false;
+
+  iframe.onload = function () {
+    if (iframe.contentWindow) {
+      iframe.contentWindow.postMessage(
+        { type: "SERVICEAI_WEBCHAT_CONFIG", payload: cfg },
+        "*"
+      );
+    }
+  };
 
   button.addEventListener("click", function () {
     isOpen = !isOpen;

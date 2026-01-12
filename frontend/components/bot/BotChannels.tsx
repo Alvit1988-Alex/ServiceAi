@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
@@ -137,10 +137,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
-  const [webchatCodes, setWebchatCodes] = useState<Record<number, string>>({});
   const [channelErrors, setChannelErrors] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [wcName, setWcName] = useState("");
+  const [wcTheme, setWcTheme] = useState<"light" | "dark" | "neutral">("light");
+  const [wcAvatar, setWcAvatar] = useState<string | null>(null);
+  const [wcAvatarTransform, setWcAvatarTransform] = useState<{
+    x: number;
+    y: number;
+    scale: number;
+  } | null>({ x: 0, y: 0, scale: 1 });
+  const [generatedCode, setGeneratedCode] = useState<string>("");
+  const avatarDragRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -419,78 +434,235 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     );
   };
 
-  const PLACEHOLDER_ORIGIN = "https://ВАШ_ДОМЕН";
+  const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-  const buildWebchatEmbedCode = (scriptSrc: string, targetBotId: number) =>
-    `<script src=\"${scriptSrc}\" data-bot=\"${targetBotId}\"></script>`;
-
-  const resolveDisplayScriptUrl = () => {
-    if (typeof window !== "undefined") {
-      return `${window.location.origin}/static/webchat.js`;
-    }
-    return `${PLACEHOLDER_ORIGIN}/static/webchat.js`;
+  const sendWebchatConfig = () => {
+    const targetWindow = iframeRef.current?.contentWindow;
+    if (!targetWindow) return;
+    const resolvedTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
+    targetWindow.postMessage(
+      {
+        type: "SERVICEAI_WEBCHAT_CONFIG",
+        payload: {
+          name: wcName,
+          theme: wcTheme,
+          avatarDataUrl: wcAvatar,
+          avatarTransform: wcAvatar ? resolvedTransform : null,
+        },
+      },
+      "*",
+    );
   };
 
-  const resolveCopyScriptUrl = () => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-    return `${window.location.origin}/static/webchat.js`;
-  };
+  useEffect(() => {
+    sendWebchatConfig();
+  }, [wcName, wcTheme, wcAvatar, wcAvatarTransform]);
 
-  const handleCopyWebchatCode = async (channelId: number) => {
-    const scriptSrc = resolveCopyScriptUrl();
-    if (!scriptSrc || typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!avatarDragRef.current) return;
+      const { startX, startY, originX, originY } = avatarDragRef.current;
+      const nextX = clampValue(originX + (event.clientX - startX), -80, 80);
+      const nextY = clampValue(originY + (event.clientY - startY), -80, 80);
+      setWcAvatarTransform((prev) => ({
+        x: nextX,
+        y: nextY,
+        scale: prev?.scale ?? 1,
+      }));
+    };
 
-    try {
-      await navigator.clipboard.writeText(buildWebchatEmbedCode(scriptSrc, botId));
-      setSuccessChannelId(channelId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось скопировать код";
-      setChannelErrors((prev) => ({ ...prev, [channelId]: message }));
-    }
-  };
+    const handleMouseUp = () => {
+      avatarDragRef.current = null;
+    };
 
-  const handleGenerateWebchatCode = (channelId: number) => {
-    const scriptSrc = resolveDisplayScriptUrl();
-    setWebchatCodes((prev) => ({ ...prev, [channelId]: buildWebchatEmbedCode(scriptSrc, botId) }));
-    setChannelErrors((prev) => ({ ...prev, [channelId]: "" }));
-  };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const renderWebchatSettings = (channel: BotChannel) => {
-    const code = webchatCodes[channel.id] ?? "";
+    const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : null;
+        setWcAvatar(result);
+        setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const handleAvatarMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+      if (!wcAvatar || !wcAvatarTransform) return;
+      event.preventDefault();
+      avatarDragRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: wcAvatarTransform.x,
+        originY: wcAvatarTransform.y,
+      };
+    };
+
+    const handleGenerate = () => {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const resolvedTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
+      const dataAvatar = wcAvatar ?? "";
+      const dataX = wcAvatar ? String(resolvedTransform.x) : "0";
+      const dataY = wcAvatar ? String(resolvedTransform.y) : "0";
+      const dataScale = wcAvatar ? String(resolvedTransform.scale) : "1";
+
+      setGeneratedCode(
+        `<script
+  src="${origin}/static/webchat.js"
+  data-bot="${channel.bot_id}"
+  data-theme="${wcTheme}"
+  data-name="${wcName}"
+  data-avatar="${dataAvatar}"
+  data-avatar-x="${dataX}"
+  data-avatar-y="${dataY}"
+  data-avatar-scale="${dataScale}">
+</script>`,
+      );
+    };
+
+    const displayTransform = wcAvatarTransform ?? { x: 0, y: 0, scale: 1 };
+    const themeGroupName = `webchat-theme-${channel.id}`;
 
     return (
-      <div className={styles.webchatSettings}>
-        <p className={styles.subtitle}>
-          Вставьте готовый сниппет на сайт, чтобы подключить Webchat.
-        </p>
-        <div className={styles.webchatCodeBlock}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => handleGenerateWebchatCode(channel.id)}
-          >
-            Получить код
-          </button>
-          <textarea
-            className={styles.textarea}
-            readOnly
-            value={code}
-            placeholder="Код будет доступен после нажатия кнопки"
-            rows={8}
-          />
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => handleCopyWebchatCode(channel.id)}
-            disabled={!code}
-          >
-            Скопировать
-          </button>
+      <div className={styles.webchatLayout}>
+        <div className={styles.webchatSettings}>
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor={`webchat-name-${channel.id}`}>
+              Имя
+            </label>
+            <input
+              id={`webchat-name-${channel.id}`}
+              type="text"
+              className={styles.input}
+              placeholder="Имя в чате"
+              value={wcName}
+              onChange={(event) => setWcName(event.target.value)}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Тема</span>
+            <div className={styles.inlineInputs}>
+              {(["light", "dark", "neutral"] as const).map((theme) => (
+                <label key={theme} className={styles.switch}>
+                  <input
+                    type="radio"
+                    name={themeGroupName}
+                    value={theme}
+                    checked={wcTheme === theme}
+                    onChange={() => setWcTheme(theme)}
+                  />
+                  <span>{theme}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor={`webchat-avatar-${channel.id}`}>
+              Аватар
+            </label>
+            <input
+              id={`webchat-avatar-${channel.id}`}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Редактор аватара</span>
+            <div className={styles.avatarEditor} onMouseDown={handleAvatarMouseDown}>
+              {wcAvatar && (
+                <img
+                  src={wcAvatar}
+                  alt="Avatar preview"
+                  style={{
+                    transform: `translate(calc(-50% + ${displayTransform.x}px), calc(-50% + ${displayTransform.y}px)) scale(${displayTransform.scale})`,
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor={`webchat-scale-${channel.id}`}>
+              Масштаб
+            </label>
+            <input
+              id={`webchat-scale-${channel.id}`}
+              type="range"
+              min={1}
+              max={3}
+              step={0.01}
+              value={displayTransform.scale}
+              onChange={(event) => {
+                const nextScale = Number(event.target.value);
+                setWcAvatarTransform((prev) => ({
+                  x: prev?.x ?? 0,
+                  y: prev?.y ?? 0,
+                  scale: nextScale,
+                }));
+              }}
+            />
+          </div>
+
+          <div className={styles.inlineInputs}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setWcAvatarTransform({ x: 0, y: 0, scale: 1 })}
+            >
+              Сброс
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setWcAvatar(null);
+                setWcAvatarTransform(null);
+              }}
+            >
+              Удалить
+            </button>
+          </div>
+
+          <div className={styles.webchatCodeBlock}>
+            <button type="button" className={styles.secondaryButton} onClick={handleGenerate}>
+              Сгенерировать
+            </button>
+            {generatedCode && (
+              <textarea
+                className={styles.textarea}
+                readOnly
+                value={generatedCode}
+                rows={8}
+              />
+            )}
+          </div>
         </div>
+        <iframe
+          ref={iframeRef}
+          src={`/embed/webchat/${channel.bot_id}`}
+          title="Webchat preview"
+          onLoad={sendWebchatConfig}
+          style={{
+            width: "100%",
+            height: "520px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "16px",
+          }}
+        />
       </div>
     );
   };
