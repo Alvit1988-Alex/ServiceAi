@@ -491,6 +491,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
   const renderWebchatSettings = (channel: BotChannel) => {
     const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+    const MAX_INPUT_PX = 4000;
+    const MAX_AVATAR_CANVAS_SIDE = 512;
 
     const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -507,7 +509,13 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
       image.onload = () => {
         const maxSide = Math.max(image.width, image.height);
-        const scale = maxSide > 1024 ? 1024 / maxSide : 1;
+        if (maxSide > MAX_INPUT_PX) {
+          setWcAvatarError("Слишком большое разрешение. Максимум 4000px по стороне.");
+          URL.revokeObjectURL(imageUrl);
+          event.target.value = "";
+          return;
+        }
+        const scale = maxSide > MAX_AVATAR_CANVAS_SIDE ? MAX_AVATAR_CANVAS_SIDE / maxSide : 1;
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(image.width * scale);
         canvas.height = Math.round(image.height * scale);
@@ -520,6 +528,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         setWcAvatar(dataUrl);
         setWcAvatarTransform({ x: 0, y: 0, scale: 1 });
+        setWcAvatarError(null);
         URL.revokeObjectURL(imageUrl);
         event.target.value = "";
       };
