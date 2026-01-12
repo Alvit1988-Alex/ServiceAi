@@ -15,8 +15,9 @@ import Topbar from "./Topbar";
 export default function AppShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const isAuthPage = pathname === "/login" || pathname.startsWith("/login/");
+  const isEmbedPage = pathname === "/embed" || pathname.startsWith("/embed/");
 
-  if (isAuthPage) {
+  if (isAuthPage || isEmbedPage) {
     return (
       <div style={{ minHeight: "100vh" }}>
         <main style={{ minHeight: "100vh" }}>{children}</main>
