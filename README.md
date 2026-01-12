@@ -53,3 +53,21 @@ cp .env.example .env.local
 
 - `NEXT_PUBLIC_API_BASE_URL` — базовый URL API (например, dev: `http://localhost:8000`, prod: `https://api.example.com`).
 - `NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION` — включает генерацию кода webchat-виджета (dev: `true`, prod по умолчанию `false`).
+
+## Nginx reverse proxy (production)
+
+Iframe `/embed/webchat/*` всегда обращается к `/api/...`, поэтому без reverse proxy на уровне Nginx будет отображаться “Ошибка подключения”. Используйте готовый конфиг `deploy/nginx/serviceai.conf`:
+
+```bash
+sudo cp deploy/nginx/serviceai.conf /etc/nginx/sites-available/serviceai.conf
+sudo ln -s /etc/nginx/sites-available/serviceai.conf /etc/nginx/sites-enabled/serviceai.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Проверка (если нет health-эндпоинта, используйте `/api/`):
+
+```bash
+curl -I https://DOMAIN/
+curl -I https://DOMAIN/api/health
+```
