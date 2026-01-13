@@ -124,6 +124,37 @@ class Settings(BaseSettings):
     )
     gigachat_cert_path: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_CERT_PATH", "gigachat_cert_path"))
 
+    ai_llm_provider: str = Field(
+        default="gigachat",
+        validation_alias=AliasChoices("AI_LLM_PROVIDER", "ai_llm_provider"),
+        description="LLM provider: gigachat|openai",
+    )
+    ai_embeddings_provider: str = Field(
+        default="gigachat",
+        validation_alias=AliasChoices("AI_EMBEDDINGS_PROVIDER", "ai_embeddings_provider"),
+        description="Embeddings provider: gigachat|openai",
+    )
+    openai_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "openai_base_url"),
+        description="OpenAI-compatible base URL (e.g. http://127.0.0.1:12345/v1)",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY", "openai_api_key"),
+        description="OpenAI-compatible API key (LM Studio can be any non-empty string)",
+    )
+    openai_chat_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_CHAT_MODEL", "openai_chat_model"),
+        description="Chat model id for OpenAI-compatible providers",
+    )
+    openai_embedding_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_EMBEDDING_MODEL", "openai_embedding_model"),
+        description="Embeddings model id for OpenAI-compatible providers",
+    )
+
     # CORS
     cors_allow_origins: list[str] | None = Field(
         default=None,
