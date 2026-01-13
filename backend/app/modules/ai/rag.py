@@ -22,11 +22,10 @@ class RAGService:
         embeddings_client: EmbeddingsClient | None = None,
     ):
         self._session_factory = db_session_factory or async_session_factory
-        provider = (os.getenv("AI_EMBEDDINGS_PROVIDER") or "gigachat").strip().lower()
         if embeddings_client is not None:
             self._embeddings = embeddings_client
         else:
-            if provider == "openai":
+            if os.getenv("OPENAI_API_KEY"):
                 self._embeddings = EmbeddingsClient()
             else:
                 self._embeddings = GigaChatEmbeddingsClient()
@@ -62,6 +61,13 @@ class RAGService:
 
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored[:top_k]
+
+    async def has_knowledge(self, bot_id: int) -> bool:
+        async with self._session() as session:
+            result = await session.execute(
+                select(KnowledgeChunk.id).where(KnowledgeChunk.bot_id == bot_id).limit(1)
+            )
+            return result.scalar_one_or_none() is not None
 
     @staticmethod
     def _cosine_similarity(vec_a: Sequence[float], vec_b: Sequence[float]) -> float:

@@ -37,11 +37,10 @@ class AIService:
         self._rag_service = rag_service or RAGService(
             db_session_factory=self._session_factory
         )
-        provider = (os.getenv("AI_LLM_PROVIDER") or "gigachat").strip().lower()
         if llm_client is not None:
             self._llm_client = llm_client
         else:
-            if provider == "openai":
+            if os.getenv("OPENAI_API_KEY"):
                 self._llm_client = OpenAILLMClient()
             else:
                 self._llm_client = GigaChatLLMClient()
@@ -59,9 +58,89 @@ class AIService:
 
         history = await self._load_history(dialog_id=dialog_id)
 
+        knowledge_enabled = await self._rag_service.has_knowledge(bot_id)
+        strict_guard_enabled = knowledge_enabled or (
+            instructions is not None
+            and (instructions.system_prompt or "").strip() != ""
+        )
+
+        if not strict_guard_enabled:
+            try:
+                answer_text = await self._llm_client.generate(
+                    system_prompt=system_prompt,
+                    history=history,
+                    question=user_message,
+                    context_chunks=[],
+                )
+            except RuntimeError as exc:
+                self._log_ai_disabled(exc)
+                return AIAnswer(
+                    can_answer=False,
+                    answer=None,
+                    confidence=0.0,
+                    used_chunk_ids=[],
+                )
+            return AIAnswer(
+                can_answer=bool(answer_text),
+                answer=answer_text or None,
+                confidence=0.0,
+                used_chunk_ids=[],
+            )
+
+        if knowledge_enabled:
+            try:
+                relevant_chunks = await self._rag_service.find_relevant_chunks(
+                    bot_id=bot_id, question=user_message
+                )
+            except RuntimeError as exc:
+                self._log_ai_disabled(exc)
+                return AIAnswer(
+                    can_answer=False,
+                    answer=None,
+                    confidence=0.0,
+                    used_chunk_ids=[],
+                )
+            if not relevant_chunks:
+                return AIAnswer(
+                    can_answer=False,
+                    answer=None,
+                    confidence=0.0,
+                    used_chunk_ids=[],
+                )
+            chunk_texts = [chunk.text for chunk, _ in relevant_chunks]
+            used_chunk_ids = [chunk.id for chunk, _ in relevant_chunks]
+            confidence = max((score for _, score in relevant_chunks), default=0.0)
+
+            try:
+                answer_text = await self._llm_client.generate(
+                    system_prompt=system_prompt,
+                    history=history,
+                    question=user_message,
+                    context_chunks=chunk_texts,
+                )
+            except RuntimeError as exc:
+                self._log_ai_disabled(exc)
+                return AIAnswer(
+                    can_answer=False,
+                    answer=None,
+                    confidence=confidence,
+                    used_chunk_ids=used_chunk_ids,
+                )
+
+            can_answer = bool(answer_text) and confidence >= self._confidence_threshold
+            return AIAnswer(
+                can_answer=can_answer,
+                answer=answer_text if can_answer else None,
+                confidence=confidence,
+                used_chunk_ids=used_chunk_ids,
+            )
+
         try:
-            relevant_chunks = await self._rag_service.find_relevant_chunks(
-                bot_id=bot_id, question=user_message
+            answer_text = await self._llm_client.generate(
+                system_prompt=system_prompt,
+                history=history,
+                question=user_message,
+                context_chunks=[],
             )
         except RuntimeError as exc:
             self._log_ai_disabled(exc)
@@ -71,34 +150,11 @@ class AIService:
                 confidence=0.0,
                 used_chunk_ids=[],
             )
-        chunk_texts = [chunk.text for chunk, _ in relevant_chunks]
-        used_chunk_ids = [chunk.id for chunk, _ in relevant_chunks]
-        confidence = max((score for _, score in relevant_chunks), default=0.0)
-
-        try:
-            answer_text = await self._llm_client.generate(
-                system_prompt=system_prompt,
-                history=history,
-                question=user_message,
-                context_chunks=chunk_texts,
-            )
-        except RuntimeError as exc:
-            self._log_ai_disabled(exc)
-            return AIAnswer(
-                can_answer=False,
-                answer=None,
-                confidence=confidence,
-                used_chunk_ids=used_chunk_ids,
-            )
-
-        can_answer = bool(answer_text) and (
-            confidence >= self._confidence_threshold or not used_chunk_ids
-        )
         return AIAnswer(
-            can_answer=can_answer,
-            answer=answer_text if can_answer else None,
-            confidence=confidence,
-            used_chunk_ids=used_chunk_ids,
+            can_answer=bool(answer_text),
+            answer=answer_text or None,
+            confidence=0.0,
+            used_chunk_ids=[],
         )
 
     async def answer(
