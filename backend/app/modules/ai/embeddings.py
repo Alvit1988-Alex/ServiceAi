@@ -33,7 +33,8 @@ class EmbeddingsClient:
             logger.warning("openai package is not installed")
             return []
 
-        client = AsyncOpenAI(api_key=api_key)
+        base_url = os.getenv("OPENAI_BASE_URL") or None
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
         try:

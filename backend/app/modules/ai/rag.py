@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import os
 from typing import Callable, Sequence
 
 from sqlalchemy import select
@@ -21,7 +22,14 @@ class RAGService:
         embeddings_client: EmbeddingsClient | None = None,
     ):
         self._session_factory = db_session_factory or async_session_factory
-        self._embeddings = embeddings_client or GigaChatEmbeddingsClient()
+        provider = (os.getenv("AI_EMBEDDINGS_PROVIDER") or "gigachat").strip().lower()
+        if embeddings_client is not None:
+            self._embeddings = embeddings_client
+        else:
+            if provider == "openai":
+                self._embeddings = EmbeddingsClient()
+            else:
+                self._embeddings = GigaChatEmbeddingsClient()
 
     async def find_relevant_chunks(
         self,
