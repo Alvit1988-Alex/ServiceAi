@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Callable
 
 from sqlalchemy import select
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.database import async_session_factory
 from app.modules.ai.instructions_service import AIInstructionsService
 from app.modules.ai.models import AIInstructions
-from app.modules.ai.llm import GigaChatLLMClient, LLMClient
+from app.modules.ai.llm import GigaChatLLMClient, LLMClient, OpenAILLMClient
 from app.modules.ai.rag import RAGService
 from app.modules.ai.schemas import AIAnswer
 from app.modules.dialogs.models import DialogMessage, MessageSender
@@ -36,7 +37,14 @@ class AIService:
         self._rag_service = rag_service or RAGService(
             db_session_factory=self._session_factory
         )
-        self._llm_client = llm_client or GigaChatLLMClient()
+        provider = (os.getenv("AI_LLM_PROVIDER") or "gigachat").strip().lower()
+        if llm_client is not None:
+            self._llm_client = llm_client
+        else:
+            if provider == "openai":
+                self._llm_client = OpenAILLMClient()
+            else:
+                self._llm_client = GigaChatLLMClient()
         self._confidence_threshold = 0.35
 
     async def generate_answer(
