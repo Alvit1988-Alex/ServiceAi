@@ -59,10 +59,8 @@ class AIService:
         history = await self._load_history(dialog_id=dialog_id)
 
         knowledge_enabled = await self._rag_service.has_knowledge(bot_id)
-        strict_guard_enabled = knowledge_enabled or (
-            instructions is not None
-            and (instructions.system_prompt or "").strip() != ""
-        )
+        instruction_text = instructions.system_prompt if instructions else ""
+        strict_guard_enabled = knowledge_enabled or bool(instruction_text.strip())
 
         if not strict_guard_enabled:
             try:
