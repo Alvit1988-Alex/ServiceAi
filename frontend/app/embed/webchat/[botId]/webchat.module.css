@@ -6,6 +6,8 @@
   overflow: hidden;
   background: var(--bg);
   font-family: "Inter", "Segoe UI", sans-serif;
+  border: var(--frameBorderWidth) solid var(--frameBorderColor);
+  border-radius: 16px;
 }
 
 .header {
@@ -167,6 +169,8 @@
   --bubbleUserText: #ffffff;
   --buttonBg: #2563eb;
   --buttonText: #ffffff;
+  --frameBorderColor: var(--border);
+  --frameBorderWidth: 1px;
 }
 
 .themeDark {
@@ -183,6 +187,8 @@
   --bubbleUserText: #ffffff;
   --buttonBg: #2563eb;
   --buttonText: #ffffff;
+  --frameBorderColor: var(--border);
+  --frameBorderWidth: 1px;
 }
 
 .themeNeutral {
@@ -199,6 +205,8 @@
   --bubbleUserText: #2f2f2f;
   --buttonBg: #c7c7c7;
   --buttonText: #2f2f2f;
+  --frameBorderColor: var(--border);
+  --frameBorderWidth: 1px;
 }
 
 @media (max-width: 600px) {

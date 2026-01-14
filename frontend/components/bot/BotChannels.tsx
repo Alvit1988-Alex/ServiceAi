@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
@@ -69,6 +69,12 @@ const CHANNEL_FIELDS: Partial<Record<ChannelType, ChannelField[]>> = {
     { key: "secret", label: "Webhook secret" },
   ],
   [ChannelType.WEBCHAT]: [],
+};
+
+const THEME_LABELS: Record<"light" | "dark" | "neutral", string> = {
+  light: "Светлая",
+  dark: "Темная",
+  neutral: "Нейтральная",
 };
 
 function buildConfigState(channel: BotChannel): ChannelConfigState {
@@ -146,8 +152,26 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [wcTheme, setWcTheme] = useState<"light" | "dark" | "neutral">("light");
   const [wcAvatar, setWcAvatar] = useState<string | null>(null);
   const [wcAvatarError, setWcAvatarError] = useState<string | null>(null);
+  const [wcCustomEnabled, setWcCustomEnabled] = useState(false);
+  const [wcBorderColor, setWcBorderColor] = useState("#e6e8ef");
+  const [wcButtonColor, setWcButtonColor] = useState("#2563eb");
+  const [wcBorderWidth, setWcBorderWidth] = useState(1);
   const [generatedCode, setGeneratedCode] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isAvatarEditorOpen, setIsAvatarEditorOpen] = useState(false);
+  const [avatarScale, setAvatarScale] = useState(1);
+  const [avatarOffset, setAvatarOffset] = useState({ x: 0, y: 0 });
+  const avatarCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const avatarImageRef = useRef<HTMLImageElement | null>(null);
+  const avatarObjectUrlRef = useRef<string | null>(null);
+  const avatarDragState = useRef<{ dragging: boolean; x: number; y: number }>({
+    dragging: false,
+    x: 0,
+    y: 0,
+  });
+  const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+  const MAX_INPUT_PX = 4000;
+  const AVATAR_CANVAS_SIZE = 200;
 
   useEffect(() => {
     let isMounted = true;
@@ -160,6 +184,40 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       .then((items) => {
         if (!isMounted) return;
         setChannels(items);
+        const webchatChannel = items.find(
+          (item) => item.channel_type === ChannelType.WEBCHAT,
+        );
+        if (webchatChannel) {
+          const config = webchatChannel.config ?? {};
+          const configTheme = config["webchat_theme"];
+          const nextTheme =
+            configTheme === "dark" || configTheme === "neutral" || configTheme === "light"
+              ? configTheme
+              : "light";
+          const nextBorderWidthRaw = config["webchat_border_width"];
+          const nextBorderWidth = Number.isFinite(Number(nextBorderWidthRaw))
+            ? Math.min(6, Math.max(1, Number(nextBorderWidthRaw)))
+            : 1;
+          setWcName(typeof config["webchat_name"] === "string" ? config["webchat_name"] : "");
+          setWcTheme(nextTheme);
+          setWcAvatar(
+            typeof config["webchat_avatar_data_url"] === "string"
+              ? config["webchat_avatar_data_url"]
+              : null,
+          );
+          setWcCustomEnabled(Boolean(config["webchat_custom_colors_enabled"]));
+          setWcBorderColor(
+            typeof config["webchat_border_color"] === "string"
+              ? config["webchat_border_color"]
+              : "#e6e8ef",
+          );
+          setWcButtonColor(
+            typeof config["webchat_button_color"] === "string"
+              ? config["webchat_button_color"]
+              : "#2563eb",
+          );
+          setWcBorderWidth(nextBorderWidth);
+        }
         const nextForms = Object.fromEntries(
           items.map((channel) => [channel.id, { config: buildConfigState(channel) }]),
         );
@@ -283,7 +341,19 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
     try {
       const payload = {
-        config: prepareConfig(form.config),
+        config:
+          channels.find((channel) => channel.id === channelId)?.channel_type === ChannelType.WEBCHAT
+            ? {
+                ...prepareConfig(form.config),
+                webchat_name: wcName,
+                webchat_theme: wcTheme,
+                webchat_avatar_data_url: wcAvatar,
+                webchat_custom_colors_enabled: wcCustomEnabled,
+                webchat_border_color: wcBorderColor,
+                webchat_button_color: wcButtonColor,
+                webchat_border_width: wcBorderWidth,
+              }
+            : prepareConfig(form.config),
       };
       const updatedChannel = await updateChannel(botId, channelId, payload);
       applyChannelUpdate(channelId, updatedChannel);
@@ -431,6 +501,13 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             theme: wcTheme,
             avatarDataUrl: wcAvatar,
             avatarTransform: null,
+            customColors: wcCustomEnabled
+              ? {
+                  borderColor: wcBorderColor,
+                  buttonColor: wcButtonColor,
+                  borderWidth: wcBorderWidth,
+                }
+              : null,
           },
         },
         "*",
@@ -440,64 +517,128 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
   useEffect(() => {
     sendWebchatConfig();
-  }, [wcName, wcTheme, wcAvatar]);
+  }, [wcName, wcTheme, wcAvatar, wcCustomEnabled, wcBorderColor, wcButtonColor, wcBorderWidth]);
 
-  const renderWebchatSettings = (channel: BotChannel) => {
-    const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
-    const MAX_INPUT_PX = 4000;
-    const AVATAR_CANVAS_SIZE = 200;
+  const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_AVATAR_SIZE) {
+      setWcAvatarError("Файл слишком большой. Максимум 2 МБ.");
+      event.target.value = "";
+      return;
+    }
 
-    const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      if (file.size > MAX_AVATAR_SIZE) {
-        setWcAvatarError("Файл слишком большой. Максимум 2 МБ.");
+    setWcAvatarError(null);
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      const maxSide = Math.max(image.width, image.height);
+      if (maxSide > MAX_INPUT_PX) {
+        setWcAvatarError("Слишком большое разрешение. Максимум 4000px по стороне.");
+        URL.revokeObjectURL(imageUrl);
         event.target.value = "";
         return;
       }
-
+      avatarImageRef.current = image;
+      avatarObjectUrlRef.current = imageUrl;
+      const initialScale = Math.max(
+        AVATAR_CANVAS_SIZE / image.width,
+        AVATAR_CANVAS_SIZE / image.height,
+      );
+      const targetWidth = image.width * initialScale;
+      const targetHeight = image.height * initialScale;
+      setAvatarScale(initialScale);
+      setAvatarOffset({
+        x: Math.round((AVATAR_CANVAS_SIZE - targetWidth) / 2),
+        y: Math.round((AVATAR_CANVAS_SIZE - targetHeight) / 2),
+      });
+      setIsAvatarEditorOpen(true);
       setWcAvatarError(null);
-      const imageUrl = URL.createObjectURL(file);
-      const image = new Image();
-
-      image.onload = () => {
-        const maxSide = Math.max(image.width, image.height);
-        if (maxSide > MAX_INPUT_PX) {
-          setWcAvatarError("Слишком большое разрешение. Максимум 4000px по стороне.");
-          URL.revokeObjectURL(imageUrl);
-          event.target.value = "";
-          return;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = AVATAR_CANVAS_SIZE;
-        canvas.height = AVATAR_CANVAS_SIZE;
-        const context = canvas.getContext("2d");
-        if (!context) {
-          URL.revokeObjectURL(imageUrl);
-          return;
-        }
-        const scale = Math.min(AVATAR_CANVAS_SIZE / image.width, AVATAR_CANVAS_SIZE / image.height);
-        const targetWidth = Math.round(image.width * scale);
-        const targetHeight = Math.round(image.height * scale);
-        const offsetX = Math.round((AVATAR_CANVAS_SIZE - targetWidth) / 2);
-        const offsetY = Math.round((AVATAR_CANVAS_SIZE - targetHeight) / 2);
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(image, offsetX, offsetY, targetWidth, targetHeight);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        setWcAvatar(dataUrl);
-        setWcAvatarError(null);
-        URL.revokeObjectURL(imageUrl);
-        event.target.value = "";
-      };
-
-      image.onerror = () => {
-        URL.revokeObjectURL(imageUrl);
-        setWcAvatarError("Не удалось прочитать файл.");
-      };
-
-      image.src = imageUrl;
+      event.target.value = "";
     };
 
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      setWcAvatarError("Не удалось прочитать файл.");
+    };
+
+    image.src = imageUrl;
+  };
+
+  useEffect(() => {
+    const canvas = avatarCanvasRef.current;
+    const image = avatarImageRef.current;
+    if (!canvas || !image || !isAvatarEditorOpen) {
+      return;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+    const targetWidth = image.width * avatarScale;
+    const targetHeight = image.height * avatarScale;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, avatarOffset.x, avatarOffset.y, targetWidth, targetHeight);
+  }, [avatarOffset.x, avatarOffset.y, avatarScale, isAvatarEditorOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current);
+        avatarObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const closeAvatarEditor = () => {
+    setIsAvatarEditorOpen(false);
+    avatarImageRef.current = null;
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current);
+      avatarObjectUrlRef.current = null;
+    }
+  };
+
+  const handleAvatarApply = () => {
+    const canvas = avatarCanvasRef.current;
+    if (!canvas) {
+      closeAvatarEditor();
+      return;
+    }
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    setWcAvatar(dataUrl);
+    setWcAvatarError(null);
+    closeAvatarEditor();
+  };
+
+  const startDrag = (event: MouseEvent<HTMLCanvasElement>) => {
+    avatarDragState.current = {
+      dragging: true,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleDrag = (event: MouseEvent<HTMLCanvasElement>) => {
+    if (!avatarDragState.current.dragging) return;
+    const deltaX = event.clientX - avatarDragState.current.x;
+    const deltaY = event.clientY - avatarDragState.current.y;
+    avatarDragState.current = {
+      dragging: true,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    setAvatarOffset((prev) => ({ x: prev.x + deltaX, y: prev.y + deltaY }));
+  };
+
+  const endDrag = () => {
+    avatarDragState.current = { ...avatarDragState.current, dragging: false };
+  };
+
+  const renderWebchatSettings = (channel: BotChannel) => {
     const handleGenerate = () => {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const dataAvatar = wcAvatar ?? "";
@@ -550,7 +691,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                     checked={wcTheme === theme}
                     onChange={() => setWcTheme(theme)}
                   />
-                  <span>{theme}</span>
+                  <span>{THEME_LABELS[theme]}</span>
                 </label>
               ))}
             </div>
@@ -592,6 +733,47 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             </div>
             {wcAvatarError && <span className={styles.error}>{wcAvatarError}</span>}
           </div>
+
+          <label className={styles.switch}>
+            <input
+              type="checkbox"
+              checked={wcCustomEnabled}
+              onChange={(event) => setWcCustomEnabled(event.target.checked)}
+            />
+            <span>Пользовательские цвета</span>
+          </label>
+
+          {wcCustomEnabled && (
+            <div className={styles.customColorsGrid}>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Цвет рамки</span>
+                <input
+                  type="color"
+                  value={wcBorderColor}
+                  onChange={(event) => setWcBorderColor(event.target.value)}
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Цвет кнопки</span>
+                <input
+                  type="color"
+                  value={wcButtonColor}
+                  onChange={(event) => setWcButtonColor(event.target.value)}
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Толщина рамки</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={wcBorderWidth}
+                  onChange={(event) => setWcBorderWidth(Number(event.target.value))}
+                />
+              </label>
+            </div>
+          )}
 
           <div className={styles.inlineInputs}>
             <button
@@ -670,6 +852,46 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 onLoad={sendWebchatConfig}
                 className={styles.previewIframe}
               />
+            </div>
+          </div>
+        )}
+        {isAvatarEditorOpen && (
+          <div className={styles.previewOverlay}>
+            <div className={styles.avatarModal}>
+              <div className={styles.previewHeader}>
+                <span className={styles.fieldLabel}>Редактирование аватара</span>
+              </div>
+              <div className={styles.avatarModalBody}>
+                <canvas
+                  ref={avatarCanvasRef}
+                  width={AVATAR_CANVAS_SIZE}
+                  height={AVATAR_CANVAS_SIZE}
+                  className={styles.avatarCanvas}
+                  onMouseDown={startDrag}
+                  onMouseMove={handleDrag}
+                  onMouseUp={endDrag}
+                  onMouseLeave={endDrag}
+                />
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Scale</span>
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={3}
+                    step={0.01}
+                    value={avatarScale}
+                    onChange={(event) => setAvatarScale(Number(event.target.value))}
+                  />
+                </label>
+              </div>
+              <div className={styles.avatarModalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={closeAvatarEditor}>
+                  Отмена
+                </button>
+                <button type="button" className={styles.saveButton} onClick={handleAvatarApply}>
+                  Применить
+                </button>
+              </div>
             </div>
           </div>
         )}

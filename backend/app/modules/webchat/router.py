@@ -29,6 +29,17 @@ class WebchatInitOut(BaseModel):
     session_id: str
     ws_url: str
     bot: WebchatBotOut
+    webchat_config: "WebchatConfigOut" | None = None
+
+
+class WebchatConfigOut(BaseModel):
+    name: str
+    theme: str
+    avatar_data_url: str | None
+    custom_colors_enabled: bool
+    border_color: str | None
+    button_color: str | None
+    border_width: int
 
 
 def _resolve_ws_url(request: Request, bot_id: int, session_id: str) -> str:
@@ -45,17 +56,27 @@ async def init_webchat(
     session: AsyncSession = Depends(get_db_session),
 ) -> WebchatInitOut:
     stmt = (
-        select(Bot)
+        select(Bot, BotChannel)
         .join(BotChannel, BotChannel.bot_id == Bot.id)
         .where(
             Bot.id == payload.bot_id,
             BotChannel.channel_type == ChannelType.WEBCHAT,
+            BotChannel.is_active.is_(True),
         )
     )
     result = await session.execute(stmt)
-    bot = result.scalars().first()
-    if not bot:
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
+    bot, channel = row
+    config = channel.config or {}
+    config_theme = config.get("webchat_theme")
+    theme = config_theme if config_theme in ("light", "dark", "neutral") else "light"
+    border_width_raw = config.get("webchat_border_width")
+    try:
+        border_width = int(border_width_raw) if border_width_raw is not None else 1
+    except (TypeError, ValueError):
+        border_width = 1
 
     session_id = str(uuid.uuid4())
     ws_url = _resolve_ws_url(request, payload.bot_id, session_id)
@@ -64,4 +85,13 @@ async def init_webchat(
         session_id=session_id,
         ws_url=ws_url,
         bot=WebchatBotOut(id=bot.id, name=bot.name),
+        webchat_config=WebchatConfigOut(
+            name=config.get("webchat_name") or bot.name,
+            theme=theme,
+            avatar_data_url=config.get("webchat_avatar_data_url"),
+            custom_colors_enabled=bool(config.get("webchat_custom_colors_enabled")),
+            border_color=config.get("webchat_border_color"),
+            button_color=config.get("webchat_button_color"),
+            border_width=border_width,
+        ),
     )

@@ -275,6 +275,12 @@
   justify-content: center;
 }
 
+.customColorsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
 .avatarEditor img {
   position: static;
   width: 100%;
@@ -326,6 +332,41 @@
   background: #fff;
   display: flex;
   flex-direction: column;
+}
+
+.avatarModal {
+  width: min(100%, 480px);
+  background: #fff;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.avatarModalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.avatarCanvas {
+  align-self: center;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  cursor: grab;
+}
+
+.avatarCanvas:active {
+  cursor: grabbing;
+}
+
+.avatarModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px;
 }
 
 .previewHeader {
