@@ -6,10 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import LayoutShell from "@/app/components/layout/LayoutShell";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import { useBotsStore } from "@/store/bots.store";
-import BotAiInstructions from "@/components/bot/BotAiInstructions";
 import BotChannels from "@/components/bot/BotChannels";
 import BotOverview from "@/components/bot/BotOverview";
-import BotKnowledge from "@/components/bot/BotKnowledge";
+import BotAiSetup from "@/components/bot/BotAiSetup";
 import Tabs from "@/components/layout/Tabs";
 
 import styles from "./page.module.css";
@@ -22,7 +21,7 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
   const botId = useMemo(() => Number(params.botId), [params.botId]);
   const invalidId = Number.isNaN(botId);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "channels" | "ai" | "knowledge">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "channels" | "ai">("overview");
 
   const { bots, selectedBot, loadingBots, error, fetchBots, reloadSelectedBot, selectBot } = useBotsStore();
 
@@ -53,8 +52,7 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
     () => [
       { value: "overview", label: "Обзор" },
       { value: "channels", label: "Каналы" },
-      { value: "ai", label: "ИИ" },
-      { value: "knowledge", label: "База знаний" },
+      { value: "ai", label: "ИИ и база знаний" },
     ],
     [],
   );
@@ -81,8 +79,7 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
 
               {activeTab === "overview" && <BotOverview bot={bot} />}
               {activeTab === "channels" && <BotChannels botId={bot.id} />}
-              {activeTab === "ai" && <BotAiInstructions botId={bot.id} />}
-              {activeTab === "knowledge" && <BotKnowledge botId={bot.id} />}
+              {activeTab === "ai" && <BotAiSetup botId={bot.id} />}
             </div>
           )}
         </div>
