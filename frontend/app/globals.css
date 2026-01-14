@@ -116,5 +116,11 @@ body {
 .main-content {
   flex: 1;
   padding: 1.5rem;
-  overflow-x: hidden;
+  overflow-x: auto;
+}
+
+@media (max-width: 820px) {
+  .main-content {
+    padding-left: calc(1.5rem + 88px);
+  }
 }
