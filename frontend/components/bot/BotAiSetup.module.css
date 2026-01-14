@@ -1,7 +1,24 @@
 .layout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.left {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 16px;
+}
+
+.right {
+  position: relative;
 }
 
 .card {
