@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import { API_BASE_URL } from "@/app/api/config";
@@ -20,6 +20,15 @@ type InitResponse = {
   bot: {
     id: number;
     name: string;
+  };
+  webchat_config?: {
+    name: string;
+    theme: "light" | "dark" | "neutral";
+    avatar_data_url: string | null;
+    custom_colors_enabled: boolean;
+    border_color: string | null;
+    button_color: string | null;
+    border_width: number;
   };
 };
 
@@ -96,6 +105,10 @@ export default function EmbeddedWebchatPage() {
   const [uiName, setUiName] = useState("");
   const [uiTheme, setUiTheme] = useState<"light" | "dark" | "neutral">("light");
   const [uiAvatar, setUiAvatar] = useState<string | null>(null);
+  const [uiCustomColorsEnabled, setUiCustomColorsEnabled] = useState(false);
+  const [uiBorderColor, setUiBorderColor] = useState("#e6e8ef");
+  const [uiButtonColor, setUiButtonColor] = useState("#2563eb");
+  const [uiBorderWidth, setUiBorderWidth] = useState(1);
   const previewMessages = useMemo(
     () => [
       { id: "preview-1", sender: "user" as const, text: "Здравствуйте!" },
@@ -164,6 +177,25 @@ export default function EmbeddedWebchatPage() {
         setSessionId(nextSessionId);
         setWsUrl(data.ws_url);
         setBotName(data.bot.name);
+        if (data.webchat_config) {
+          const configTheme =
+            data.webchat_config.theme === "dark" ||
+            data.webchat_config.theme === "neutral" ||
+            data.webchat_config.theme === "light"
+              ? data.webchat_config.theme
+              : "light";
+          setUiName(data.webchat_config.name ?? "");
+          setUiTheme(configTheme);
+          setUiAvatar(data.webchat_config.avatar_data_url ?? null);
+          setUiCustomColorsEnabled(Boolean(data.webchat_config.custom_colors_enabled));
+          setUiBorderColor(data.webchat_config.border_color ?? "#e6e8ef");
+          setUiButtonColor(data.webchat_config.button_color ?? "#2563eb");
+          setUiBorderWidth(
+            Number.isFinite(Number(data.webchat_config.border_width))
+              ? Number(data.webchat_config.border_width)
+              : 1,
+          );
+        }
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(storageKey, nextSessionId);
         }
@@ -207,6 +239,11 @@ export default function EmbeddedWebchatPage() {
         theme: "light" | "dark" | "neutral";
         avatarDataUrl: string | null;
         avatarTransform?: { x: number; y: number; scale: number } | null;
+        customColors?: {
+          borderColor: string;
+          buttonColor: string;
+          borderWidth: number;
+        } | null;
       };
       setUiName(payload.name ?? "");
       const nextTheme =
@@ -215,6 +252,14 @@ export default function EmbeddedWebchatPage() {
           : "light";
       setUiTheme(nextTheme);
       setUiAvatar(payload.avatarDataUrl ?? null);
+      if (payload.customColors) {
+        setUiCustomColorsEnabled(true);
+        setUiBorderColor(payload.customColors.borderColor);
+        setUiButtonColor(payload.customColors.buttonColor);
+        setUiBorderWidth(payload.customColors.borderWidth);
+      } else {
+        setUiCustomColorsEnabled(false);
+      }
     };
 
     window.addEventListener("message", handleMessage);
@@ -252,9 +297,16 @@ export default function EmbeddedWebchatPage() {
 
   const resolvedName = uiName.trim() !== "" ? uiName : botName ?? "Webchat";
   const themeClass = styles[`theme${uiTheme.charAt(0).toUpperCase()}${uiTheme.slice(1)}`];
+  const customStyles = uiCustomColorsEnabled
+    ? ({
+        "--frameBorderColor": uiBorderColor,
+        "--frameBorderWidth": `${uiBorderWidth}px`,
+        "--buttonBg": uiButtonColor,
+      } as CSSProperties)
+    : undefined;
 
   return (
-    <div className={`${styles.container} ${themeClass}`}>
+    <div className={`${styles.container} ${themeClass}`} style={customStyles}>
       <header className={styles.header}>
         <div className={styles.headerMain}>
           {uiAvatar && (
