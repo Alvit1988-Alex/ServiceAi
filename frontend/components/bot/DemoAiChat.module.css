@@ -1,0 +1,125 @@
+.card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  padding: 1.25rem;
+  background: var(--color-bg-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title {
+  margin: 0 0 0.25rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.chatWindow {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--border-radius) - 2px);
+  padding: 1rem;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.emptyState {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.messageRow {
+  display: flex;
+}
+
+.messageRowUser {
+  justify-content: flex-end;
+}
+
+.messageRowBot {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  max-width: 75%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.messageBubbleUser {
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom-right-radius: 0.2rem;
+}
+
+.messageBubbleBot {
+  background: #f1f5f9;
+  color: var(--color-text);
+  border-bottom-left-radius: 0.2rem;
+}
+
+.inputRow {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.input {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--border-radius) - 2px);
+  font-size: 0.95rem;
+}
+
+.input:focus {
+  outline: 2px solid var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.sendButton {
+  padding: 0.65rem 1.2rem;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: calc(var(--border-radius) - 2px);
+  font-weight: 800;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.sendButton:hover {
+  opacity: 0.92;
+}
