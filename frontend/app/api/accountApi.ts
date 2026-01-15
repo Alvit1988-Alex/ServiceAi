@@ -62,3 +62,31 @@ export async function changePassword(payload: ChangePasswordPayload): Promise<Ac
 
   return (await response.json()) as AccountProfile;
 }
+
+export async function uploadAvatar(file: File): Promise<AccountProfile> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await httpClient("/auth/me/avatar", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось загрузить аватар"));
+  }
+
+  return (await response.json()) as AccountProfile;
+}
+
+export async function deleteAvatar(): Promise<AccountProfile> {
+  const response = await httpClient("/auth/me/avatar", {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось удалить аватар"));
+  }
+
+  return (await response.json()) as AccountProfile;
+}

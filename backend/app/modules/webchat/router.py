@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db_session
+from app.modules.accounts.models import Account, User
 from app.modules.bots.models import Bot
 from app.modules.channels.models import BotChannel, ChannelType
 
@@ -36,6 +37,7 @@ class WebchatConfigOut(BaseModel):
     name: str
     theme: str
     avatar_data_url: str | None
+    avatar_url: str | None
     custom_colors_enabled: bool
     border_color: str | None
     button_color: str | None
@@ -56,8 +58,10 @@ async def init_webchat(
     session: AsyncSession = Depends(get_db_session),
 ) -> WebchatInitOut:
     stmt = (
-        select(Bot, BotChannel)
+        select(Bot, BotChannel, User.avatar_url)
         .join(BotChannel, BotChannel.bot_id == Bot.id)
+        .join(Account, Account.id == Bot.account_id)
+        .join(User, User.id == Account.owner_id)
         .where(
             Bot.id == payload.bot_id,
             BotChannel.channel_type == ChannelType.WEBCHAT,
@@ -68,7 +72,7 @@ async def init_webchat(
     row = result.first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
-    bot, channel = row
+    bot, channel, avatar_url = row
     config = channel.config or {}
     config_theme = config.get("webchat_theme")
     theme = config_theme if config_theme in ("light", "dark", "neutral") else "light"
@@ -88,7 +92,8 @@ async def init_webchat(
         webchat_config=WebchatConfigOut(
             name=config.get("webchat_name") or bot.name,
             theme=theme,
-            avatar_data_url=config.get("webchat_avatar_data_url"),
+            avatar_data_url=avatar_url,
+            avatar_url=avatar_url,
             custom_colors_enabled=bool(config.get("webchat_custom_colors_enabled")),
             border_color=config.get("webchat_border_color"),
             button_color=config.get("webchat_button_color"),

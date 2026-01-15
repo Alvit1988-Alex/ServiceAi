@@ -47,6 +47,7 @@ class UserOut(UserBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    avatar_url: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

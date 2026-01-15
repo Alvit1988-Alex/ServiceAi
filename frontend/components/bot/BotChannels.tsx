@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 
+import { deleteAvatar, getCurrentAccount, uploadAvatar } from "@/app/api/accountApi";
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
 import { BotChannel, ChannelType, VISIBLE_CHANNEL_TYPES } from "@/app/api/types";
 
@@ -152,6 +153,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [wcTheme, setWcTheme] = useState<"light" | "dark" | "neutral">("light");
   const [wcAvatar, setWcAvatar] = useState<string | null>(null);
   const [wcAvatarError, setWcAvatarError] = useState<string | null>(null);
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const [wcCustomEnabled, setWcCustomEnabled] = useState(false);
   const [wcBorderColor, setWcBorderColor] = useState("#e6e8ef");
   const [wcButtonColor, setWcButtonColor] = useState("#2563eb");
@@ -173,6 +175,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const MAX_INPUT_PX = 4000;
   const AVATAR_CANVAS_SIZE = 200;
 
+  const buildAvatarUrl = (avatarUrl: string | null) => {
+    if (!avatarUrl) return null;
+    const separator = avatarUrl.includes("?") ? "&" : "?";
+    return `${avatarUrl}${separator}v=${Date.now()}`;
+  };
+
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
@@ -180,9 +188,19 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     setSuccessChannelId(null);
     setChannelErrors({});
 
-    listChannels(botId)
-      .then((items) => {
+    const loadChannels = async () => {
+      try {
+        const [channelsResult, accountResult] = await Promise.allSettled([
+          listChannels(botId),
+          getCurrentAccount(),
+        ]);
         if (!isMounted) return;
+
+        if (channelsResult.status === "rejected") {
+          throw channelsResult.reason;
+        }
+
+        const items = channelsResult.value;
         setChannels(items);
         const webchatChannel = items.find(
           (item) => item.channel_type === ChannelType.WEBCHAT,
@@ -200,11 +218,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             : 1;
           setWcName(typeof config["webchat_name"] === "string" ? config["webchat_name"] : "");
           setWcTheme(nextTheme);
-          setWcAvatar(
-            typeof config["webchat_avatar_data_url"] === "string"
-              ? config["webchat_avatar_data_url"]
-              : null,
-          );
           setWcCustomEnabled(Boolean(config["webchat_custom_colors_enabled"]));
           setWcBorderColor(
             typeof config["webchat_border_color"] === "string"
@@ -223,14 +236,20 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         );
         setForms(nextForms);
         setAllowedItemInputs({});
+
+        if (accountResult.status === "fulfilled") {
+          setWcAvatar(buildAvatarUrl(accountResult.value.avatar_url ?? null));
+        }
         setLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!isMounted) return;
         const message = err instanceof Error ? err.message : "Не удалось загрузить каналы";
         setLoadError(message);
         setLoading(false);
-      });
+      }
+    };
+
+    loadChannels();
 
     return () => {
       isMounted = false;
@@ -340,14 +359,17 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     setSuccessChannelId(null);
 
     try {
+      const preparedConfig = prepareConfig(form.config);
+      if ("webchat_avatar_data_url" in preparedConfig) {
+        delete preparedConfig["webchat_avatar_data_url"];
+      }
       const payload = {
         config:
           channels.find((channel) => channel.id === channelId)?.channel_type === ChannelType.WEBCHAT
             ? {
-                ...prepareConfig(form.config),
+                ...preparedConfig,
                 webchat_name: wcName,
                 webchat_theme: wcTheme,
-                webchat_avatar_data_url: wcAvatar,
                 webchat_custom_colors_enabled: wcCustomEnabled,
                 webchat_border_color: wcBorderColor,
                 webchat_button_color: wcButtonColor,
@@ -608,10 +630,35 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       closeAvatarEditor();
       return;
     }
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    setWcAvatar(dataUrl);
-    setWcAvatarError(null);
-    closeAvatarEditor();
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) {
+          setWcAvatarError("Не удалось создать изображение.");
+          closeAvatarEditor();
+          return;
+        }
+        if (blob.size > MAX_AVATAR_SIZE) {
+          setWcAvatarError("Файл слишком большой. Максимум 2 МБ.");
+          closeAvatarEditor();
+          return;
+        }
+        try {
+          setIsAvatarUploading(true);
+          const file = new File([blob], "avatar.webp", { type: "image/webp" });
+          const profile = await uploadAvatar(file);
+          setWcAvatar(buildAvatarUrl(profile.avatar_url ?? null));
+          setWcAvatarError(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Не удалось загрузить аватар.";
+          setWcAvatarError(message);
+        } finally {
+          setIsAvatarUploading(false);
+          closeAvatarEditor();
+        }
+      },
+      "image/webp",
+      0.9,
+    );
   };
 
   const startDrag = (event: MouseEvent<HTMLCanvasElement>) => {
@@ -789,9 +836,22 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               type="button"
               className={styles.secondaryButton}
               onClick={() => {
-                setWcAvatar(null);
-                setWcAvatarError(null);
+                setIsAvatarUploading(true);
+                deleteAvatar()
+                  .then((profile) => {
+                    setWcAvatar(buildAvatarUrl(profile.avatar_url ?? null));
+                    setWcAvatarError(null);
+                  })
+                  .catch((error) => {
+                    const message =
+                      error instanceof Error ? error.message : "Не удалось удалить аватар.";
+                    setWcAvatarError(message);
+                  })
+                  .finally(() => {
+                    setIsAvatarUploading(false);
+                  });
               }}
+              disabled={isAvatarUploading}
             >
               Удалить
             </button>

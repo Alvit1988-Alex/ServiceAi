@@ -176,6 +176,12 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed HTTP headers",
     )
 
+    webchat_static_dir: str = Field(
+        default=str((BASE_DIR / "../frontend/public/static").resolve()),
+        validation_alias=AliasChoices("WEBCHAT_STATIC_DIR", "webchat_static_dir"),
+        description="Filesystem path to frontend public/static for webchat assets",
+    )
+
     # ---------- helpers ----------
     @classmethod
     def _parse_csv_list(cls, value: Any) -> list[str] | None:
@@ -225,6 +231,13 @@ class Settings(BaseSettings):
     def _normalize_cors_allow_headers(cls, value: Any) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
+
+    @field_validator("webchat_static_dir", mode="before")
+    @classmethod
+    def _normalize_webchat_static_dir(cls, value: str | None) -> str:
+        if value is None:
+            return str((BASE_DIR / "../frontend/public/static").resolve())
+        return str(Path(value).expanduser().resolve())
 
     @field_validator("db_auto_create")
     @classmethod

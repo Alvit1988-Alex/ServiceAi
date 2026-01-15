@@ -24,7 +24,8 @@ type InitResponse = {
   webchat_config?: {
     name: string;
     theme: "light" | "dark" | "neutral";
-    avatar_data_url: string | null;
+    avatar_url?: string | null;
+    avatar_data_url?: string | null;
     custom_colors_enabled: boolean;
     border_color: string | null;
     button_color: string | null;
@@ -184,9 +185,16 @@ export default function EmbeddedWebchatPage() {
             data.webchat_config.theme === "light"
               ? data.webchat_config.theme
               : "light";
+          const avatarUrl =
+            data.webchat_config.avatar_url ?? data.webchat_config.avatar_data_url ?? null;
           setUiName(data.webchat_config.name ?? "");
           setUiTheme(configTheme);
-          setUiAvatar(data.webchat_config.avatar_data_url ?? null);
+          if (avatarUrl) {
+            const separator = avatarUrl.includes("?") ? "&" : "?";
+            setUiAvatar(`${avatarUrl}${separator}v=${Date.now()}`);
+          } else {
+            setUiAvatar(null);
+          }
           setUiCustomColorsEnabled(Boolean(data.webchat_config.custom_colors_enabled));
           setUiBorderColor(data.webchat_config.border_color ?? "#e6e8ef");
           setUiButtonColor(data.webchat_config.button_color ?? "#2563eb");
