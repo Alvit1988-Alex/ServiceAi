@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -26,13 +27,6 @@ class WebchatBotOut(BaseModel):
     name: str
 
 
-class WebchatInitOut(BaseModel):
-    session_id: str
-    ws_url: str
-    bot: WebchatBotOut
-    webchat_config: "WebchatConfigOut" | None = None
-
-
 class WebchatConfigOut(BaseModel):
     name: str
     theme: str
@@ -42,6 +36,13 @@ class WebchatConfigOut(BaseModel):
     border_color: str | None
     button_color: str | None
     border_width: int
+
+
+class WebchatInitOut(BaseModel):
+    session_id: str
+    ws_url: str
+    bot: WebchatBotOut
+    webchat_config: Optional[WebchatConfigOut] = None
 
 
 def _resolve_ws_url(request: Request, bot_id: int, session_id: str) -> str:
