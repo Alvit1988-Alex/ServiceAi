@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -42,7 +40,7 @@ class WebchatInitOut(BaseModel):
     session_id: str
     ws_url: str
     bot: WebchatBotOut
-    webchat_config: Optional[WebchatConfigOut] = None
+    webchat_config: WebchatConfigOut | None = None
 
 
 def _resolve_ws_url(request: Request, bot_id: int, session_id: str) -> str:
