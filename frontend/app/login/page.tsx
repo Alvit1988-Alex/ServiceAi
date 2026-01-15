@@ -152,18 +152,35 @@ export default function LoginPage() {
               type="button"
               onClick={async () => {
                 setShowQr(false);
+                const w = window.open("about:blank", "_blank", "noopener,noreferrer");
+                const openLink = (link: string | null) => {
+                  if (!link) {
+                    if (w) {
+                      w.close();
+                    }
+                    return;
+                  }
+                  if (w) {
+                    w.location.href = link;
+                  } else {
+                    window.location.href = link;
+                  }
+                };
+
                 if (webLink && hasValidBotStart(webLink)) {
-                  window.open(webLink, "_blank", "noopener,noreferrer");
+                  openLink(webLink);
                   return;
                 }
+
                 const deeplink = await ensurePendingLogin();
                 if (!deeplink) {
+                  if (w) {
+                    w.close();
+                  }
                   return;
                 }
                 const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
-                if (resolvedWebLink) {
-                  window.open(resolvedWebLink, "_blank", "noopener,noreferrer");
-                }
+                openLink(resolvedWebLink);
               }}
               disabled={loading || polling}
             >
@@ -173,18 +190,35 @@ export default function LoginPage() {
               type="button"
               variant="secondary"
               onClick={async () => {
+                const w = window.open("about:blank", "_blank", "noopener,noreferrer");
+                const openLink = (link: string | null) => {
+                  if (!link) {
+                    if (w) {
+                      w.close();
+                    }
+                    return;
+                  }
+                  if (w) {
+                    w.location.href = link;
+                  } else {
+                    window.location.href = link;
+                  }
+                };
+
                 if (webLink && hasValidBotStart(webLink)) {
-                  window.open(webLink, "_blank", "noopener,noreferrer");
+                  openLink(webLink);
                   return;
                 }
+
                 const deeplink = await ensurePendingLogin();
                 if (!deeplink) {
+                  if (w) {
+                    w.close();
+                  }
                   return;
                 }
                 const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
-                if (resolvedWebLink) {
-                  window.open(resolvedWebLink, "_blank", "noopener,noreferrer");
-                }
+                openLink(resolvedWebLink);
               }}
               disabled={loading || polling}
             >

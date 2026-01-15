@@ -48,15 +48,45 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
 }
 
 export async function createPendingLogin(): Promise<PendingLoginResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/pending`, {
+  const url = `${API_BASE_URL}/auth/pending`;
+  const response = await fetch(url, {
     method: "POST",
   });
 
   if (!response.ok) {
-    throw new Error("Не удалось создать запрос на вход");
+    let detail: string | undefined;
+    try {
+      const payload = await response.clone().json();
+      if (payload && typeof payload === "object" && "detail" in payload) {
+        const rawDetail = (payload as { detail?: unknown }).detail;
+        if (typeof rawDetail === "string") {
+          detail = rawDetail;
+        } else if (rawDetail != null) {
+          detail = String(rawDetail);
+        }
+      } else if (payload != null) {
+        detail = JSON.stringify(payload);
+      }
+    } catch {
+      try {
+        const text = await response.text();
+        detail = text || undefined;
+      } catch {
+        detail = undefined;
+      }
+    }
+    console.error("[auth] createPendingLogin failed", {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      detail,
+    });
+    throw new Error(`Не удалось создать запрос на вход: ${detail || response.status}`);
   }
 
-  return (await response.json()) as PendingLoginResponse;
+  const data = (await response.json()) as PendingLoginResponse;
+  console.info("[auth] createPendingLogin ok", { hasDeeplink: !!data.telegram_deeplink });
+  return data;
 }
 
 export async function getPendingStatus(token: string): Promise<PendingStatusResponse> {
