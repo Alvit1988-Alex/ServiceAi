@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { buildWsUrl } from "@/app/api/config";
 
 import styles from "./DemoAiChat.module.css";
 
@@ -21,28 +22,6 @@ function createSessionId(): string {
     const value = char === "x" ? rand : (rand % 4) + 8;
     return Math.floor(value).toString(16);
   });
-}
-
-function resolveWsBaseUrl(): string {
-  const rawApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (rawApiBase) {
-    let base = rawApiBase.replace(/\/$/, "");
-    if (base.endsWith("/api")) {
-      base = base.slice(0, -4);
-    }
-    if (base.startsWith("https://")) {
-      return `wss://${base.slice("https://".length)}`;
-    }
-    if (base.startsWith("http://")) {
-      return `ws://${base.slice("http://".length)}`;
-    }
-    return base;
-  }
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}`;
-  }
-  return "";
 }
 
 function extractMessageText(data: unknown): string | null {
@@ -85,18 +64,12 @@ export default function DemoAiChat({ botId }: DemoAiChatProps) {
   }, [messages]);
 
   useEffect(() => {
-    const wsBase = resolveWsBaseUrl();
-    if (!wsBase) {
-      setConnectionState("error");
-      return;
-    }
-
     let isMounted = true;
 
     const connect = () => {
       if (!isMounted) return;
       setConnectionState("connecting");
-      const wsUrl = `${wsBase}/ws/webchat/${botId}/${sessionId}`;
+      const wsUrl = buildWsUrl(`/ws/webchat/${botId}/${sessionId}`);
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
