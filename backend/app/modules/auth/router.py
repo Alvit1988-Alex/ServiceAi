@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 import re
 import secrets
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +39,7 @@ from app.security.jwt import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+MAX_AVATAR_SIZE = 2 * 1024 * 1024
 
 
 def _now() -> datetime:
@@ -148,6 +150,55 @@ async def refresh_token(
 
 @router.get("/me", response_model=UserOut)
 async def read_me(current_user: User = Depends(get_current_user)) -> UserOut:
+    return current_user
+
+
+@router.post("/me/avatar", response_model=UserOut)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> UserOut:
+    if file.content_type != "image/webp":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image/webp is supported",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_AVATAR_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar file is too large",
+        )
+
+    avatar_dir = Path(settings.webchat_static_dir) / "avatars" / f"u_{current_user.id}"
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    avatar_path = avatar_dir / "avatar.webp"
+
+    avatar_path.write_bytes(content)
+
+    current_user.avatar_url = f"/static/avatars/u_{current_user.id}/avatar.webp"
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+    return current_user
+
+
+@router.delete("/me/avatar", response_model=UserOut)
+async def delete_avatar(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> UserOut:
+    avatar_dir = Path(settings.webchat_static_dir) / "avatars" / f"u_{current_user.id}"
+    avatar_path = avatar_dir / "avatar.webp"
+    if avatar_path.exists():
+        avatar_path.unlink()
+
+    current_user.avatar_url = None
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
     return current_user
 
 
