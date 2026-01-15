@@ -528,18 +528,40 @@ async def telegram_webhook(
     chat = message.get("chat") or {}
     from_user = message.get("from") or {}
 
-    if text.startswith("/start") and not text.startswith("/start login_"):
+    start_param: str | None = None
+    token: str | None = None
+    parts = text.strip().split(maxsplit=1)
+    cmd = parts[0] if parts else ""
+    if len(parts) > 1:
+        start_param = parts[1].strip()
+
+    if start_param and start_param.startswith("login_"):
+        token = start_param[len("login_") :].strip()
+
+    if settings.runtime_debug:
+        # pragma: no cover - diagnostic logging only in debug
+        print("Telegram webhook text:", repr(text))  # noqa: T201
+        print("Parsed start_param:", repr(start_param))  # noqa: T201
+        print("Parsed token:", repr(token))  # noqa: T201
+
+    if not cmd.startswith("/start"):
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Result: ignored")  # noqa: T201
+        return TelegramWebhookResponse(ok=True, message="Ignored non-start message")
+
+    if not start_param or not start_param.startswith("login_"):
         info_text = (
-            "Для входа откройте сайт, нажмите “Войти через Telegram”, "
-            "затем вернитесь в этот чат и нажмите кнопку входа/Start по ссылке."
+            "⚠️ Для входа откройте ссылку авторизации на сайте и нажмите «Открыть в Telegram» ещё раз. "
+            "Важно: команда должна прийти как /start login_<token>."
         )
         chat_id = chat.get("id") or from_user.get("id")
         if chat_id:
             background_tasks.add_task(_send_telegram_confirmation_message, chat_id, info_text)
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Result: missing token")  # noqa: T201
         return TelegramWebhookResponse(ok=True, message="Start message handled")
-
-    if not text.startswith("/start login_"):
-        return TelegramWebhookResponse(ok=True, message="Ignored non-login message")
 
     if not from_user.get("id"):
         if settings.runtime_debug:
@@ -547,7 +569,6 @@ async def telegram_webhook(
             print("Missing Telegram user identifier")  # noqa: T201
         return TelegramWebhookResponse(ok=True, message="Missing Telegram user identifier")
 
-    token = text.replace("/start login_", "").strip()
     if not token:
         expired_text = (
             "Ссылка для входа устарела. Вернитесь на сайт и нажмите “Войти через Telegram” ещё раз."
@@ -555,6 +576,9 @@ async def telegram_webhook(
         chat_id = chat.get("id") or from_user.get("id")
         if chat_id:
             background_tasks.add_task(_send_telegram_confirmation_message, chat_id, expired_text)
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Result: missing token")  # noqa: T201
         return TelegramWebhookResponse(ok=True, message="Login token missing")
     confirm_payload = TelegramConfirmRequest(
         token=token,
@@ -573,6 +597,9 @@ async def telegram_webhook(
         chat_id = chat.get("id") or from_user.get("id")
         if chat_id:
             background_tasks.add_task(_send_telegram_confirmation_message, chat_id, expired_text)
+        if settings.runtime_debug:
+            # pragma: no cover - diagnostic logging only in debug
+            print("Result: ignored")  # noqa: T201
         return TelegramWebhookResponse(ok=True, message="Login token invalid")
 
     reply_text = "✅ Вход подтвержден. Вернитесь в браузер, чтобы продолжить."
@@ -584,6 +611,7 @@ async def telegram_webhook(
     # Minimal logging for observability without exposing secrets
     if settings.runtime_debug:
         # pragma: no cover - diagnostic logging only in debug
+        print("Result: consumed")  # noqa: T201
         print(  # noqa: T201
             f"Telegram webhook processed for token={token[:4]}*** using bot={masked_token} secret={masked_secret}"
         )
