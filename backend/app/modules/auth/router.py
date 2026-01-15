@@ -40,6 +40,7 @@ from app.security.jwt import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 MAX_AVATAR_SIZE = 2 * 1024 * 1024
+_CACHED_TG_USERNAME: str | None = None
 
 
 def _now() -> datetime:
@@ -229,13 +230,45 @@ async def change_password(
     return user
 
 
-def _build_deeplink(token: str) -> str:
-    if not settings.telegram_auth_bot_username:
+async def _resolve_bot_username() -> str | None:
+    if settings.telegram_auth_bot_username:
+        return settings.telegram_auth_bot_username
+
+    global _CACHED_TG_USERNAME
+    if _CACHED_TG_USERNAME:
+        return _CACHED_TG_USERNAME
+
+    if not settings.telegram_auth_bot_token:
+        return None
+
+    bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
+    try:
+        async with httpx.AsyncClient(base_url=bot_base_url, timeout=3) as client:
+            response = await client.get("/getMe")
+            response.raise_for_status()
+            payload = response.json()
+    except Exception:
+        return None
+
+    if isinstance(payload, dict):
+        result = payload.get("result")
+        if isinstance(result, dict):
+            username = result.get("username")
+            if isinstance(username, str) and username:
+                _CACHED_TG_USERNAME = username
+                return username
+
+    return None
+
+
+async def _build_deeplink(token: str) -> str:
+    username = await _resolve_bot_username()
+    if not username:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Telegram bot username is not configured",
+            detail="Telegram bot username is not configured and cannot be resolved via token",
         )
-    return f"https://t.me/{settings.telegram_auth_bot_username}?start=login_{token}"
+    return f"https://t.me/{username}?start=login_{token}"
 
 
 def _expires_at() -> datetime:
@@ -406,7 +439,7 @@ async def create_pending_login(
         token=pending.token,
         status=pending.status,
         expires_at=pending.expires_at,
-        telegram_deeplink=_build_deeplink(pending.token),
+        telegram_deeplink=await _build_deeplink(pending.token),
     )
 
 
