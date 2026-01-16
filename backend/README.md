@@ -111,14 +111,15 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## Telegram webhook
 - Путь вебхука определяется `TELEGRAM_WEBHOOK_PATH` (по умолчанию `/auth/telegram/webhook`). Итоговый URL:\
   `https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}`
+- Nginx должен проксировать `TELEGRAM_WEBHOOK_PATH` напрямую в backend, не через Next.js.
 - Пример установки вебхука для бота:
   ```bash
   curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
-    -d "url=https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}"
+    -d "url=https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}"
   ```
 - Проверка вебхука после настройки nginx (URL без `/api`):
   ```bash
-  curl -i -X POST "https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}" \
+  curl -i -X POST "https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}" \
     -H "Content-Type: application/json" \
     --data '{"message":{"text":"/start login_test","chat":{"id":1},"from":{"id":1}}}'
   ```
