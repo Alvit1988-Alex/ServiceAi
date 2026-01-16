@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -71,8 +71,8 @@ export default function LoginPage() {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [showQr, setShowQr] = useState(false);
-
+  const [isMobile, setIsMobile] = useState(false);
+  const autoEnsureRef = useRef(false);
   const { webLink } = useMemo(
     () => buildTelegramLinks(pendingDeeplink),
     [pendingDeeplink],
@@ -82,6 +82,24 @@ export default function LoginPage() {
   useEffect(() => {
     void initFromStorage();
   }, [initFromStorage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mq = window.matchMedia("(max-width: 640px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+
+    if (mq.addEventListener) {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    }
+
+    mq.addListener(update);
+    return () => mq.removeListener(update);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -114,7 +132,7 @@ export default function LoginPage() {
   const isPendingValid =
     pendingDeeplink && pendingExpiresAt && new Date(pendingExpiresAt) > new Date();
 
-  const ensurePendingLogin = async () => {
+  const ensurePendingLogin = useCallback(async () => {
     setLocalError(null);
     try {
       if (isPendingValid) {
@@ -126,6 +144,76 @@ export default function LoginPage() {
       const message = err instanceof Error ? err.message : "Не удалось подготовить вход";
       setLocalError(message);
       return null;
+    }
+  }, [isPendingValid, pendingDeeplink, startTelegramLogin]);
+
+  useEffect(() => {
+    if (!isInitialized || isMobile || loading || polling) {
+      if (isMobile) {
+        autoEnsureRef.current = false;
+      }
+      return;
+    }
+
+    if (isPendingValid) {
+      return;
+    }
+
+    if (autoEnsureRef.current) {
+      return;
+    }
+
+    autoEnsureRef.current = true;
+    void ensurePendingLogin().finally(() => {
+      autoEnsureRef.current = false;
+    });
+  }, [ensurePendingLogin, isInitialized, isMobile, isPendingValid, loading, polling]);
+
+  const getTelegramWebLink = async () => {
+    if (webLink && hasValidBotStart(webLink)) {
+      return webLink;
+    }
+
+    const deeplink = await ensurePendingLogin();
+    if (!deeplink) {
+      return null;
+    }
+    const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
+    return resolvedWebLink;
+  };
+
+  const openExternalLink = async (getLink: () => Promise<string | null>) => {
+    const w = window.open("", "_blank");
+    if (w) {
+      try {
+        w.opener = null;
+      } catch {
+        // Ignore if the browser blocks access.
+      }
+    }
+
+    let link: string | null = null;
+    try {
+      link = await getLink();
+    } catch {
+      if (w) {
+        w.close();
+      }
+      return;
+    }
+
+    if (!link) {
+      if (w) {
+        w.close();
+      }
+      return;
+    }
+
+    if (w) {
+      w.location.replace(link);
+      w.focus?.();
+    } else {
+      window.location.href = link;
     }
   };
 
@@ -151,90 +239,11 @@ export default function LoginPage() {
             <Button
               type="button"
               onClick={async () => {
-                setShowQr(false);
-                const w = window.open("about:blank", "_blank", "noopener,noreferrer");
-                const openLink = (link: string | null) => {
-                  if (!link) {
-                    if (w) {
-                      w.close();
-                    }
-                    return;
-                  }
-                  if (w) {
-                    w.location.href = link;
-                  } else {
-                    window.location.href = link;
-                  }
-                };
-
-                if (webLink && hasValidBotStart(webLink)) {
-                  openLink(webLink);
-                  return;
-                }
-
-                const deeplink = await ensurePendingLogin();
-                if (!deeplink) {
-                  if (w) {
-                    w.close();
-                  }
-                  return;
-                }
-                const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
-                openLink(resolvedWebLink);
+                await openExternalLink(getTelegramWebLink);
               }}
               disabled={loading || polling}
             >
-              {loading || polling ? "Готовим ссылку..." : "Открыть в Telegram"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                const w = window.open("about:blank", "_blank", "noopener,noreferrer");
-                const openLink = (link: string | null) => {
-                  if (!link) {
-                    if (w) {
-                      w.close();
-                    }
-                    return;
-                  }
-                  if (w) {
-                    w.location.href = link;
-                  } else {
-                    window.location.href = link;
-                  }
-                };
-
-                if (webLink && hasValidBotStart(webLink)) {
-                  openLink(webLink);
-                  return;
-                }
-
-                const deeplink = await ensurePendingLogin();
-                if (!deeplink) {
-                  if (w) {
-                    w.close();
-                  }
-                  return;
-                }
-                const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
-                openLink(resolvedWebLink);
-              }}
-              disabled={loading || polling}
-            >
-              {loading || polling ? "Готовим ссылку..." : "Открыть в браузере"}
-            </Button>
-            <Button
-              type="button"
-              onClick={async () => {
-                setShowQr(true);
-                if (!isPendingValid || !hasValidBotStart(webLink)) {
-                  await ensurePendingLogin();
-                }
-              }}
-              disabled={loading || polling}
-            >
-              {loading || polling ? "Готовим QR..." : "Показать QR для входа"}
+              {loading || polling ? "Готовим ссылку..." : "Войти через Telegram"}
             </Button>
           </div>
 
@@ -242,73 +251,80 @@ export default function LoginPage() {
             <p className={styles.errorText}>{localError || error}</p>
           )}
 
-          {pendingDeeplink && showQr && (
-            <div className={`${styles.fieldGroup} ${styles.qrBlock}`}>
-              <p className={styles.fieldLabel}>Отсканируйте QR в Telegram</p>
-              {qrImage ? (
-                <Image
-                  src={qrImage}
-                  alt="QR для входа через Telegram"
-                  className={styles.qrImage}
-                  width={240}
-                  height={240}
-                  unoptimized
-                />
-              ) : (
-                <p className={styles.errorText}>Не удалось сгенерировать QR. Попробуйте еще раз.</p>
-              )}
-              <div className={styles.fieldGroup}>
-                <p className={styles.fieldLabel}>Как войти</p>
-                <ol className={styles.loginDescription}>
-                  <li>Откройте Telegram на телефоне.</li>
-                  <li>Отсканируйте QR (или нажмите «Открыть в Telegram»).</li>
-                  <li>В чате с ботом нажмите Start.</li>
-                  <li>Вернитесь в браузер — вход завершится автоматически.</li>
-                </ol>
-              </div>
-              {webLink && (
+          {pendingDeeplink && (
+            <>
+              <p className={styles.qrSeparator}>или сканировать QR-код</p>
+              <div className={`${styles.fieldGroup} ${styles.qrBlock}`}>
+                <p className={styles.fieldLabel}>Отсканируйте QR в Telegram</p>
+                {qrImage ? (
+                  <Image
+                    src={qrImage}
+                    alt="QR для входа через Telegram"
+                    className={styles.qrImage}
+                    width={240}
+                    height={240}
+                    unoptimized
+                  />
+                ) : (
+                  <p className={styles.errorText}>
+                    Не удалось сгенерировать QR. Попробуйте еще раз.
+                  </p>
+                )}
+                <div className={styles.fieldGroup}>
+                  <p className={styles.fieldLabel}>Как войти</p>
+                  <ol className={styles.loginDescription}>
+                    <li>Откройте Telegram на телефоне.</li>
+                    <li>Отсканируйте QR (или нажмите «Войти через Telegram»).</li>
+                    <li>В чате с ботом нажмите Start.</li>
+                    <li>Вернитесь в браузер — вход завершится автоматически.</li>
+                  </ol>
+                </div>
+                {webLink && (
+                  <p className={styles.loginDescription}>
+                    <a href={webLink} target="_blank" rel="noreferrer">
+                      Открыть в браузере
+                    </a>
+                  </p>
+                )}
+                <div className={`${styles.actions} ${styles.loginActions}`}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={async () => {
+                      if (!webLink) {
+                        return;
+                      }
+                      try {
+                        await navigator.clipboard.writeText(webLink);
+                        setCopySuccess(true);
+                        window.setTimeout(() => setCopySuccess(false), 2000);
+                      } catch {
+                        setLocalError("Не удалось скопировать ссылку");
+                      }
+                    }}
+                    disabled={!webLink}
+                  >
+                    {copySuccess ? "Ссылка скопирована" : "Скопировать ссылку"}
+                  </Button>
+                </div>
+                {timeLeft !== null && (
+                  <p className={styles.loginDescription}>
+                    QR истекает через {timeLeft} сек. После истечения создадим новый автоматически.
+                  </p>
+                )}
                 <p className={styles.loginDescription}>
-                  <a href={webLink} target="_blank" rel="noreferrer">
-                    Открыть в браузере
-                  </a>
+                  Статус:{" "}
+                  {pendingStatus === "confirmed" ? "Подтверждено" : "Ожидание подтверждения"}
                 </p>
-              )}
-              <div className={`${styles.actions} ${styles.loginActions}`}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={async () => {
-                    if (!webLink) {
-                      return;
-                    }
-                    try {
-                      await navigator.clipboard.writeText(webLink);
-                      setCopySuccess(true);
-                      window.setTimeout(() => setCopySuccess(false), 2000);
-                    } catch {
-                      setLocalError("Не удалось скопировать ссылку");
-                    }
-                  }}
-                  disabled={!webLink}
-                >
-                  {copySuccess ? "Ссылка скопирована" : "Скопировать ссылку"}
-                </Button>
               </div>
-              {timeLeft !== null && (
-                <p className={styles.loginDescription}>
-                  QR истекает через {timeLeft} сек. После истечения создадим новый автоматически.
-                </p>
-              )}
-              <p className={styles.loginDescription}>
-                Статус: {pendingStatus === "confirmed" ? "Подтверждено" : "Ожидание подтверждения"}
-              </p>
-            </div>
+            </>
           )}
 
           {!pendingDeeplink && isInitialized && (
             <p className={styles.loginDescription}>
-              Выберите удобный способ входа через Telegram. Мы подготовим ссылку или QR-код для
-              подтверждения.
+              {isMobile
+                ? "Нажмите «Войти через Telegram» для входа."
+                : "Нажмите «Войти через Telegram» или сканируйте QR-код ниже."}
             </p>
           )}
         </div>
