@@ -1,73 +1,179 @@
-# ServiceAI
+# ServiceAI Backend
 
-Черновой каркас для backend ServiceAI на FastAPI. Внутри `backend/app` разложены основные модули (bots, channels, dialogs, ai), черновые модели и роутеры, а также вспомогательные утилиты. Docker-файлы расположены в каталоге `docker/`.
+Backend-часть проекта ServiceAI.
+Отвечает за API, аутентификацию, Telegram-вход, работу с БД и диагностику.
 
-Запуск dev-окружения (потребуется Docker):
+---
 
-```bash
-docker compose -f docker/docker-compose.yml up --build
-```
+## Требования
 
-Перед запуском убедитесь, что Postgres доступен на `localhost:5432` (или укажите правильный порт в `DATABASE_URL`).
-Если база недоступна, backend теперь завершит запуск с понятной ошибкой, вместо того чтобы падать 500 при авторизации.
+- Python 3.10+
+- PostgreSQL 14+
+- nginx (для продакшена)
+- Telegram Bot Token
 
-Основные точки входа:
-- `backend/app/main.py` — FastAPI приложение со сборкой роутеров.
-- `backend/pyproject.toml` — зависимости Poetry для backend.
-- `docker/Dockerfile.backend` — сборка API-сервиса.
-- Поддерживается вход через Telegram: установите `AUTH_TELEGRAM_ONLY=true`, чтобы отключить парольный вход. При значении `false` Telegram-авторизация работает совместно с логином по email/паролю.
+---
+
+## Переменные окружения
+
+Минимально необходимые переменные:
+
+    ENV=production
+    DEBUG=false
+
+    DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/serviceai
+
+    PUBLIC_BASE_URL=https://example.com
+
+    TELEGRAM_AUTH_BOT_TOKEN=123456:ABCDEF...
+    TELEGRAM_WEBHOOK_SECRET=long_random_secret
+    TELEGRAM_WEBHOOK_PATH=/auth/telegram/webhook
+
+Важно:
+- PUBLIC_BASE_URL — публичный домен, через который Telegram обращается к backend (обычно домен nginx, не localhost).
+- TELEGRAM_WEBHOOK_PATH НЕ должен проксироваться через Next.js. В nginx этот путь должен идти в backend напрямую.
+
+---
+
+## Установка зависимостей
+
+Через Poetry:
+
+    cd backend
+    poetry install
+
+Через venv / pip:
+
+    cd backend
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+
+---
+
+## Запуск backend
+
+Development:
+
+    cd backend
+    ENV=development DEBUG=true python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+Production (обычно за nginx, слушаем только localhost):
+
+    cd backend
+    python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+---
+
+## Миграции БД
+
+Новая установка (пустая БД):
+1) В .env установите:
+       DB_AUTO_CREATE=false
+       DEBUG=false
+       ENV=production
+
+2) Примените миграции:
+       alembic -c alembic.ini upgrade head
+
+3) Запустите backend.
+
+Уже существующая БД (создана через create_all):
+1) В .env установите:
+       DB_AUTO_CREATE=false
+       DEBUG=false
+       ENV=production
+
+2) Пометьте схему как актуальную:
+       alembic -c alembic.ini stamp head
+
+Будущие изменения схемы:
+    alembic -c alembic.ini revision --autogenerate -m "описание"
+    alembic -c alembic.ini upgrade head
+
+Подсказки:
+- Если автогенерация не видит таблицы — убедитесь, что модели импортируются в alembic/env.py
+- Проверьте, что DATABASE_URL указывает на ту же БД, что использует backend
+
+---
+
+## Telegram Webhook
+
+Итоговый URL вебхука формируется так:
+
+    https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}
+
+Пример:
+
+    https://dostup.tgkod.ru/auth/telegram/webhook?secret=XXXXXXXX
+
+Установка вебхука:
+
+    curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
+      -d "url=https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}"
+
+Проверка webhook после настройки nginx (nginx должен проксировать /auth/telegram/webhook напрямую в backend):
+
+    curl -i -X POST "https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}" \
+      -H "Content-Type: application/json" \
+      --data '{"message":{"text":"/start login_test","chat":{"id":1},"from":{"id":1}}}'
+
+Ожидаемый ответ backend (пример):
+
+    {"ok":true,"message":"Login token invalid"}
+
+Если Telegram показывает в getWebhookInfo:
+    "Wrong response from the webhook: 404 Not Found"
+— значит webhook попадает не в backend (обычно в Next.js или не настроен location в nginx).
+
+---
+
+## nginx (критично для Telegram)
+
+Требование:
+- /auth/telegram/webhook должен попадать в backend (127.0.0.1:8000), а НЕ в Next.js (127.0.0.1:3000)
+
+Пример serviceai.conf (ключевые location):
+
+    location = /auth/telegram/webhook {
+        proxy_pass http://127.0.0.1:8000/auth/telegram/webhook;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /auth/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+---
+
+## Режимы разработки и продакшена
+
+- Рекомендуемый режим: ENV=production и DEBUG=false
+- В продакшене backend обычно слушает только 127.0.0.1 и доступен снаружи через nginx
+
+---
 
 ## Диагностика
 
-Backend предоставляет служебный эндпоинт `/diagnostics` для проверки состояния приложения и зависимостей.
-Тот же набор проверок можно выполнить из CLI:
+Пример вызова:
 
-```bash
-cd backend
-python -m app.diagnostics
-```
+    cd backend
+    python -m app.diagnostics --base-url http://localhost:8000 --mode deep --account-id 12 --since 24h
 
-Необходимые переменные окружения:
+Режимы:
+- fast
+- deep
+- full
 
-- `PUBLIC_BASE_URL` — публичный базовый URL сервиса (например, `https://app.example.com`).
-- `INTERNAL_API_KEY` — ключ доступа для внутренних запросов (укажите ваш ключ; не храните реальные значения в репозитории).
+Опции:
+- --internal-key (если ключ не задан в окружении)
+- --verbose (подробный вывод)
 
-## Frontend
-
-В каталоге `frontend` находится Next.js-приложение. Перед запуском установите зависимости и подготовьте переменные окружения:
-
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-```
-
-Команды разработки и сборки:
-
-- `npm run dev` — запуск dev-сервера.
-- `npm run build` — сборка production-версии.
-- `npm run start` — запуск собранного приложения.
-- `npm run lint` — линтинг кода.
-
-Необходимые переменные окружения (смотрите `frontend/.env.example`):
-
-- `NEXT_PUBLIC_API_BASE_URL` — базовый URL API (например, dev: `http://localhost:8000`, prod: `https://api.example.com`).
-- `NEXT_PUBLIC_ENABLE_WIDGET_INTEGRATION` — включает генерацию кода webchat-виджета (dev: `true`, prod по умолчанию `false`).
-
-## Nginx reverse proxy (production)
-
-Iframe `/embed/webchat/*` всегда обращается к `/api/...`, поэтому без reverse proxy на уровне Nginx будет отображаться “Ошибка подключения”. Используйте готовый конфиг `deploy/nginx/serviceai.conf`:
-
-```bash
-sudo cp deploy/nginx/serviceai.conf /etc/nginx/sites-available/serviceai.conf
-sudo ln -s /etc/nginx/sites-available/serviceai.conf /etc/nginx/sites-enabled/serviceai.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Проверка (если нет health-эндпоинта, используйте `/api/`):
-
-```bash
-curl -I https://DOMAIN/
-curl -I https://DOMAIN/api/health
-```
+CLI использует httpx, curl не требуется.
