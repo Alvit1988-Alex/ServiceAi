@@ -245,9 +245,9 @@ export default function LoginPage() {
               onClick={async () => {
                 await openExternalLink(getTelegramWebLink);
               }}
-              disabled={loading || polling}
+              disabled={loading}
             >
-              {loading || polling ? "Готовим ссылку..." : "Войти через Telegram"}
+              {loading ? "Готовим ссылку..." : "Войти через Telegram"}
             </Button>
           </div>
 
