@@ -68,11 +68,14 @@ export default function LoginPage() {
     initFromStorage,
     stopTelegramLoginPolling,
   } = useAuthStore();
+
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+
   const [isMobile, setIsMobile] = useState(false);
   const autoEnsureRef = useRef(false);
+
   const { webLink } = useMemo(
     () => buildTelegramLinks(pendingDeeplink),
     [pendingDeeplink],
@@ -120,6 +123,7 @@ export default function LoginPage() {
         setQrImage(null);
       }
     };
+
     void generateQr();
   }, [qrLink]);
 
@@ -169,7 +173,7 @@ export default function LoginPage() {
     });
   }, [ensurePendingLogin, isInitialized, isMobile, isPendingValid, loading, polling]);
 
-  const getTelegramWebLink = async () => {
+  const getTelegramWebLink = useCallback(async () => {
     if (webLink && hasValidBotStart(webLink)) {
       return webLink;
     }
@@ -180,9 +184,9 @@ export default function LoginPage() {
     }
     const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
     return resolvedWebLink;
-  };
+  }, [ensurePendingLogin, webLink]);
 
-  const openExternalLink = async (getLink: () => Promise<string | null>) => {
+  const openExternalLink = useCallback(async (getLink: () => Promise<string | null>) => {
     const w = window.open("", "_blank");
     if (w) {
       try {
@@ -215,7 +219,7 @@ export default function LoginPage() {
     } else {
       window.location.href = link;
     }
-  };
+  }, []);
 
   const expiresAt = pendingExpiresAt ? new Date(pendingExpiresAt) : null;
   const timeLeft =
@@ -229,8 +233,8 @@ export default function LoginPage() {
         <div className={styles.loginHeader}>
           <h2 className={styles.loginTitle}>Вход в панель управления</h2>
           <p className={styles.loginDescription}>
-            Используйте Telegram для подтверждения входа. QR-код и ссылка обновляются
-            автоматически, если истечет время.
+            Используйте Telegram для подтверждения входа. QR-код и ссылка обновляются автоматически,
+            если истечет время.
           </p>
         </div>
 
@@ -247,9 +251,7 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          {(localError || error) && (
-            <p className={styles.errorText}>{localError || error}</p>
-          )}
+          {(localError || error) && <p className={styles.errorText}>{localError || error}</p>}
 
           {pendingDeeplink && (
             <>
@@ -266,10 +268,9 @@ export default function LoginPage() {
                     unoptimized
                   />
                 ) : (
-                  <p className={styles.errorText}>
-                    Не удалось сгенерировать QR. Попробуйте еще раз.
-                  </p>
+                  <p className={styles.errorText}>Не удалось сгенерировать QR. Попробуйте еще раз.</p>
                 )}
+
                 <div className={styles.fieldGroup}>
                   <p className={styles.fieldLabel}>Как войти</p>
                   <ol className={styles.loginDescription}>
@@ -279,6 +280,7 @@ export default function LoginPage() {
                     <li>Вернитесь в браузер — вход завершится автоматически.</li>
                   </ol>
                 </div>
+
                 {webLink && (
                   <p className={styles.loginDescription}>
                     <a href={webLink} target="_blank" rel="noreferrer">
@@ -286,6 +288,7 @@ export default function LoginPage() {
                     </a>
                   </p>
                 )}
+
                 <div className={`${styles.actions} ${styles.loginActions}`}>
                   <Button
                     type="button"
@@ -307,11 +310,13 @@ export default function LoginPage() {
                     {copySuccess ? "Ссылка скопирована" : "Скопировать ссылку"}
                   </Button>
                 </div>
+
                 {timeLeft !== null && (
                   <p className={styles.loginDescription}>
                     QR истекает через {timeLeft} сек. После истечения создадим новый автоматически.
                   </p>
                 )}
+
                 <p className={styles.loginDescription}>
                   Статус:{" "}
                   {pendingStatus === "confirmed" ? "Подтверждено" : "Ожидание подтверждения"}
