@@ -116,6 +116,12 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
     -d "url=https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}"
   ```
+- Проверка вебхука после настройки nginx (URL без `/api`):
+  ```bash
+  curl -i -X POST "https://<PUBLIC_BASE_URL>/auth/telegram/webhook?secret=${TELEGRAM_WEBHOOK_SECRET}" \
+    -H "Content-Type: application/json" \
+    --data '{"message":{"text":"/start login_test","chat":{"id":1},"from":{"id":1}}}'
+  ```
 
 ## Режимы разработки и продакшена
 - По умолчанию конфигурация безопасна для продакшена: `APP_ENV=development` и `DEBUG=false` не включают verbose/debug middleware и SQL-логирование.
