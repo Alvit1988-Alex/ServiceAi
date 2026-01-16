@@ -48,6 +48,11 @@
   gap: 0.6rem;
 }
 
+.qrSeparator {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
 .qrImage {
   width: 240px;
   height: 240px;
@@ -138,6 +143,14 @@
 
   .loginActions > * {
     width: 100%;
+  }
+
+  .qrSeparator {
+    display: none;
+  }
+
+  .qrBlock {
+    display: none;
   }
 }
 
