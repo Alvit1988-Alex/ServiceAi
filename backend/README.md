@@ -111,7 +111,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## Telegram webhook
 - Путь вебхука определяется `TELEGRAM_WEBHOOK_PATH` (по умолчанию `/auth/telegram/webhook`). Итоговый URL:\
   `https://<PUBLIC_BASE_URL>${TELEGRAM_WEBHOOK_PATH}?secret=${TELEGRAM_WEBHOOK_SECRET}`
-- Nginx должен проксировать `TELEGRAM_WEBHOOK_PATH` напрямую в backend, не через Next.js.
+- Nginx должен проксировать `${TELEGRAM_WEBHOOK_PATH}` и весь `/auth/` напрямую в backend, не через Next.js.
 - Пример установки вебхука для бота:
   ```bash
   curl -X POST "https://api.telegram.org/bot${TELEGRAM_AUTH_BOT_TOKEN}/setWebhook" \
@@ -123,6 +123,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     -H "Content-Type: application/json" \
     --data '{"message":{"text":"/start login_test","chat":{"id":1},"from":{"id":1}}}'
   ```
+  Ответ `Login token invalid` означает: маршрут доступен, секрет совпал, но токен тестовый.
 
 ## Режимы разработки и продакшена
 - По умолчанию конфигурация безопасна для продакшена: `APP_ENV=development` и `DEBUG=false` не включают verbose/debug middleware и SQL-логирование.
