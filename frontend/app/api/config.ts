@@ -33,10 +33,22 @@ export function buildWsUrl(path: string): string {
   if (typeof window !== "undefined") {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const basePrefix = normalizeBase(base || "/api"); // default to /api if empty
-    return `${proto}://${window.location.host}${basePrefix}${cleanPath}`;
+    // Prevent double-prefixing when callers pass already-prefixed paths like "/api/ws/..."
+    const fullPath =
+      cleanPath === basePrefix || cleanPath.startsWith(`${basePrefix}/`)
+        ? cleanPath
+        : `${basePrefix}${cleanPath}`;
+
+    return `${proto}://${window.location.host}${fullPath}`;
   }
 
   // Server-side fallback (rarely used for WS in browser-only clients)
   const basePrefix = normalizeBase(base || "/api");
-  return `${basePrefix}${cleanPath}`;
+  // Prevent double-prefixing in SSR fallbacks
+  const fullPath =
+    cleanPath === basePrefix || cleanPath.startsWith(`${basePrefix}/`)
+      ? cleanPath
+      : `${basePrefix}${cleanPath}`;
+
+  return fullPath;
 }
