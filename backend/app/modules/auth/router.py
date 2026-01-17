@@ -231,15 +231,12 @@ async def change_password(
 
 
 async def _resolve_bot_username() -> str | None:
-    if settings.telegram_auth_bot_username:
-        return settings.telegram_auth_bot_username
-
     global _CACHED_TG_USERNAME
     if _CACHED_TG_USERNAME:
         return _CACHED_TG_USERNAME
 
     if not settings.telegram_auth_bot_token:
-        return None
+        return settings.telegram_auth_bot_username or None
 
     bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
     try:
@@ -248,17 +245,26 @@ async def _resolve_bot_username() -> str | None:
             response.raise_for_status()
             payload = response.json()
     except Exception:
-        return None
+        return settings.telegram_auth_bot_username or None
 
     if isinstance(payload, dict):
         result = payload.get("result")
         if isinstance(result, dict):
             username = result.get("username")
             if isinstance(username, str) and username:
+                if (
+                    settings.telegram_auth_bot_username
+                    and settings.telegram_auth_bot_username != username
+                    and settings.runtime_debug
+                ):
+                    print(
+                        "Telegram bot username from env does not match API response: "
+                        f"{settings.telegram_auth_bot_username} != {username}"
+                    )
                 _CACHED_TG_USERNAME = username
                 return username
 
-    return None
+    return settings.telegram_auth_bot_username or None
 
 
 async def _build_deeplink(token: str) -> str:
