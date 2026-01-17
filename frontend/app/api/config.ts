@@ -6,20 +6,37 @@ const rawEnv =
 const normalizedApiBaseUrl = rawEnv ? rawEnv.replace(/\/$/, "") : "/api";
 export const API_BASE_URL = normalizedApiBaseUrl;
 
+function normalizePath(path: string): string {
+  if (!path) return "/";
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function normalizeBase(base: string): string {
+  if (!base) return "";
+  if (base.startsWith("/")) return base.replace(/\/$/, "");
+  return `/${base.replace(/\/$/, "")}`;
+}
+
 export function buildWsUrl(path: string): string {
-  const base = API_BASE_URL;
+  const base = (API_BASE_URL || "").trim();
+  const cleanPath = normalizePath(path);
+
+  // Absolute API base (e.g. https://api.example.com or https://example.com/api)
   if (base.startsWith("http://") || base.startsWith("https://")) {
     const wsBase = base.startsWith("https://")
       ? base.replace("https://", "wss://")
       : base.replace("http://", "ws://");
-    return `${wsBase}${path}`;
+    return `${wsBase}${cleanPath}`;
   }
 
-  // relative base like "/api"
+  // Relative base like "/api"
   if (typeof window !== "undefined") {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${window.location.host}${path}`;
+    const basePrefix = normalizeBase(base || "/api"); // default to /api if empty
+    return `${proto}://${window.location.host}${basePrefix}${cleanPath}`;
   }
 
-  return path;
+  // Server-side fallback (rarely used for WS in browser-only clients)
+  const basePrefix = normalizeBase(base || "/api");
+  return `${basePrefix}${cleanPath}`;
 }
