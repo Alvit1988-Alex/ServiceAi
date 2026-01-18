@@ -109,8 +109,7 @@ def run(coro):
 
 
 def test_dialog_status_enum_uses_lowercase_values():
-    status_enum = dialog_status_enum()
-    assert hasattr(status_enum, "enums")
+    status_enum = Dialog.__table__.c.status.type
     assert status_enum.enums == ["auto", "wait_operator", "wait_user"]
 
 
