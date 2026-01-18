@@ -25,7 +25,7 @@ from app.database import Base
 from app.modules.accounts.models import Account, User, UserRole
 from app.modules.bots.models import Bot
 from app.modules.channels.models import ChannelType
-from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, dialog_status_enum
+from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus
 from app.modules.dialogs.schemas import DialogCreate
 from app.modules.dialogs.service import DialogLockError, DialogsService
 
