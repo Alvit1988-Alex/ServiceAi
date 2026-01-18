@@ -20,6 +20,14 @@ function normalizeBase(base: string): string {
 export function buildWsUrl(path: string): string {
   const base = (API_BASE_URL || "").trim();
   const cleanPath = normalizePath(path);
+  // If WS is routed via dedicated nginx "/ws/" location, don't prefix with API_BASE_URL ("/api")
+  if (cleanPath.startsWith("/ws/")) {
+    if (typeof window !== "undefined") {
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      return `${proto}://${window.location.host}${cleanPath}`;
+    }
+    return cleanPath;
+  }
 
   // Absolute API base (e.g. https://api.example.com or https://example.com/api)
   if (base.startsWith("http://") || base.startsWith("https://")) {
