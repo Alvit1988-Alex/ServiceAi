@@ -38,13 +38,12 @@ def normalize_dialog_status(value: DialogStatus | str) -> DialogStatus:
             raise ValueError(f"Unknown dialog status: {value}") from exc
 
 
-def dialog_status_enum() -> SQLEnum:
-    return SQLEnum(
-        DialogStatus,
-        name="dialog_status",
-        values_callable=lambda enum: [member.value for member in enum],
-        validate_strings=True,
-    )
+DIALOG_STATUS_ENUM = SQLEnum(
+    DialogStatus,
+    name="dialog_status",
+    values_callable=lambda enum: [member.value for member in enum],
+    validate_strings=True,
+)
 
 
 class Dialog(Base):
@@ -60,7 +59,7 @@ class Dialog(Base):
     )
     external_chat_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     external_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    status: Mapped[DialogStatus] = mapped_column(dialog_status_enum(), nullable=False)
+    status: Mapped[DialogStatus] = mapped_column(DIALOG_STATUS_ENUM, nullable=False)
     closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_message_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_user_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
