@@ -52,6 +52,14 @@ pip install .
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## WebSocket requirements
+- Для работы `/ws/*` нужен `uvicorn` с extras `standard` или установленный `websockets`/`wsproto`.
+- Команда проверки:
+  ```bash
+  poetry run python -c "import websockets; print('websockets OK', websockets.__version__)"
+  ```
+- Симптомы при отсутствии зависимостей: предупреждения `uvicorn` и `404` на `/ws/...`.
+
 ## Release checklist
 - Установите зависимости backend: `poetry install`.
 - Для опциональных AI-фичей установите доп. зависимости: `poetry install --with ai`.
