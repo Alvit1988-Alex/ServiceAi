@@ -26,11 +26,12 @@ class DialogStatus(str, Enum):
 def normalize_dialog_status(value: DialogStatus | str) -> DialogStatus:
     if isinstance(value, DialogStatus):
         return value
+    normalized = value.strip() if isinstance(value, str) else value
     try:
-        return DialogStatus(value)
+        return DialogStatus(normalized)
     except ValueError:
         try:
-            return DialogStatus[value]
+            return DialogStatus[normalized.upper()]
         except KeyError as exc:
             raise ValueError(f"Unknown dialog status: {value}") from exc
 
