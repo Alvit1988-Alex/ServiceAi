@@ -108,6 +108,11 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def test_dialog_status_enum_uses_lowercase_values():
+    status_enum = Dialog.__table__.c.status.type
+    assert status_enum.enums == ["auto", "wait_operator", "wait_user"]
+
+
 async def _create_base_entities(maker: Callable[[], AsyncSessionWrapper]):
     async with maker() as session:
         owner = User(email="owner@example.com", password_hash="x", role=UserRole.admin)

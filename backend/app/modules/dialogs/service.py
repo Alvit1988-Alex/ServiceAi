@@ -12,7 +12,7 @@ from app.modules.ai.service import AIService
 from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
-from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
+from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender, normalize_dialog_status
 from app.modules.dialogs.schemas import (
     DialogCreate,
     DialogMessageCreate,
@@ -37,7 +37,7 @@ class DialogsService:
             channel_type=obj_in.channel_type,
             external_chat_id=obj_in.external_chat_id,
             external_user_id=obj_in.external_user_id,
-            status=obj_in.status,
+            status=normalize_dialog_status(obj_in.status),
             closed=obj_in.closed,
         )
         session.add(db_obj)
@@ -178,6 +178,8 @@ class DialogsService:
     async def update(self, session: AsyncSession, db_obj: Dialog, obj_in: DialogUpdate) -> Dialog:
         data = obj_in.model_dump(exclude_unset=True)
         for field, value in data.items():
+            if field == "status" and value is not None:
+                value = normalize_dialog_status(value)
             setattr(db_obj, field, value)
         session.add(db_obj)
         await session.commit()
