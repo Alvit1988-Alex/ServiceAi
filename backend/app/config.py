@@ -154,6 +154,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_EMBEDDING_MODEL", "openai_embedding_model"),
         description="Embeddings model id for OpenAI-compatible providers",
     )
+    strip_think_tags: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("STRIP_THINK_TAGS", "strip_think_tags"),
+        description="When true, removes <think>...</think> blocks from model responses.",
+    )
 
     # CORS
     cors_allow_origins: list[str] | None = Field(

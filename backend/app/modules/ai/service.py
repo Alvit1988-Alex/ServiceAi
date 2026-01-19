@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.database import async_session_factory
 from app.modules.ai.instructions_service import AIInstructionsService
 from app.modules.ai.models import AIInstructions
@@ -18,6 +20,23 @@ from app.modules.dialogs.models import DialogMessage, MessageSender
 
 logger = logging.getLogger(__name__)
 _AI_DISABLED_LOGGED = False
+
+
+def _strip_think_tags(text: str) -> str:
+    if not text:
+        return text
+    if "<think>" not in text:
+        return text
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    return cleaned.strip()
+
+
+def _maybe_strip_think_tags(text: str | None) -> str | None:
+    if text is None:
+        return None
+    if settings.strip_think_tags:
+        return _strip_think_tags(text)
+    return text
 
 
 class AIService:
@@ -78,6 +97,7 @@ class AIService:
                     confidence=0.0,
                     used_chunk_ids=[],
                 )
+            answer_text = _maybe_strip_think_tags(answer_text)
             return AIAnswer(
                 can_answer=bool(answer_text),
                 answer=answer_text or None,
@@ -125,6 +145,7 @@ class AIService:
                     used_chunk_ids=used_chunk_ids,
                 )
 
+            answer_text = _maybe_strip_think_tags(answer_text)
             can_answer = bool(answer_text) and confidence >= self._confidence_threshold
             return AIAnswer(
                 can_answer=can_answer,
@@ -148,6 +169,7 @@ class AIService:
                 confidence=0.0,
                 used_chunk_ids=[],
             )
+        answer_text = _maybe_strip_think_tags(answer_text)
         return AIAnswer(
             can_answer=bool(answer_text),
             answer=answer_text or None,
