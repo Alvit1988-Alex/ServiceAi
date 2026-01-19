@@ -96,12 +96,20 @@ class MessageSender(str, Enum):
     OPERATOR = "operator"
 
 
+MESSAGE_SENDER_ENUM = SQLEnum(
+    MessageSender,
+    name="dialog_message_sender",
+    values_callable=lambda enum: [member.value for member in enum],
+    validate_strings=True,
+)
+
+
 class DialogMessage(Base):
     __tablename__ = "dialog_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dialog_id: Mapped[int] = mapped_column(Integer, ForeignKey("dialogs.id", ondelete="CASCADE"), nullable=False, index=True)
-    sender: Mapped[MessageSender] = mapped_column(SQLEnum(MessageSender, name="dialog_message_sender"), nullable=False)
+    sender: Mapped[MessageSender] = mapped_column(MESSAGE_SENDER_ENUM, nullable=False)
     text: Mapped[str | None] = mapped_column(String, nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
