@@ -49,6 +49,8 @@ class ChannelsService:
             previous_config=None,
         )
 
+        await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
+
         return decrypted
 
     async def create_default_channels(
@@ -92,8 +94,6 @@ class ChannelsService:
         session: AsyncSession,
         db_obj: BotChannel,
         obj_in: BotChannelUpdate,
-        *,
-        sync_telegram_on_activate: bool = True,
     ) -> BotChannel:
         previous_active = db_obj.is_active
         previous_config = decrypt_config(db_obj.config)
@@ -133,13 +133,7 @@ class ChannelsService:
             previous_config=previous_config,
         )
 
-        if (
-            sync_telegram_on_activate
-            and decrypted.channel_type == ChannelType.TELEGRAM
-            and decrypted.is_active
-            and not previous_active
-        ):
-            await sync_telegram_webhook(decrypted)
+        await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
 
         return decrypted
 
@@ -284,6 +278,42 @@ class ChannelsService:
         elif previous_active and webhook_secret:
             await avito_unsubscribe(channel, base_url, webhook_secret=webhook_secret)
 
+    async def _sync_and_persist_telegram_webhook(
+        self,
+        *,
+        session: AsyncSession,
+        db_obj: BotChannel,
+        decrypted: BotChannel,
+    ) -> None:
+        if decrypted.channel_type != ChannelType.TELEGRAM:
+            return
+
+        status, error = await sync_telegram_webhook(decrypted)
+        updated_config = dict(decrypted.config or {})
+        if status:
+            updated_config["webhook_status"] = status
+        if error:
+            updated_config["webhook_error"] = error
+        else:
+            updated_config.pop("webhook_error", None)
+
+        decrypted.config = updated_config
+        db_obj.config = encrypt_config(updated_config)
+        session.add(db_obj)
+        await session.commit()
+        decrypted.config = updated_config
+
+
+def _get_public_api_base_url() -> str | None:
+    base_url = settings.public_base_url
+    if not base_url:
+        return None
+
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/api"):
+        return normalized
+    return f"{normalized}/api"
+
 
 async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | None]:
     config = channel.config or {}
@@ -293,7 +323,7 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
     if not token:
         return "pending", "Telegram token is not configured"
 
-    base_url = settings.public_base_url
+    base_url = _get_public_api_base_url()
     if channel.is_active and not base_url:
         logger.warning(
             "Public base URL is not configured; Telegram webhook sync skipped",
@@ -303,7 +333,7 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
 
     webhook_url = None
     if channel.is_active:
-        webhook_url = f"{base_url.rstrip('/')}/webhooks/telegram/{channel.bot_id}"
+        webhook_url = f"{base_url}/webhooks/telegram/{channel.bot_id}"
 
     api_url = f"https://api.telegram.org/bot{token}"
     try:
