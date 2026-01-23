@@ -221,8 +221,7 @@ async def update_channel(
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     updated = await service.update(session=session, db_obj=channel, obj_in=data)
-    decrypted = service.decrypt(updated)
-    return decrypted
+    return updated
 
 
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
