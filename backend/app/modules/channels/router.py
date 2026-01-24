@@ -135,7 +135,7 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
         await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
         await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
 
-        if message_payload.get("payload", {}).get("system"):
+        if (message_payload.get("payload") or {}).get("system"):
             continue
 
         await manager.broadcast_to_webchat(
