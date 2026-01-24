@@ -107,9 +107,13 @@ async def _process_and_broadcast(
         session=session, incoming_message=normalized, ai_service=ai_service
     )
 
-    messages = [user_message]
+    messages = []
+    if user_message:
+        messages.append(user_message)
     if bot_message:
         messages.append(bot_message)
+    if not messages:
+        return
 
     await _broadcast_message_events(messages=messages, dialog=dialog, dialog_created=dialog_created)
 
