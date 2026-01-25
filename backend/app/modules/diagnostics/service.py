@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,8 @@ from app.modules.channels.service import ChannelsService
 from app.modules.diagnostics.models import IntegrationLog
 from app.modules.diagnostics.schemas import DiagnosticCheck, DiagnosticsResponse, DiagnosticsSummary, IntegrationError
 from app.utils.encryption import decrypt_config
+
+logger = logging.getLogger(__name__)
 
 
 async def log_integration_event(
@@ -106,31 +109,36 @@ class DiagnosticsService:
         retry_count: int = 0,
     ) -> None:
         async with async_session_factory() as session:
-            resolved_account_id = account_id
-            if resolved_account_id is None and bot_id is not None:
-                result = await session.execute(select(Bot.account_id).where(Bot.id == bot_id))
-                resolved_account_id = result.scalar_one_or_none()
-            if resolved_account_id is None:
-                resolved_account_id = 0
+            try:
+                resolved_account_id = account_id
+                if resolved_account_id is None and bot_id is not None:
+                    result = await session.execute(select(Bot.account_id).where(Bot.id == bot_id))
+                    resolved_account_id = result.scalar_one_or_none()
+                if resolved_account_id is None:
+                    resolved_account_id = 0
 
-            await log_integration_event(
-                session,
-                account_id=resolved_account_id,
-                bot_id=bot_id,
-                channel_type=channel_type,
-                direction=direction,
-                operation=operation,
-                status=status,
-                error_code=error_code,
-                error_message=error_message,
-                latency_ms=latency_ms,
-                external_id=external_id,
-                request_id=request_id,
-                retry_count=retry_count,
-                http_status=http_status,
-                endpoint=endpoint,
-                provider=provider,
-            )
+                await log_integration_event(
+                    session,
+                    account_id=resolved_account_id,
+                    bot_id=bot_id,
+                    channel_type=channel_type,
+                    direction=direction,
+                    operation=operation,
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    latency_ms=latency_ms,
+                    external_id=external_id,
+                    request_id=request_id,
+                    retry_count=retry_count,
+                    http_status=http_status,
+                    endpoint=endpoint,
+                    provider=provider,
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception("Diagnostics integration logging failed")
 
     @staticmethod
     def parse_since(since: str | None) -> datetime | None:
