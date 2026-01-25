@@ -3,11 +3,12 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import async_session_factory
 from app.dependencies import get_db_session
 from app.modules.accounts.models import User
 from app.modules.ai.service import AIService, get_ai_service
@@ -83,13 +84,14 @@ async def _log_incoming_event(
     status: str,
     latency_ms: int | None = None,
     error_message: str | None = None,
+    operation: str = "webhook_receive",
 ) -> None:
     await diagnostics_service.log_integration(
         account_id=None,
         bot_id=bot_id,
         channel_type=channel_type.value,
         direction="in",
-        operation="webhook_receive",
+        operation=operation,
         status=status,
         error_message=error_message,
         latency_ms=latency_ms,
@@ -116,6 +118,44 @@ async def _process_and_broadcast(
         return
 
     await _broadcast_message_events(messages=messages, dialog=dialog, dialog_created=dialog_created)
+
+
+async def _process_telegram_in_background(
+    *,
+    normalized: NormalizedIncomingMessage,
+    dialogs_service: DialogsService,
+    ai_service: AIService,
+) -> None:
+    start = time.perf_counter()
+    processing_error: Exception | None = None
+    async with async_session_factory() as bg_session:
+        try:
+            await _process_and_broadcast(
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+                session=bg_session,
+            )
+            await bg_session.commit()
+        except Exception as exc:
+            await bg_session.rollback()
+            processing_error = exc
+            logger.exception("Telegram webhook background processing failed")
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    try:
+        diagnostics_service = DiagnosticsService()
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=normalized.bot_id,
+            channel_type=ChannelType.TELEGRAM,
+            status="fail" if processing_error else "ok",
+            latency_ms=latency_ms,
+            error_message=str(processing_error) if processing_error else None,
+            operation="webhook_process",
+        )
+    except Exception:
+        logger.exception("Diagnostics logging failed")
 
 
 async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
@@ -248,7 +288,7 @@ async def telegram_webhook(
     channel_id: int,
     payload: dict,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    background_tasks: BackgroundTasks,
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
@@ -256,7 +296,8 @@ async def telegram_webhook(
 ) -> dict:
     start = time.perf_counter()
     try:
-        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        async with async_session_factory() as session:
+            channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
         _ensure_channel_available(channel)
         channel = channels_service.decrypt(channel)
 
@@ -266,11 +307,11 @@ async def telegram_webhook(
 
         normalized = normalize_telegram_update(bot_id=bot_id, channel_id=channel_id, update=payload)
 
-        await _process_and_broadcast(
+        background_tasks.add_task(
+            _process_telegram_in_background,
             normalized=normalized,
             dialogs_service=dialogs_service,
             ai_service=ai_service,
-            session=session,
         )
     except Exception as exc:
         latency_ms = int((time.perf_counter() - start) * 1000)
@@ -300,19 +341,20 @@ async def telegram_webhook_alias(
     bot_id: int,
     payload: dict,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    background_tasks: BackgroundTasks,
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    channel = await _get_telegram_channel_for_bot(session=session, bot_id=bot_id)
+    async with async_session_factory() as session:
+        channel = await _get_telegram_channel_for_bot(session=session, bot_id=bot_id)
     return await telegram_webhook(
         bot_id=bot_id,
         channel_id=channel.id,
         payload=payload,
         request=request,
-        session=session,
+        background_tasks=background_tasks,
         channels_service=channels_service,
         dialogs_service=dialogs_service,
         ai_service=ai_service,
