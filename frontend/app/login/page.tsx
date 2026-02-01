@@ -213,7 +213,12 @@ export default function LoginPage() {
               </Button>
             </div>
             <div className={styles.appear2}>
-              <Button type="button" className={styles.btn} variant="secondary" disabled>
+              <Button
+                type="button"
+                className={styles.btn}
+                variant="secondary"
+                onClick={() => setLocalError("Вход через Max скоро будет доступен")}
+              >
                 Войти через Max
               </Button>
             </div>

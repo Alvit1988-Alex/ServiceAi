@@ -1,5 +1,7 @@
 .screen {
   min-height: 100vh;
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -24,17 +26,21 @@
 
 .btn {
   width: 100%;
-  padding: 22px 24px;
-  font-size: clamp(20px, 2.5vw, 22px);
+  padding: 28px 24px;
+  font-size: clamp(22px, 2.7vw, 24px);
   font-weight: 700;
   border-radius: 18px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12), inset 0 2px 0 rgba(0, 0, 0, 0.08);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.86);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.7);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.14), inset 0 2px 0 rgba(0, 0, 0, 0.08);
+  background: #f6f7f9;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.14), inset 0 2px 0 rgba(255, 255, 255, 0.8);
 }
 
 .btn:active:not(:disabled) {
@@ -47,13 +53,13 @@
 }
 
 .appear1 {
-  animation: fadeUp 0.55s ease forwards;
-  animation-delay: 0.05s;
+  animation: fadeUp 0.85s ease forwards;
+  animation-delay: 0.1s;
 }
 
 .appear2 {
-  animation: fadeUp 0.55s ease forwards;
-  animation-delay: 0.22s;
+  animation: fadeUp 0.85s ease forwards;
+  animation-delay: 0.35s;
 }
 
 .error {
