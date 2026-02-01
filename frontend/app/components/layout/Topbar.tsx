@@ -1,15 +1,13 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { useUiStore } from "../../../store/ui.store";
 import { useAuthStore } from "../../../store/auth.store";
 import styles from "./Topbar.module.css";
 
 const Topbar: React.FC = () => {
-  const pathname = usePathname();
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
   const theme = useUiStore((state) => state.theme);
@@ -18,10 +16,6 @@ const Topbar: React.FC = () => {
   const lastError = useUiStore((state) => state.lastError);
 
   const themeLabel = theme === "dark" ? "Светлая тема" : "Темная тема";
-  const isActive = (path: string) => {
-    if (path === "/") return pathname === "/";
-    return pathname === path || pathname.startsWith(`${path}/`);
-  };
 
   return (
     <header className={styles.topbar}>
@@ -30,35 +24,6 @@ const Topbar: React.FC = () => {
           <span className={styles.brandAccent}>Service</span>
           <span className={styles.brandText}>AI</span>
         </div>
-        <nav className={styles.tabs} aria-label="Навигация">
-          <Link className={`${styles.tab} ${isActive("/") ? styles.tabActive : ""}`} href="/">
-            Дашборд
-          </Link>
-          <Link
-            className={`${styles.tab} ${isActive("/channels") ? styles.tabActive : ""}`}
-            href="/channels"
-          >
-            Каналы
-          </Link>
-          <Link
-            className={`${styles.tab} ${isActive("/knowledge") ? styles.tabActive : ""}`}
-            href="/knowledge"
-          >
-            ИИ и база знаний
-          </Link>
-          <Link
-            className={`${styles.tab} ${isActive("/search") ? styles.tabActive : ""}`}
-            href="/search"
-          >
-            Диалоги
-          </Link>
-          <Link
-            className={`${styles.tab} ${isActive("/settings") ? styles.tabActive : ""}`}
-            href="/settings"
-          >
-            Настройки
-          </Link>
-        </nav>
       </div>
       <div className={styles.actions}>
         <div className={styles.statuses}>
@@ -80,6 +45,7 @@ const Topbar: React.FC = () => {
         >
           {themeLabel}
         </button>
+        <div className={styles.avatar}>АК</div>
         <button
           className={styles.logout}
           type="button"
@@ -90,7 +56,6 @@ const Topbar: React.FC = () => {
         >
           Выход
         </button>
-        <div className={styles.avatar}>АК</div>
       </div>
     </header>
   );

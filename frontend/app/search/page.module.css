@@ -5,11 +5,11 @@
 }
 
 .section {
-  background: #0b1021;
-  border: 1px solid #1f2a44;
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 18px;
   padding: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }
 
 .titleRow {
@@ -33,13 +33,13 @@
 
 .description {
   margin: 0;
-  color: #9fb1d0;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 
 .statusMessage {
   margin: 0;
-  color: #9fb1d0;
+  color: var(--color-text-muted);
 }
 
 .errorMessage {
