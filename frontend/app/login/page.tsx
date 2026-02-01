@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { Button } from "../components/Button/Button";
 import LayoutShell from "../components/layout/LayoutShell";
-import styles from "../page.module.css";
+import styles from "./login.module.css";
 import { useAuthStore } from "@/store/auth.store";
 import QRCode from "qrcode";
 
@@ -59,7 +58,6 @@ export default function LoginPage() {
     startTelegramLogin,
     pendingDeeplink,
     pendingExpiresAt,
-    pendingStatus,
     polling,
     loading,
     error,
@@ -69,12 +67,11 @@ export default function LoginPage() {
     stopTelegramLoginPolling,
   } = useAuthStore();
 
-  const [qrImage, setQrImage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   const autoEnsureRef = useRef(false);
+  const qrImageRef = useRef<string | null>(null);
 
   const { webLink } = useMemo(
     () => buildTelegramLinks(pendingDeeplink),
@@ -113,14 +110,14 @@ export default function LoginPage() {
   useEffect(() => {
     const generateQr = async () => {
       if (!qrLink) {
-        setQrImage(null);
+        qrImageRef.current = null;
         return;
       }
       try {
         const url = await QRCode.toDataURL(qrLink);
-        setQrImage(url);
+        qrImageRef.current = url;
       } catch {
-        setQrImage(null);
+        qrImageRef.current = null;
       }
     };
 
@@ -221,119 +218,32 @@ export default function LoginPage() {
     }
   }, []);
 
-  const expiresAt = pendingExpiresAt ? new Date(pendingExpiresAt) : null;
-  const timeLeft =
-    expiresAt && expiresAt > new Date()
-      ? Math.max(0, Math.round((expiresAt.getTime() - Date.now()) / 1000))
-      : null;
-
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
-      <section className={styles.loginSection}>
-        <div className={styles.loginHeader}>
-          <h2 className={styles.loginTitle}>Вход в панель управления</h2>
-          <p className={styles.loginDescription}>
-            Используйте Telegram для подтверждения входа. QR-код и ссылка обновляются автоматически,
-            если истечет время.
-          </p>
-        </div>
-
-        <div className={styles.loginForm}>
-          <div className={`${styles.actions} ${styles.loginActions}`}>
-            <Button
-              type="button"
-              onClick={async () => {
-                await openExternalLink(getTelegramWebLink);
-              }}
-              disabled={loading}
-            >
-              {loading ? "Готовим ссылку..." : "Войти через Telegram"}
-            </Button>
+      <div className={styles.screen}>
+        <div className={styles.panel}>
+          <div className={styles.buttons}>
+            <div className={styles.appear1}>
+              <Button
+                type="button"
+                className={styles.btn}
+                onClick={async () => {
+                  await openExternalLink(getTelegramWebLink);
+                }}
+                disabled={loading}
+              >
+                {loading ? "Готовим ссылку..." : "Войти через Telegram"}
+              </Button>
+            </div>
+            <div className={styles.appear2}>
+              <Button type="button" className={styles.btn} variant="secondary" disabled>
+                Войти через Max
+              </Button>
+            </div>
           </div>
-
-          {(localError || error) && <p className={styles.errorText}>{localError || error}</p>}
-
-          {pendingDeeplink && (
-            <>
-              <p className={styles.qrSeparator}>или сканировать QR-код</p>
-              <div className={`${styles.fieldGroup} ${styles.qrBlock}`}>
-                <p className={styles.fieldLabel}>Отсканируйте QR в Telegram</p>
-                {qrImage ? (
-                  <Image
-                    src={qrImage}
-                    alt="QR для входа через Telegram"
-                    className={styles.qrImage}
-                    width={240}
-                    height={240}
-                    unoptimized
-                  />
-                ) : (
-                  <p className={styles.errorText}>Не удалось сгенерировать QR. Попробуйте еще раз.</p>
-                )}
-
-                <div className={styles.fieldGroup}>
-                  <p className={styles.fieldLabel}>Как войти</p>
-                  <ol className={styles.loginDescription}>
-                    <li>Откройте Telegram на телефоне.</li>
-                    <li>Отсканируйте QR (или нажмите «Войти через Telegram»).</li>
-                    <li>В чате с ботом нажмите Start.</li>
-                    <li>Вернитесь в браузер — вход завершится автоматически.</li>
-                  </ol>
-                </div>
-
-                {webLink && (
-                  <p className={styles.loginDescription}>
-                    <a href={webLink} target="_blank" rel="noreferrer">
-                      Открыть в браузере
-                    </a>
-                  </p>
-                )}
-
-                <div className={`${styles.actions} ${styles.loginActions}`}>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={async () => {
-                      if (!webLink) {
-                        return;
-                      }
-                      try {
-                        await navigator.clipboard.writeText(webLink);
-                        setCopySuccess(true);
-                        window.setTimeout(() => setCopySuccess(false), 2000);
-                      } catch {
-                        setLocalError("Не удалось скопировать ссылку");
-                      }
-                    }}
-                    disabled={!webLink}
-                  >
-                    {copySuccess ? "Ссылка скопирована" : "Скопировать ссылку"}
-                  </Button>
-                </div>
-
-                {timeLeft !== null && (
-                  <p className={styles.loginDescription}>
-                    QR истекает через {timeLeft} сек. После истечения создадим новый автоматически.
-                  </p>
-                )}
-
-                <p className={styles.loginDescription}>
-                  Статус:{" "}
-                  {pendingStatus === "confirmed" ? "Подтверждено" : "Ожидание подтверждения"}
-                </p>
-              </div>
-            </>
-          )}
-
-          {!pendingDeeplink && isInitialized && (
-            <p className={styles.loginDescription}>
-              {isMobile
-                ? "Нажмите «Войти через Telegram» для входа."
-                : "Нажмите «Войти через Telegram» или сканируйте QR-код ниже."}
-            </p>
-          )}
+          {(localError || error) && <p className={styles.error}>{localError || error}</p>}
         </div>
-      </section>
+      </div>
     </LayoutShell>
   );
 }

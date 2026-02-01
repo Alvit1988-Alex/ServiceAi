@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import { useUiStore } from "@/store/ui.store";
 
-const FORCE_THEME = "dark";
+const FORCE_THEME = "light";
 
 const ForceTheme = () => {
   const setThemeForced = useUiStore((state) => state.setThemeForced);
