@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import { Button } from "@/app/components/Button/Button";
 import LayoutShell from "@/app/components/layout/LayoutShell";
-import { useAuthStore } from "@/store/auth.store";
 import { useBotsStore } from "@/store/bots.store";
 
 import styles from "./page.module.css";
@@ -16,7 +15,6 @@ const DESCRIPTION =
 
 export default function BotsPage() {
   const router = useRouter();
-  const logout = useAuthStore((s) => s.logout);
   const { bots, loadingBots, error, fetchBots, createBot } = useBotsStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -40,22 +38,7 @@ export default function BotsPage() {
 
   return (
     <AuthGuard>
-      <LayoutShell
-        title="Боты"
-        description={DESCRIPTION}
-        actions={
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              logout();
-              router.replace("/login");
-            }}
-          >
-            Выход
-          </Button>
-        }
-      >
+      <LayoutShell title="Боты" description={DESCRIPTION}>
         <section className={styles.section}>
           <div className={styles.wrap}>
             <div className={styles.header}>
