@@ -58,7 +58,6 @@ export default function LoginPage() {
     startTelegramLogin,
     pendingDeeplink,
     pendingExpiresAt,
-    polling,
     loading,
     error,
     isAuthenticated,
@@ -69,7 +68,6 @@ export default function LoginPage() {
 
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const [isMobile, setIsMobile] = useState(false);
   const autoEnsureRef = useRef(false);
   const qrImageRef = useRef<string | null>(null);
 
@@ -82,24 +80,6 @@ export default function LoginPage() {
   useEffect(() => {
     void initFromStorage();
   }, [initFromStorage]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const mq = window.matchMedia("(max-width: 640px)");
-    const update = () => setIsMobile(mq.matches);
-    update();
-
-    if (mq.addEventListener) {
-      mq.addEventListener("change", update);
-      return () => mq.removeEventListener("change", update);
-    }
-
-    mq.addListener(update);
-    return () => mq.removeListener(update);
-  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -149,10 +129,7 @@ export default function LoginPage() {
   }, [isPendingValid, pendingDeeplink, startTelegramLogin]);
 
   useEffect(() => {
-    if (!isInitialized || isMobile || loading || polling) {
-      if (isMobile) {
-        autoEnsureRef.current = false;
-      }
+    if (!isInitialized || loading) {
       return;
     }
 
@@ -168,7 +145,7 @@ export default function LoginPage() {
     void ensurePendingLogin().finally(() => {
       autoEnsureRef.current = false;
     });
-  }, [ensurePendingLogin, isInitialized, isMobile, isPendingValid, loading, polling]);
+  }, [ensurePendingLogin, isInitialized, isPendingValid, loading]);
 
   const getTelegramWebLink = useCallback(async () => {
     if (webLink && hasValidBotStart(webLink)) {
