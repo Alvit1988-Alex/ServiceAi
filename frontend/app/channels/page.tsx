@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import LayoutShell from "@/app/components/layout/LayoutShell";
+import botSelectionStyles from "@/app/components/ui/BotSelection.module.css";
 import BotChannels from "@/components/bot/BotChannels";
 import { useBotsStore } from "@/store/bots.store";
 
@@ -21,23 +22,15 @@ export default function ChannelsPage() {
   return (
     <AuthGuard>
       <LayoutShell title="Каналы" description="Управление каналами.">
-        {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
+        {error && <p className={botSelectionStyles.error}>{error}</p>}
 
         {!error && loadingBots && (
           <p style={{ color: "var(--color-text-muted)" }}>Загружаем список ботов...</p>
         )}
 
         {!error && !loadingBots && !hasBots && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "18px",
-              padding: "1.5rem 0",
-            }}
-          >
-            <p style={{ margin: 0, color: "var(--color-text-muted)" }}>Нет ботов</p>
+          <div className={botSelectionStyles.container}>
+            <p className={botSelectionStyles.message}>Нет ботов</p>
             <button className="volume-button" type="button" onClick={() => router.push("/bots")}>
               Перейти в Боты
             </button>
@@ -45,19 +38,9 @@ export default function ChannelsPage() {
         )}
 
         {!error && !loadingBots && hasBots && selectedBotId == null && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "18px",
-              alignItems: "center",
-              padding: "1.5rem 0",
-            }}
-          >
-            <p style={{ margin: 0, color: "var(--color-text-muted)" }}>
-              Выберите бота, чтобы управлять каналами.
-            </p>
-            <div style={{ width: "100%", maxWidth: "520px", display: "flex", flexDirection: "column", gap: "18px" }}>
+          <div className={botSelectionStyles.container}>
+            <p className={botSelectionStyles.message}>Выберите бота, чтобы управлять каналами.</p>
+            <div className={botSelectionStyles.list}>
               {bots.map((bot) => (
                 <button
                   key={bot.id}
