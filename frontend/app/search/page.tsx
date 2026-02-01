@@ -130,8 +130,8 @@ export default function SearchPage() {
   return (
     <AuthGuard>
       <LayoutShell
-        title="Поиск диалогов"
-        description="Введите поисковый запрос, статус или ID оператора, чтобы найти нужные диалоги среди всех ботов."
+        title="Диалоги"
+        description="Используйте фильтры, чтобы находить нужные диалоги среди всех ботов."
       >
         <div className={styles.container}>
           <section className={styles.section}>

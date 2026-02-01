@@ -3,6 +3,7 @@
 import type { PropsWithChildren } from "react";
 import { usePathname } from "next/navigation";
 
+import AppTabs from "./AppTabs";
 import Topbar from "./Topbar";
 
 /**
@@ -29,7 +30,10 @@ export default function AppShell({ children }: PropsWithChildren) {
       <div className="content" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <Topbar />
         <main className="main-content" style={{ flex: 1 }}>
-          {children}
+          <div className="page-frame">
+            <AppTabs />
+            <div className="page-frame-body">{children}</div>
+          </div>
         </main>
       </div>
     </div>

@@ -6,26 +6,27 @@
 
 .tableWrapper {
   overflow: auto;
-  border: 1px solid #1f2a44;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  background: #0b1021;
-  color: #e3ecff;
+  background: #ffffff;
+  color: #404040;
 }
 
 .table th,
 .table td {
   padding: 12px 14px;
-  border-bottom: 1px solid #1f2a44;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   text-align: left;
 }
 
 .table th {
-  background: #111931;
+  background: #f5f6f8;
   font-weight: 600;
   font-size: 13px;
   text-transform: uppercase;
@@ -38,14 +39,14 @@
 }
 
 .row:hover {
-  background: rgba(159, 177, 208, 0.06);
+  background: #f6f7f9;
 }
 
 .empty,
 .error,
 .loading {
   margin: 0;
-  color: #9fb1d0;
+  color: var(--color-text-muted);
 }
 
 .error {
@@ -68,16 +69,17 @@
 .button {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid #1f2a44;
-  background: #0b1021;
-  color: #e3ecff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  color: #404040;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.2s ease;
 }
 
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  background: #f6f7f9;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
 .button:disabled {
@@ -88,14 +90,14 @@
 }
 
 .meta {
-  color: #9fb1d0;
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
 .perPageSelect {
   padding: 8px 10px;
-  background: #0b1021;
-  border: 1px solid #1f2a44;
-  color: #e3ecff;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #404040;
   border-radius: 8px;
 }

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { changePassword, getCurrentAccount, updateAccountProfile } from "@/app/api/accountApi";
+import { getCurrentAccount, updateAccountProfile } from "@/app/api/accountApi";
 import { AccountProfile } from "@/app/api/types";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import LayoutShell from "@/app/components/layout/LayoutShell";
@@ -21,13 +21,6 @@ export default function SettingsPage() {
   const [profileLoading, setProfileLoading] = useState(!authUser);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (authUser) {
@@ -96,47 +89,11 @@ export default function SettingsPage() {
     }
   }
 
-  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPasswordError(null);
-    setPasswordSuccess(null);
-
-    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
-      setPasswordError("Заполните все поля для смены пароля");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Новые пароли должны совпадать");
-      return;
-    }
-
-    setPasswordLoading(true);
-
-    try {
-      const profile = await changePassword({
-        current_password: currentPassword,
-        new_password: newPassword,
-      });
-      setAccount(profile);
-      useAuthStore.setState({ user: profile });
-      setPasswordSuccess("Пароль успешно обновлен");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось изменить пароль";
-      setPasswordError(message);
-    } finally {
-      setPasswordLoading(false);
-    }
-  }
-
   return (
     <AuthGuard>
       <LayoutShell
         title="Настройки аккаунта"
-        description="Обновите данные профиля и установите новый пароль для повышения безопасности."
+        description="Обновите данные профиля, чтобы поддерживать актуальную информацию."
       >
         <div className={styles.page}>
           <section className={styles.section}>
@@ -185,68 +142,6 @@ export default function SettingsPage() {
 
               {profileError && <p className={styles.error}>{profileError}</p>}
               {profileSuccess && <p className={styles.success}>{profileSuccess}</p>}
-            </form>
-          </section>
-
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.eyebrow}>Безопасность</p>
-                <h2 className={styles.sectionTitle}>Смена пароля</h2>
-              </div>
-              {passwordLoading && <span className={styles.muted}>Обновляем пароль...</span>}
-            </div>
-
-            <form className={styles.form} onSubmit={handlePasswordSubmit}>
-              <label className={styles.field}>
-                <span className={styles.label}>Текущий пароль</span>
-                <input
-                  className={styles.input}
-                  name="current_password"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  disabled={passwordLoading}
-                  placeholder="••••••••"
-                />
-              </label>
-
-              <div className={styles.grid}>
-                <label className={styles.field}>
-                  <span className={styles.label}>Новый пароль</span>
-                  <input
-                    className={styles.input}
-                    name="new_password"
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    disabled={passwordLoading}
-                    placeholder="••••••••"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.label}>Повторите пароль</span>
-                  <input
-                    className={styles.input}
-                    name="confirm_password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    disabled={passwordLoading}
-                    placeholder="••••••••"
-                  />
-                </label>
-              </div>
-
-              <div className={styles.actions}>
-                <button className={styles.button} type="submit" disabled={passwordLoading}>
-                  {passwordLoading ? "Обновляем..." : "Изменить пароль"}
-                </button>
-              </div>
-
-              {passwordError && <p className={styles.error}>{passwordError}</p>}
-              {passwordSuccess && <p className={styles.success}>{passwordSuccess}</p>}
             </form>
           </section>
         </div>

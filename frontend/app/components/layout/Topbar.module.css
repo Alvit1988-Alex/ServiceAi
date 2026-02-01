@@ -39,41 +39,6 @@
   color: var(--color-text);
 }
 
-.tabs {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: nowrap;
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 42px;
-  padding: 0 18px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  color: #404040;
-  font-weight: 700;
-  text-decoration: none;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.1), inset 0 2px 0 rgba(255, 255, 255, 0.7);
-}
-
-.tab:hover {
-  background: #f6f7f9;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.8);
-  color: #404040;
-}
-
-.tabActive {
-  background: #f6f7f9;
-  border-color: rgba(56, 189, 248, 0.55);
-}
-
 .statuses {
   display: inline-flex;
   align-items: center;
@@ -111,7 +76,7 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background-color: var(--color-bg);
-  color: var(--color-text-muted);
+  color: #404040;
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -120,6 +85,7 @@
 .themeToggle:hover {
   background-color: var(--color-bg);
   border-color: color-mix(in srgb, var(--color-border) 70%, var(--color-text) 30%);
+  color: #404040;
 }
 
 .logout {
