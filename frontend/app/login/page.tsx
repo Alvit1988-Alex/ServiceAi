@@ -83,7 +83,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace("/");
+      router.replace("/bots");
     }
   }, [isAuthenticated, router]);
 
