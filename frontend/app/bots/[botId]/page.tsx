@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import LayoutShell from "@/app/components/layout/LayoutShell";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import { useBotsStore } from "@/store/bots.store";
-import BotChannels from "@/components/bot/BotChannels";
 import BotOverview from "@/components/bot/BotOverview";
-import BotAiSetup from "@/components/bot/BotAiSetup";
-import Tabs from "@/components/layout/Tabs";
 
 import styles from "./page.module.css";
 
@@ -20,8 +17,6 @@ interface BotDetailsPageProps {
 export default function BotDetailsPage({ params }: BotDetailsPageProps) {
   const botId = useMemo(() => Number(params.botId), [params.botId]);
   const invalidId = Number.isNaN(botId);
-
-  const [activeTab, setActiveTab] = useState<"overview" | "channels" | "ai">("overview");
 
   const { bots, selectedBot, loadingBots, error, fetchBots, reloadSelectedBot, selectBot } = useBotsStore();
 
@@ -48,15 +43,6 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
   }, [botId, bots, fetchBots, invalidId, reloadSelectedBot]);
 
   const bot = useMemo(() => bots.find((item) => item.id === botId) ?? selectedBot, [botId, bots, selectedBot]);
-  const tabs = useMemo(
-    () => [
-      { value: "overview", label: "Обзор" },
-      { value: "channels", label: "Каналы" },
-      { value: "ai", label: "ИИ и база знаний" },
-    ],
-    [],
-  );
-
   return (
     <AuthGuard>
       <LayoutShell title="Бот" description="Просмотр информации о боте">
@@ -75,11 +61,7 @@ export default function BotDetailsPage({ params }: BotDetailsPageProps) {
 
           {bot && (
             <div className={styles.content}>
-              <Tabs tabs={tabs} activeTab={activeTab} onTabChange={(value) => setActiveTab(value as typeof activeTab)} />
-
-              {activeTab === "overview" && <BotOverview bot={bot} />}
-              {activeTab === "channels" && <BotChannels botId={bot.id} />}
-              {activeTab === "ai" && <BotAiSetup botId={bot.id} />}
+              <BotOverview bot={bot} />
             </div>
           )}
         </div>
