@@ -1,12 +1,12 @@
 .card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
-  padding: 1.25rem;
-  background: var(--color-bg-soft);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 18px;
+  padding: 20px;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
   min-height: 520px;
   max-height: 70vh;
 }
@@ -87,7 +87,7 @@
 }
 
 .messageBubbleBot {
-  background: #f1f5f9;
+  background: var(--color-bg-soft);
   color: var(--color-text);
   border-bottom-left-radius: 0.2rem;
 }
@@ -101,14 +101,16 @@
 .input {
   flex: 1;
   min-width: 0;
-  padding: 0.65rem 0.85rem;
-  border: 1px solid var(--color-border);
-  border-radius: calc(var(--border-radius) - 2px);
-  font-size: 0.95rem;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #404040;
 }
 
 .input:focus {
-  outline: 2px solid var(--color-primary-soft);
+  outline: none;
   border-color: var(--color-primary);
 }
 
@@ -125,4 +127,23 @@
 
 .sendButton:hover {
   opacity: 0.92;
+}
+
+:global(html[data-theme="dark"]) .card {
+  background: var(--color-bg-soft);
+  border-color: var(--color-border-subtle);
+}
+
+:global(html[data-theme="dark"]) .input {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+:global(html[data-theme="light"]) .messageBubbleBot {
+  background: #f1f5f9;
+}
+
+:global(html[data-theme="dark"]) .messageBubbleBot {
+  background: var(--color-bg-soft);
+  color: var(--color-text);
 }
