@@ -25,7 +25,7 @@ export default function ChannelsPage() {
         {error && <p className={botSelectionStyles.error}>{error}</p>}
 
         {!error && loadingBots && (
-          <p style={{ color: "var(--color-text-muted)" }}>Загружаем список ботов...</p>
+          <p className={botSelectionStyles.message}>Загружаем список ботов...</p>
         )}
 
         {!error && !loadingBots && !hasBots && (
