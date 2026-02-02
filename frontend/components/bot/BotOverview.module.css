@@ -1,12 +1,12 @@
 .card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
-  padding: 1.25rem;
-  background: var(--color-bg-soft);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 18px;
+  padding: 20px;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }
 
 .title {
@@ -46,4 +46,9 @@
 
 .value {
   font-weight: 600;
+}
+
+:global(html[data-theme="dark"]) .card {
+  background: var(--color-bg-soft);
+  border-color: var(--color-border-subtle);
 }
