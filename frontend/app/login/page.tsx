@@ -16,20 +16,23 @@ function buildTelegramLinks(deeplink: string | null) {
 
   try {
     const url = new URL(deeplink);
-    const botUsername = url.pathname.replace("/", "");
+    const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
     const startParam = url.searchParams.get("start");
-
-    if (!botUsername || !startParam) {
-      return { webLink: deeplink, tgLink: null };
-    }
 
     if (url.hostname === "telegram.me") {
       url.hostname = "t.me";
     }
 
+    if (!botUsername || !startParam) {
+      return { webLink: deeplink, tgLink: null };
+    }
+
+    const normalizedWebLink = `https://t.me/${botUsername}?start=${encodeURIComponent(startParam)}`;
+    const tgLink = `tg://resolve?domain=${encodeURIComponent(botUsername)}&start=${encodeURIComponent(startParam)}`;
+
     return {
-      webLink: url.toString(),
-      tgLink: null,
+      webLink: normalizedWebLink,
+      tgLink,
     };
   } catch {
     return { webLink: deeplink, tgLink: null };
@@ -43,7 +46,14 @@ const hasValidBotStart = (link: string | null) => {
 
   try {
     const url = new URL(link);
-    const botUsername = url.pathname.replace("/", "");
+
+    if (url.protocol === "tg:") {
+      const botUsername = url.searchParams.get("domain");
+      const startParam = url.searchParams.get("start");
+      return Boolean(botUsername && startParam);
+    }
+
+    const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
     const startParam = url.searchParams.get("start");
 
     return Boolean(botUsername && startParam);
@@ -71,7 +81,7 @@ export default function LoginPage() {
   const autoEnsureRef = useRef(false);
   const qrImageRef = useRef<string | null>(null);
 
-  const { webLink } = useMemo(
+  const { webLink, tgLink } = useMemo(
     () => buildTelegramLinks(pendingDeeplink),
     [pendingDeeplink],
   );
@@ -148,6 +158,10 @@ export default function LoginPage() {
   }, [ensurePendingLogin, isInitialized, isPendingValid, loading]);
 
   const getTelegramWebLink = useCallback(async () => {
+    if (tgLink && hasValidBotStart(tgLink)) {
+      return tgLink;
+    }
+
     if (webLink && hasValidBotStart(webLink)) {
       return webLink;
     }
@@ -156,9 +170,14 @@ export default function LoginPage() {
     if (!deeplink) {
       return null;
     }
-    const { webLink: resolvedWebLink } = buildTelegramLinks(deeplink);
-    return resolvedWebLink;
-  }, [ensurePendingLogin, webLink]);
+    const resolvedLinks = buildTelegramLinks(deeplink);
+
+    if (resolvedLinks.tgLink && hasValidBotStart(resolvedLinks.tgLink)) {
+      return resolvedLinks.tgLink;
+    }
+
+    return resolvedLinks.webLink;
+  }, [ensurePendingLogin, tgLink, webLink]);
 
   const openExternalLink = useCallback(async (getLink: () => Promise<string | null>) => {
     const w = window.open("", "_blank");
@@ -183,6 +202,16 @@ export default function LoginPage() {
     if (!link) {
       if (w) {
         w.close();
+      }
+      return;
+    }
+
+    if (link.startsWith("tg://")) {
+      if (w) {
+        w.location.href = link;
+        w.focus?.();
+      } else {
+        window.location.href = link;
       }
       return;
     }
