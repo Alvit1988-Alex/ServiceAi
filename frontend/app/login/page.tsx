@@ -81,10 +81,7 @@ export default function LoginPage() {
   const autoEnsureRef = useRef(false);
   const qrImageRef = useRef<string | null>(null);
 
-  const { webLink, tgLink } = useMemo(
-    () => buildTelegramLinks(pendingDeeplink),
-    [pendingDeeplink],
-  );
+  const { webLink, tgLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
   const qrLink = webLink;
   const isTelegramLinkReady = Boolean(tgLink && hasValidBotStart(tgLink));
 
@@ -171,6 +168,7 @@ export default function LoginPage() {
     if (!deeplink) {
       return null;
     }
+
     const resolvedLinks = buildTelegramLinks(deeplink);
 
     if (resolvedLinks.tgLink && hasValidBotStart(resolvedLinks.tgLink)) {
@@ -225,6 +223,8 @@ export default function LoginPage() {
     }
   }, []);
 
+  // IMPORTANT: tg:// открываем ТОЛЬКО синхронно по уже готовому tgLink.
+  // Если tgLink ещё не готов — клик только инициирует подготовку (retry), без открытия Telegram после async.
   const handleTelegramLoginClick = useCallback(() => {
     if (tgLink && hasValidBotStart(tgLink)) {
       window.location.assign(tgLink);
@@ -246,7 +246,11 @@ export default function LoginPage() {
                 onClick={handleTelegramLoginClick}
                 disabled={loading}
               >
-                {loading ? "Готовим ссылку..." : isTelegramLinkReady ? "Войти через Telegram" : "Подготовить вход через Telegram"}
+                {loading
+                  ? "Готовим ссылку..."
+                  : isTelegramLinkReady
+                    ? "Войти через Telegram"
+                    : "Подготовить вход через Telegram"}
               </Button>
             </div>
             <div className={styles.appear2}>
