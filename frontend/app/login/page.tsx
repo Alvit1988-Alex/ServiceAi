@@ -86,6 +86,7 @@ export default function LoginPage() {
     [pendingDeeplink],
   );
   const qrLink = webLink;
+  const isTelegramLinkReady = Boolean(tgLink && hasValidBotStart(tgLink));
 
   useEffect(() => {
     void initFromStorage();
@@ -224,6 +225,15 @@ export default function LoginPage() {
     }
   }, []);
 
+  const handleTelegramLoginClick = useCallback(() => {
+    if (tgLink && hasValidBotStart(tgLink)) {
+      window.location.assign(tgLink);
+      return;
+    }
+
+    void ensurePendingLogin();
+  }, [ensurePendingLogin, tgLink]);
+
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
       <div className={styles.screen}>
@@ -233,12 +243,10 @@ export default function LoginPage() {
               <Button
                 type="button"
                 className={styles.btn}
-                onClick={async () => {
-                  await openExternalLink(getTelegramWebLink);
-                }}
+                onClick={handleTelegramLoginClick}
                 disabled={loading}
               >
-                {loading ? "Готовим ссылку..." : "Войти через Telegram"}
+                {loading ? "Готовим ссылку..." : isTelegramLinkReady ? "Войти через Telegram" : "Подготовить вход через Telegram"}
               </Button>
             </div>
             <div className={styles.appear2}>
