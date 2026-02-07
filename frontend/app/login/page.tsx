@@ -224,6 +224,28 @@ export default function LoginPage() {
     }
   }, []);
 
+  const handleTelegramLoginClick = useCallback(() => {
+    if (tgLink && hasValidBotStart(tgLink)) {
+      window.location.assign(tgLink);
+      return;
+    }
+
+    void (async () => {
+      const link = await getTelegramWebLink();
+
+      if (!link) {
+        return;
+      }
+
+      if (link.startsWith("tg://")) {
+        window.location.assign(link);
+        return;
+      }
+
+      await openExternalLink(async () => link);
+    })();
+  }, [getTelegramWebLink, openExternalLink, tgLink]);
+
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
       <div className={styles.screen}>
@@ -233,9 +255,7 @@ export default function LoginPage() {
               <Button
                 type="button"
                 className={styles.btn}
-                onClick={async () => {
-                  await openExternalLink(getTelegramWebLink);
-                }}
+                onClick={handleTelegramLoginClick}
                 disabled={loading}
               >
                 {loading ? "Готовим ссылку..." : "Войти через Telegram"}
