@@ -83,7 +83,7 @@ export default function LoginPage() {
 
   const { webLink, tgLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
   const qrLink = webLink;
-  const isTelegramLinkReady = Boolean(tgLink && hasValidBotStart(tgLink));
+  const isTelegramWebLinkReady = Boolean(webLink && hasValidBotStart(webLink));
 
   useEffect(() => {
     void initFromStorage();
@@ -223,16 +223,14 @@ export default function LoginPage() {
     }
   }, []);
 
-  // IMPORTANT: tg:// открываем ТОЛЬКО синхронно по уже готовому tgLink.
-  // Если tgLink ещё не готов — клик только инициирует подготовку (retry), без открытия Telegram после async.
   const handleTelegramLoginClick = useCallback(() => {
-    if (tgLink && hasValidBotStart(tgLink)) {
-      window.location.assign(tgLink);
+    if (webLink && hasValidBotStart(webLink)) {
+      window.location.assign(webLink);
       return;
     }
 
     void ensurePendingLogin();
-  }, [ensurePendingLogin, tgLink]);
+  }, [ensurePendingLogin, webLink]);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
@@ -248,7 +246,7 @@ export default function LoginPage() {
               >
                 {loading
                   ? "Готовим ссылку..."
-                  : isTelegramLinkReady
+                  : isTelegramWebLinkReady
                     ? "Войти через Telegram"
                     : "Подготовить вход через Telegram"}
               </Button>
