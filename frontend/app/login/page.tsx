@@ -178,6 +178,21 @@ export default function LoginPage() {
     return resolvedLinks.webLink;
   }, [ensurePendingLogin, tgLink, webLink]);
 
+  const openInNewTab = useCallback((link: string) => {
+    const w = window.open(link, "_blank", "noopener,noreferrer");
+    if (w) {
+      try {
+        w.opener = null;
+      } catch {
+        // Ignore if browser blocks access.
+      }
+      w.focus?.();
+      return;
+    }
+
+    setLocalError("Разрешите всплывающие окна для входа через Telegram");
+  }, []);
+
   const openExternalLink = useCallback(async (getLink: () => Promise<string | null>) => {
     const w = window.open("", "_blank");
     if (w) {
@@ -225,12 +240,13 @@ export default function LoginPage() {
 
   const handleTelegramLoginClick = useCallback(() => {
     if (webLink && hasValidBotStart(webLink)) {
-      window.location.assign(webLink);
+      setLocalError(null);
+      openInNewTab(webLink);
       return;
     }
 
     void ensurePendingLogin();
-  }, [ensurePendingLogin, webLink]);
+  }, [ensurePendingLogin, openInNewTab, webLink]);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
