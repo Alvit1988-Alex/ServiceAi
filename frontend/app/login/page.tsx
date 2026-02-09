@@ -84,6 +84,7 @@ export default function LoginPage() {
   const { webLink, tgLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
   const qrLink = webLink;
   const isTelegramWebLinkReady = Boolean(webLink && hasValidBotStart(webLink));
+  const isTelegramAppLinkReady = Boolean(tgLink && hasValidBotStart(tgLink));
 
   useEffect(() => {
     void initFromStorage();
@@ -178,21 +179,6 @@ export default function LoginPage() {
     return resolvedLinks.webLink;
   }, [ensurePendingLogin, tgLink, webLink]);
 
-  const openInNewTab = useCallback((link: string) => {
-    const w = window.open(link, "_blank", "noopener,noreferrer");
-    if (w) {
-      try {
-        w.opener = null;
-      } catch {
-        // Ignore if browser blocks access.
-      }
-      w.focus?.();
-      return;
-    }
-
-    setLocalError("Разрешите всплывающие окна для входа через Telegram");
-  }, []);
-
   const openExternalLink = useCallback(async (getLink: () => Promise<string | null>) => {
     const w = window.open("", "_blank");
     if (w) {
@@ -201,6 +187,8 @@ export default function LoginPage() {
       } catch {
         // Ignore if the browser blocks access.
       }
+    } else {
+      setLocalError("Разрешите всплывающие окна для входа через Telegram");
     }
 
     let link: string | null = null;
@@ -239,14 +227,9 @@ export default function LoginPage() {
   }, []);
 
   const handleTelegramLoginClick = useCallback(() => {
-    if (webLink && hasValidBotStart(webLink)) {
-      setLocalError(null);
-      openInNewTab(webLink);
-      return;
-    }
-
-    void ensurePendingLogin();
-  }, [ensurePendingLogin, openInNewTab, webLink]);
+    setLocalError(null);
+    void openExternalLink(getTelegramWebLink);
+  }, [getTelegramWebLink, openExternalLink]);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
@@ -278,6 +261,31 @@ export default function LoginPage() {
               </Button>
             </div>
           </div>
+          {isTelegramWebLinkReady && (
+            <div className={styles.error}>
+              <p>Если Telegram открылся на пустом экране — нажмите «Открыть в Telegram» ниже.</p>
+              <div className={styles.buttons}>
+                {isTelegramAppLinkReady && tgLink && (
+                  <a
+                    className={styles.btn}
+                    href={tgLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Открыть в Telegram
+                  </a>
+                )}
+                <a
+                  className={styles.btn}
+                  href={webLink ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Открыть в Web Telegram
+                </a>
+              </div>
+            </div>
+          )}
           {(localError || error) && <p className={styles.error}>{localError || error}</p>}
         </div>
       </div>
