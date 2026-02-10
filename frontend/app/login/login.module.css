@@ -11,17 +11,50 @@
 
 .panel {
   width: 100%;
-  max-width: 520px;
+  max-width: 920px;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.buttons {
+.loginGrid {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "tgButton tgQr"
+    "maxQr maxButton";
+  gap: 24px;
+  align-items: center;
+  justify-items: center;
+}
+
+.tgButtonCell,
+.tgQrCell,
+.maxQrCell,
+.maxButtonCell {
+  width: 100%;
+  max-width: 360px;
+}
+
+.tgButtonCell {
+  grid-area: tgButton;
+  transform: translateY(-14px);
+}
+
+.tgQrCell {
+  grid-area: tgQr;
+  transform: translateY(-6px);
+}
+
+.maxQrCell {
+  grid-area: maxQr;
+  transform: translateY(6px);
+}
+
+.maxButtonCell {
+  grid-area: maxButton;
+  transform: translateY(14px);
 }
 
 .btn {
@@ -47,6 +80,53 @@
 .btn:active:not(:disabled) {
   transform: translateY(1px);
   color: #404040;
+}
+
+.qrCard {
+  width: min(260px, 90vw);
+  aspect-ratio: 1 / 1;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.qrImage {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.qrPlaceholder {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.fallback {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.fallback p {
+  margin: 0 0 4px;
+}
+
+.fallbackLinks {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fallbackLink {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .appear1,
@@ -78,6 +158,34 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .panel {
+    max-width: 520px;
+  }
+
+  .loginGrid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "tgButton"
+      "tgQr"
+      "maxButton"
+      "maxQr";
+    gap: 18px;
+  }
+
+  .tgButtonCell,
+  .tgQrCell,
+  .maxQrCell,
+  .maxButtonCell {
+    max-width: 100%;
+    transform: none;
+  }
+
+  .qrCard {
+    width: min(220px, 90vw);
   }
 }
 
