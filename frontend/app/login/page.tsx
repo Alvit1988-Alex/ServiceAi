@@ -11,7 +11,7 @@ import QRCode from "qrcode";
 
 function buildTelegramLinks(deeplink: string | null) {
   if (!deeplink) {
-    return { webLink: null };
+    return { webLink: null, appLink: null };
   }
 
   try {
@@ -29,8 +29,12 @@ function buildTelegramLinks(deeplink: string | null) {
 
         if (tgaddr) {
           try {
-            const decoded = decodeURIComponent(tgaddr);
-            const tgUrl = new URL(decoded);
+            let tgUrl: URL;
+            try {
+              tgUrl = new URL(tgaddr);
+            } catch {
+              tgUrl = new URL(decodeURIComponent(tgaddr));
+            }
             const domain = tgUrl.searchParams.get("domain");
             const start = tgUrl.searchParams.get("start");
 
@@ -60,15 +64,15 @@ function buildTelegramLinks(deeplink: string | null) {
     }
 
     if (!botUsername || !startParam) {
-      return { webLink: deeplink };
+      return { webLink: deeplink, appLink: null };
     }
 
-    const inner = `tg://resolve?domain=${botUsername}&start=${startParam}`;
-    const normalizedWebLink = `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(inner)}`;
+    const appLink = `tg://resolve?domain=${botUsername}&start=${startParam}`;
+    const normalizedWebLink = `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(appLink)}`;
 
-    return { webLink: normalizedWebLink };
+    return { webLink: normalizedWebLink, appLink };
   } catch {
-    return { webLink: deeplink };
+    return { webLink: deeplink, appLink: null };
   }
 }
 
@@ -80,6 +84,13 @@ const hasValidBotStart = (link: string | null) => {
   try {
     const url = new URL(link);
 
+    if (url.protocol === "tg:") {
+      const domain = url.searchParams.get("domain");
+      const start = url.searchParams.get("start");
+
+      return Boolean(domain && start);
+    }
+
     if (url.hostname === "web.telegram.org") {
       const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
 
@@ -89,8 +100,12 @@ const hasValidBotStart = (link: string | null) => {
 
         if (tgaddr) {
           try {
-            const decoded = decodeURIComponent(tgaddr);
-            const tgUrl = new URL(decoded);
+            let tgUrl: URL;
+            try {
+              tgUrl = new URL(tgaddr);
+            } catch {
+              tgUrl = new URL(decodeURIComponent(tgaddr));
+            }
             const domain = tgUrl.searchParams.get("domain");
             const start = tgUrl.searchParams.get("start");
 
@@ -144,9 +159,10 @@ export default function LoginPage() {
 
   const autoEnsureRef = useRef(false);
 
-  const { webLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
-  const qrLink = webLink;
+  const { webLink, appLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
+  const qrLink = appLink;
   const isTelegramWebLinkReady = Boolean(webLink && hasValidBotStart(webLink));
+  const isTelegramAppLinkReady = Boolean(appLink && hasValidBotStart(appLink));
 
   useEffect(() => {
     void initFromStorage();
@@ -298,7 +314,7 @@ export default function LoginPage() {
                   <img src={qrImage} alt="Telegram QR" className={styles.qrImage} />
                 ) : loading ? (
                   <p className={styles.qrPlaceholder}>Готовим QR...</p>
-                ) : !isTelegramWebLinkReady ? (
+                ) : !isTelegramAppLinkReady ? (
                   <p className={styles.qrPlaceholder}>
                     Нажмите «Подготовить вход через Telegram», чтобы получить QR
                   </p>
