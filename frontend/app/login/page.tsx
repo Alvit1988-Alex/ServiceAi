@@ -16,18 +16,32 @@ function buildTelegramLinks(deeplink: string | null) {
 
   try {
     const url = new URL(deeplink);
-    const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
-    const startParam = url.searchParams.get("start");
+    const normalizedHost = url.hostname === "telegram.me" ? "t.me" : url.hostname;
+    let botUsername = "";
+    let startParam: string | null = null;
 
-    if (url.hostname === "telegram.me") {
-      url.hostname = "t.me";
+    if (normalizedHost === "web.telegram.org") {
+      const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+      const [hashPath, hashQuery = ""] = rawHash.split("?");
+      const normalizedHashPath = hashPath.replace(/^\/+/u, "");
+
+      if (normalizedHashPath.startsWith("@")) {
+        botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
+      }
+
+      startParam = new URLSearchParams(hashQuery).get("start");
+    } else {
+      botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
+      startParam = url.searchParams.get("start");
     }
 
     if (!botUsername || !startParam) {
       return { webLink: deeplink };
     }
 
-    const normalizedWebLink = `https://t.me/${botUsername}?start=${encodeURIComponent(startParam)}`;
+    // Web-only маршрут /k/ помогает не триггерить prompt открытия Telegram Desktop в браузере.
+    const normalizedWebLink = `https://web.telegram.org/k/#@${botUsername}?start=${encodeURIComponent(startParam)}`;
+
     return { webLink: normalizedWebLink };
   } catch {
     return { webLink: deeplink };
@@ -41,6 +55,22 @@ const hasValidBotStart = (link: string | null) => {
 
   try {
     const url = new URL(link);
+
+    if (url.hostname === "web.telegram.org") {
+      const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+      const [hashPath, hashQuery = ""] = rawHash.split("?");
+      const normalizedHashPath = hashPath.replace(/^\/+/u, "");
+
+      if (!normalizedHashPath.startsWith("@")) {
+        return false;
+      }
+
+      const botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
+      const startParam = new URLSearchParams(hashQuery).get("start");
+
+      return Boolean(botUsername && startParam);
+    }
+
     const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
     const startParam = url.searchParams.get("start");
 
