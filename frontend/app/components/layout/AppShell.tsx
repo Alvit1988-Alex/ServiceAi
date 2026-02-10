@@ -16,6 +16,7 @@ export default function AppShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const isAuthPage = pathname === "/login" || pathname.startsWith("/login/");
   const isEmbedPage = pathname === "/embed" || pathname.startsWith("/embed/");
+  const isBotsListPage = pathname === "/bots";
 
   if (isAuthPage || isEmbedPage) {
     return (
@@ -31,7 +32,7 @@ export default function AppShell({ children }: PropsWithChildren) {
         <Topbar />
         <main className="main-content" style={{ flex: 1 }}>
           <div className="page-frame">
-            <AppTabs />
+            {!isBotsListPage && <AppTabs />}
             <div className="page-frame-body">{children}</div>
           </div>
         </main>
