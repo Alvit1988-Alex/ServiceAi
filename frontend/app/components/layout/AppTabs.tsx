@@ -8,7 +8,7 @@ import styles from "./AppTabs.module.css";
 const tabs = [
   { label: "Дашборд", href: "/" },
   { label: "Каналы", href: "/channels" },
-  { label: "ИИ и база знаний", href: "/knowledge" },
+  { label: "Обучение ИИ", href: "/knowledge" },
   { label: "Диалоги", href: "/search" },
   { label: "Настройки", href: "/settings" },
 ];
