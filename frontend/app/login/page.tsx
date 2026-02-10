@@ -156,6 +156,7 @@ export default function LoginPage() {
 
   const [localError, setLocalError] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const autoEnsureRef = useRef(false);
 
@@ -175,9 +176,28 @@ export default function LoginPage() {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const updateIsMobile = (event?: MediaQueryListEvent) => {
+      setIsMobile(event?.matches ?? mediaQuery.matches);
+    };
+
+    updateIsMobile();
+    mediaQuery.addEventListener("change", updateIsMobile);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateIsMobile);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const generateQr = async () => {
+      if (isMobile) {
+        setQrImage(null);
+        return;
+      }
+
       if (!qrLink) {
         setQrImage(null);
         return;
@@ -202,7 +222,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [qrLink]);
+  }, [isMobile, qrLink]);
 
   useEffect(() => {
     return () => {
@@ -247,46 +267,60 @@ export default function LoginPage() {
     });
   }, [ensurePendingLogin, isInitialized, isPendingValid, loading]);
 
-  const getTelegramLink = useCallback(async () => {
-    if (webLink && hasValidBotStart(webLink)) {
-      return webLink;
-    }
-
-    const deeplink = await ensurePendingLogin();
-    if (!deeplink) {
-      return null;
-    }
-
-    const resolvedLinks = buildTelegramLinks(deeplink);
-
-    return resolvedLinks.webLink;
-  }, [ensurePendingLogin, webLink]);
-
   const handleTelegramLoginClick = useCallback(() => {
     setLocalError(null);
 
-    if (isTelegramWebLinkReady && webLink) {
-      const openedWindow = window.open(webLink, "_blank", "noopener,noreferrer");
-      if (!openedWindow) {
-        setLocalError("Разрешите всплывающие окна для входа через Telegram");
-      }
-      return;
-    }
-
     void (async () => {
       try {
-        const link = await getTelegramLink();
-        if (!link) {
+        if (isMobile) {
+          if (isTelegramAppLinkReady && appLink) {
+            window.location.href = appLink;
+            return;
+          }
+
+          const deeplink = await ensurePendingLogin();
+          if (!deeplink) {
+            return;
+          }
+
+          const resolvedLinks = buildTelegramLinks(deeplink);
+          if (!resolvedLinks.appLink) {
+            setLocalError("Не удалось открыть приложение Telegram");
+            return;
+          }
+
+          window.location.href = resolvedLinks.appLink;
           return;
         }
 
-        window.location.href = link;
+        if (isTelegramWebLinkReady && webLink) {
+          const openedWindow = window.open(webLink, "_blank", "noopener,noreferrer");
+          if (!openedWindow) {
+            setLocalError("Разрешите всплывающие окна для входа через Telegram");
+          }
+          return;
+        }
+
+        const deeplink = await ensurePendingLogin();
+        if (!deeplink) {
+          return;
+        }
+
+        const resolvedLinks = buildTelegramLinks(deeplink);
+        if (!resolvedLinks.webLink) {
+          return;
+        }
+
+        const openedWindow = window.open(resolvedLinks.webLink, "_blank", "noopener,noreferrer");
+        if (!openedWindow) {
+          setLocalError("Разрешите всплывающие окна для входа через Telegram");
+        }
       } catch {
         // Ничего не делать.
         // localError уже может быть выставлен внутри ensurePendingLogin().
       }
     })();
-  }, [getTelegramLink, isTelegramWebLinkReady, webLink]);
+  }, [appLink, ensurePendingLogin, isMobile, isTelegramAppLinkReady, isTelegramWebLinkReady, webLink]);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
@@ -302,33 +336,39 @@ export default function LoginPage() {
               >
                 {loading
                   ? "Готовим ссылку..."
-                  : isTelegramWebLinkReady
+                  : isMobile
                     ? "Войти через Telegram"
-                    : "Подготовить вход через Telegram"}
+                    : isTelegramWebLinkReady
+                      ? "Войти через Telegram"
+                      : "Подготовить вход через Telegram"}
               </Button>
             </div>
 
-            <div className={`${styles.tgQrCell} ${styles.appear2}`}>
-              <div className={styles.qrCard}>
-                {qrImage ? (
-                  <img src={qrImage} alt="Telegram QR" className={styles.qrImage} />
-                ) : loading ? (
-                  <p className={styles.qrPlaceholder}>Готовим QR...</p>
-                ) : !isTelegramAppLinkReady ? (
-                  <p className={styles.qrPlaceholder}>
-                    Нажмите «Подготовить вход через Telegram», чтобы получить QR
-                  </p>
-                ) : (
-                  <p className={styles.qrPlaceholder}>Готовим QR...</p>
-                )}
+            {!isMobile && (
+              <div className={`${styles.tgQrCell} ${styles.appear2}`}>
+                <div className={styles.qrCard}>
+                  {qrImage ? (
+                    <img src={qrImage} alt="Telegram QR" className={styles.qrImage} />
+                  ) : loading ? (
+                    <p className={styles.qrPlaceholder}>Готовим QR...</p>
+                  ) : !isTelegramAppLinkReady ? (
+                    <p className={styles.qrPlaceholder}>
+                      Нажмите «Подготовить вход через Telegram», чтобы получить QR
+                    </p>
+                  ) : (
+                    <p className={styles.qrPlaceholder}>Готовим QR...</p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className={`${styles.maxQrCell} ${styles.appear1}`}>
-              <div className={styles.qrCard}>
-                <p className={styles.qrPlaceholder}>QR скоро будет доступен</p>
+            {!isMobile && (
+              <div className={`${styles.maxQrCell} ${styles.appear1}`}>
+                <div className={styles.qrCard}>
+                  <p className={styles.qrPlaceholder}>QR скоро будет доступен</p>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className={`${styles.maxButtonCell} ${styles.appear2}`}>
               <Button
