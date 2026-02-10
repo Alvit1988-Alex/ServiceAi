@@ -77,9 +77,9 @@ export default function LoginPage() {
   } = useAuthStore();
 
   const [localError, setLocalError] = useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
 
   const autoEnsureRef = useRef(false);
-  const qrImageRef = useRef<string | null>(null);
 
   const { webLink, tgLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
   const qrLink = webLink;
@@ -97,20 +97,33 @@ export default function LoginPage() {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const generateQr = async () => {
       if (!qrLink) {
-        qrImageRef.current = null;
+        setQrImage(null);
         return;
       }
+
       try {
         const url = await QRCode.toDataURL(qrLink);
-        qrImageRef.current = url;
+        if (cancelled) {
+          return;
+        }
+        setQrImage(url);
       } catch {
-        qrImageRef.current = null;
+        if (cancelled) {
+          return;
+        }
+        setQrImage(null);
       }
     };
 
     void generateQr();
+
+    return () => {
+      cancelled = true;
+    };
   }, [qrLink]);
 
   useEffect(() => {
@@ -235,8 +248,8 @@ export default function LoginPage() {
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
       <div className={styles.screen}>
         <div className={styles.panel}>
-          <div className={styles.buttons}>
-            <div className={styles.appear1}>
+          <div className={styles.loginGrid}>
+            <div className={`${styles.tgButtonCell} ${styles.appear1}`}>
               <Button
                 type="button"
                 className={styles.btn}
@@ -249,8 +262,56 @@ export default function LoginPage() {
                     ? "Войти через Telegram"
                     : "Подготовить вход через Telegram"}
               </Button>
+              {isTelegramWebLinkReady && webLink && (
+                <div className={styles.fallback}>
+                  <p>Если чат не открылся автоматически — используйте ссылку:</p>
+                  <div className={styles.fallbackLinks}>
+                    {isTelegramAppLinkReady && tgLink && (
+                      <a
+                        className={styles.fallbackLink}
+                        href={tgLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Открыть в Telegram
+                      </a>
+                    )}
+                    <a
+                      className={styles.fallbackLink}
+                      href={webLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Открыть в Web Telegram
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className={styles.appear2}>
+
+            <div className={`${styles.tgQrCell} ${styles.appear2}`}>
+              <div className={styles.qrCard}>
+                {qrImage ? (
+                  <img src={qrImage} alt="Telegram QR" className={styles.qrImage} />
+                ) : loading ? (
+                  <p className={styles.qrPlaceholder}>Готовим QR...</p>
+                ) : !isTelegramWebLinkReady ? (
+                  <p className={styles.qrPlaceholder}>
+                    Нажмите «Подготовить вход через Telegram», чтобы получить QR
+                  </p>
+                ) : (
+                  <p className={styles.qrPlaceholder}>Готовим QR...</p>
+                )}
+              </div>
+            </div>
+
+            <div className={`${styles.maxQrCell} ${styles.appear1}`}>
+              <div className={styles.qrCard}>
+                <p className={styles.qrPlaceholder}>QR скоро будет доступен</p>
+              </div>
+            </div>
+
+            <div className={`${styles.maxButtonCell} ${styles.appear2}`}>
               <Button
                 type="button"
                 className={styles.btn}
@@ -261,31 +322,6 @@ export default function LoginPage() {
               </Button>
             </div>
           </div>
-          {isTelegramWebLinkReady && (
-            <div className={styles.error}>
-              <p>Если Telegram открылся на пустом экране — нажмите «Открыть в Telegram» ниже.</p>
-              <div className={styles.buttons}>
-                {isTelegramAppLinkReady && tgLink && (
-                  <a
-                    className={styles.btn}
-                    href={tgLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Открыть в Telegram
-                  </a>
-                )}
-                <a
-                  className={styles.btn}
-                  href={webLink ?? undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Открыть в Web Telegram
-                </a>
-              </div>
-            </div>
-          )}
           {(localError || error) && <p className={styles.error}>{localError || error}</p>}
         </div>
       </div>
