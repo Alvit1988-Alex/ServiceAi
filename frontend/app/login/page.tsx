@@ -11,7 +11,7 @@ import QRCode from "qrcode";
 
 function buildTelegramLinks(deeplink: string | null) {
   if (!deeplink) {
-    return { webLink: null, tgLink: null };
+    return { webLink: null };
   }
 
   try {
@@ -24,18 +24,13 @@ function buildTelegramLinks(deeplink: string | null) {
     }
 
     if (!botUsername || !startParam) {
-      return { webLink: deeplink, tgLink: null };
+      return { webLink: deeplink };
     }
 
     const normalizedWebLink = `https://t.me/${botUsername}?start=${encodeURIComponent(startParam)}`;
-    const tgLink = `tg://resolve?domain=${encodeURIComponent(botUsername)}&start=${encodeURIComponent(startParam)}`;
-
-    return {
-      webLink: normalizedWebLink,
-      tgLink,
-    };
+    return { webLink: normalizedWebLink };
   } catch {
-    return { webLink: deeplink, tgLink: null };
+    return { webLink: deeplink };
   }
 }
 
@@ -46,13 +41,6 @@ const hasValidBotStart = (link: string | null) => {
 
   try {
     const url = new URL(link);
-
-    if (url.protocol === "tg:") {
-      const botUsername = url.searchParams.get("domain");
-      const startParam = url.searchParams.get("start");
-      return Boolean(botUsername && startParam);
-    }
-
     const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
     const startParam = url.searchParams.get("start");
 
@@ -81,10 +69,9 @@ export default function LoginPage() {
 
   const autoEnsureRef = useRef(false);
 
-  const { webLink, tgLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
+  const { webLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
   const qrLink = webLink;
   const isTelegramWebLinkReady = Boolean(webLink && hasValidBotStart(webLink));
-  const isTelegramAppLinkReady = Boolean(tgLink && hasValidBotStart(tgLink));
 
   useEffect(() => {
     void initFromStorage();
@@ -169,11 +156,7 @@ export default function LoginPage() {
     });
   }, [ensurePendingLogin, isInitialized, isPendingValid, loading]);
 
-  const getTelegramWebLink = useCallback(async () => {
-    if (tgLink && hasValidBotStart(tgLink)) {
-      return tgLink;
-    }
-
+  const getTelegramLink = useCallback(async () => {
     if (webLink && hasValidBotStart(webLink)) {
       return webLink;
     }
@@ -185,64 +168,34 @@ export default function LoginPage() {
 
     const resolvedLinks = buildTelegramLinks(deeplink);
 
-    if (resolvedLinks.tgLink && hasValidBotStart(resolvedLinks.tgLink)) {
-      return resolvedLinks.tgLink;
-    }
-
     return resolvedLinks.webLink;
-  }, [ensurePendingLogin, tgLink, webLink]);
-
-  const openExternalLink = useCallback(async (getLink: () => Promise<string | null>) => {
-    const w = window.open("", "_blank");
-    if (w) {
-      try {
-        w.opener = null;
-      } catch {
-        // Ignore if the browser blocks access.
-      }
-    } else {
-      setLocalError("Разрешите всплывающие окна для входа через Telegram");
-    }
-
-    let link: string | null = null;
-    try {
-      link = await getLink();
-    } catch {
-      if (w) {
-        w.close();
-      }
-      return;
-    }
-
-    if (!link) {
-      if (w) {
-        w.close();
-      }
-      return;
-    }
-
-    if (link.startsWith("tg://")) {
-      if (w) {
-        w.location.href = link;
-        w.focus?.();
-      } else {
-        window.location.href = link;
-      }
-      return;
-    }
-
-    if (w) {
-      w.location.replace(link);
-      w.focus?.();
-    } else {
-      window.location.href = link;
-    }
-  }, []);
+  }, [ensurePendingLogin, webLink]);
 
   const handleTelegramLoginClick = useCallback(() => {
     setLocalError(null);
-    void openExternalLink(getTelegramWebLink);
-  }, [getTelegramWebLink, openExternalLink]);
+
+    if (isTelegramWebLinkReady && webLink) {
+      const openedWindow = window.open(webLink, "_blank", "noopener,noreferrer");
+      if (!openedWindow) {
+        setLocalError("Разрешите всплывающие окна для входа через Telegram");
+      }
+      return;
+    }
+
+    void (async () => {
+      try {
+        const link = await getTelegramLink();
+        if (!link) {
+          return;
+        }
+
+        window.location.href = link;
+      } catch {
+        // Ничего не делать.
+        // localError уже может быть выставлен внутри ensurePendingLogin().
+      }
+    })();
+  }, [getTelegramLink, isTelegramWebLinkReady, webLink]);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
@@ -262,31 +215,6 @@ export default function LoginPage() {
                     ? "Войти через Telegram"
                     : "Подготовить вход через Telegram"}
               </Button>
-              {isTelegramWebLinkReady && webLink && (
-                <div className={styles.fallback}>
-                  <p>Если чат не открылся автоматически — используйте ссылку:</p>
-                  <div className={styles.fallbackLinks}>
-                    {isTelegramAppLinkReady && tgLink && (
-                      <a
-                        className={styles.fallbackLink}
-                        href={tgLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Открыть в Telegram
-                      </a>
-                    )}
-                    <a
-                      className={styles.fallbackLink}
-                      href={webLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Открыть в Web Telegram
-                    </a>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className={`${styles.tgQrCell} ${styles.appear2}`}>

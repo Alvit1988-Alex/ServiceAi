@@ -108,27 +108,6 @@
   color: var(--color-text-secondary, #6b7280);
 }
 
-.fallback {
-  margin-top: 10px;
-  font-size: 13px;
-  opacity: 0.8;
-}
-
-.fallback p {
-  margin: 0 0 4px;
-}
-
-.fallbackLinks {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.fallbackLink {
-  color: inherit;
-  text-decoration: underline;
-}
-
 .appear1,
 .appear2 {
   opacity: 0;
