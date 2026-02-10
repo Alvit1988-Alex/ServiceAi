@@ -1,10 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
+import BotOverview from "@/components/bot/BotOverview";
+import { AuthGuard } from "./components/auth/AuthGuard";
+import { Button } from "./components/Button/Button";
 import LayoutShell from "./components/layout/LayoutShell";
 import styles from "./page.module.css";
-import { AuthGuard } from "./components/auth/AuthGuard";
 import { useBotsStore } from "@/store/bots.store";
 
 function formatSeconds(seconds: number | null | undefined): string {
@@ -23,16 +26,17 @@ function formatSeconds(seconds: number | null | undefined): string {
   return `${(seconds / 60).toFixed(1)} мин`;
 }
 
-const DASHBOARD_DESCRIPTION =
-  "Краткое описание состояния сервисов и полезные показатели. Обновления происходят в реальном времени, чтобы вы могли быстро реагировать на ключевые изменения.";
-
 export default function Home() {
+  const router = useRouter();
+
   const {
     bots,
     statsByBot,
     loadingBots,
     loadingStats,
     error,
+    selectedBotId,
+    selectedBot,
     fetchBots,
     fetchStatsForBots,
   } = useBotsStore();
@@ -78,8 +82,7 @@ export default function Home() {
 
     return {
       totalBots: bots.length,
-      activeBots: summaries.filter((summary) => summary.dialogs.active > 0)
-        .length,
+      activeBots: summaries.filter((summary) => summary.dialogs.active > 0).length,
       totalDialogs: summaries.reduce(
         (acc, summary) => acc + summary.dialogs.total,
         0,
@@ -100,10 +103,26 @@ export default function Home() {
 
   return (
     <AuthGuard>
-      <LayoutShell
-        title="Панель управления ServiceAI"
-        description={DASHBOARD_DESCRIPTION}
-      >
+      <LayoutShell>
+        <div className={styles.botHeader}>
+          {selectedBot ? (
+            <BotOverview bot={selectedBot} />
+          ) : (
+            <section className={styles.loginSection}>
+              <div className={styles.loginHeader}>
+                <h2 className={styles.loginTitle}>Выберите бота</h2>
+                <p className={styles.loginDescription}>
+                  Для отображения карточки бота и персональной информации сначала
+                  выберите бота в списке.
+                </p>
+              </div>
+              <div className={`${styles.actions} ${styles.loginActions}`}>
+                <Button onClick={() => router.push("/bots")}>Перейти к выбору бота</Button>
+              </div>
+            </section>
+          )}
+        </div>
+
         <section className={styles.loginSection}>
           <div className={styles.loginHeader}>
             <h2 className={styles.loginTitle}>Сводка по сервисам</h2>
@@ -119,6 +138,11 @@ export default function Home() {
           {!isLoading && !error && !hasBots && (
             <p className={styles.mutedText}>
               У вас пока нет ботов. Создайте бота, чтобы увидеть статистику.
+            </p>
+          )}
+          {!selectedBotId && !error && !isLoading && hasBots && (
+            <p className={styles.mutedText}>
+              Бот не выбран: показатели отображаются суммарно по всем ботам.
             </p>
           )}
         </section>

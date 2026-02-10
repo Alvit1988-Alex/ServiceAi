@@ -1,3 +1,7 @@
+.botHeader {
+  margin-bottom: 16px;
+}
+
 .loginSection {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.12);
