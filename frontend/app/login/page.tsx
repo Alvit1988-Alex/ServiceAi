@@ -22,14 +22,38 @@ function buildTelegramLinks(deeplink: string | null) {
 
     if (normalizedHost === "web.telegram.org") {
       const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-      const [hashPath, hashQuery = ""] = rawHash.split("?");
-      const normalizedHashPath = hashPath.replace(/^\/+/u, "");
 
-      if (normalizedHashPath.startsWith("@")) {
-        botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
+      if (rawHash.startsWith("?")) {
+        const hashParams = new URLSearchParams(rawHash.slice(1));
+        const tgaddr = hashParams.get("tgaddr");
+
+        if (tgaddr) {
+          try {
+            const decoded = decodeURIComponent(tgaddr);
+            const tgUrl = new URL(decoded);
+            const domain = tgUrl.searchParams.get("domain");
+            const start = tgUrl.searchParams.get("start");
+
+            if (domain && start) {
+              botUsername = domain;
+              startParam = start;
+            }
+          } catch {
+            // Ничего не делать.
+          }
+        }
       }
 
-      startParam = new URLSearchParams(hashQuery).get("start");
+      if (!botUsername || !startParam) {
+        const [hashPath, hashQueryPart = ""] = rawHash.split("?");
+        const normalizedHashPath = hashPath.replace(/^\/+/u, "");
+
+        if (normalizedHashPath.startsWith("@")) {
+          botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
+        }
+
+        startParam = new URLSearchParams(hashQueryPart).get("start");
+      }
     } else {
       botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
       startParam = url.searchParams.get("start");
@@ -39,8 +63,8 @@ function buildTelegramLinks(deeplink: string | null) {
       return { webLink: deeplink };
     }
 
-    // Web-only маршрут /k/ помогает не триггерить prompt открытия Telegram Desktop в браузере.
-    const normalizedWebLink = `https://web.telegram.org/k/#@${botUsername}?start=${encodeURIComponent(startParam)}`;
+    const inner = `tg://resolve?domain=${botUsername}&start=${startParam}`;
+    const normalizedWebLink = `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(inner)}`;
 
     return { webLink: normalizedWebLink };
   } catch {
@@ -58,7 +82,28 @@ const hasValidBotStart = (link: string | null) => {
 
     if (url.hostname === "web.telegram.org") {
       const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-      const [hashPath, hashQuery = ""] = rawHash.split("?");
+
+      if (rawHash.startsWith("?")) {
+        const hashParams = new URLSearchParams(rawHash.slice(1));
+        const tgaddr = hashParams.get("tgaddr");
+
+        if (tgaddr) {
+          try {
+            const decoded = decodeURIComponent(tgaddr);
+            const tgUrl = new URL(decoded);
+            const domain = tgUrl.searchParams.get("domain");
+            const start = tgUrl.searchParams.get("start");
+
+            return Boolean(domain && start);
+          } catch {
+            return false;
+          }
+        }
+
+        return false;
+      }
+
+      const [hashPath, hashQueryPart = ""] = rawHash.split("?");
       const normalizedHashPath = hashPath.replace(/^\/+/u, "");
 
       if (!normalizedHashPath.startsWith("@")) {
@@ -66,7 +111,7 @@ const hasValidBotStart = (link: string | null) => {
       }
 
       const botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
-      const startParam = new URLSearchParams(hashQuery).get("start");
+      const startParam = new URLSearchParams(hashQueryPart).get("start");
 
       return Boolean(botUsername && startParam);
     }
