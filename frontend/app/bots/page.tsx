@@ -15,7 +15,8 @@ const DESCRIPTION =
 
 export default function BotsPage() {
   const router = useRouter();
-  const { bots, loadingBots, error, fetchBots, createBot } = useBotsStore();
+  const { bots, loadingBots, error, fetchBots, createBot, selectBot } =
+    useBotsStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -63,7 +64,10 @@ export default function BotsPage() {
                     key={bot.id}
                     type="button"
                     className={styles.botBtn}
-                    onClick={() => router.push(`/bots/${bot.id}`)}
+                    onClick={() => {
+                      selectBot(bot.id);
+                      router.push("/");
+                    }}
                   >
                     {bot.name}
                   </Button>
