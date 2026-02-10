@@ -149,10 +149,16 @@
     grid-template-columns: 1fr;
     grid-template-areas:
       "tgButton"
-      "tgQr"
-      "maxButton"
-      "maxQr";
+      "maxButton";
     gap: 18px;
+  }
+
+  .tgQrCell {
+    display: none;
+  }
+
+  .maxQrCell {
+    display: none;
   }
 
   .tgButtonCell,
