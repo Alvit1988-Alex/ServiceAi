@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bots.models import Bot
@@ -35,12 +36,20 @@ class BotsService:
         result = await session.execute(select(Bot).where(Bot.id == bot_id))
         return result.scalars().first()
 
-    async def list(self, session: AsyncSession, filters: dict[str, Any] | None = None) -> list[Bot]:
+    async def list(
+        self,
+        session: AsyncSession,
+        filters: dict[str, Any] | None = None,
+        extra_clauses: list[ColumnElement[bool]] | None = None,
+    ) -> list[Bot]:
         stmt = select(Bot)
         if filters:
             for field, value in filters.items():
                 if value is not None:
                     stmt = stmt.where(getattr(Bot, field) == value)
+        if extra_clauses:
+            for clause in extra_clauses:
+                stmt = stmt.where(clause)
         result = await session.execute(stmt)
         return result.scalars().all()
 

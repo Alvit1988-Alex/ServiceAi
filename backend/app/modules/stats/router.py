@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.dependencies import get_db_session
+from app.dependencies import get_accessible_bot, get_db_session
 from app.modules.accounts.models import Account, User
 from app.modules.bots.models import Bot
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus
@@ -29,19 +29,20 @@ def _calculate_average(values: list[float]) -> float | None:
 @router.get("/summary", response_model=StatsSummary)
 async def get_summary(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> StatsSummary:
     total_dialogs = await session.scalar(
-        select(func.count(Dialog.id)).where(Dialog.bot_id == bot_id)
+        select(func.count(Dialog.id)).where(Dialog.bot_id == accessible_bot.id)
     )
     active_dialogs = await session.scalar(
-        select(func.count(Dialog.id)).where(Dialog.bot_id == bot_id, Dialog.closed.is_(False))
+        select(func.count(Dialog.id)).where(Dialog.bot_id == accessible_bot.id, Dialog.closed.is_(False))
     )
 
     status_counts: dict[str, int] = defaultdict(int)
     status_rows = await session.execute(
-        select(Dialog.status, func.count(Dialog.id)).where(Dialog.bot_id == bot_id).group_by(Dialog.status)
+        select(Dialog.status, func.count(Dialog.id)).where(Dialog.bot_id == accessible_bot.id).group_by(Dialog.status)
     )
     for status, count in status_rows.all():
         status_value = status.value if isinstance(status, DialogStatus) else str(status)
@@ -61,7 +62,7 @@ async def get_summary(
             Dialog.created_at,
         )
         .join(Dialog, DialogMessage.dialog_id == Dialog.id)
-        .where(Dialog.bot_id == bot_id)
+        .where(Dialog.bot_id == accessible_bot.id)
         .group_by(DialogMessage.dialog_id, Dialog.created_at)
     )
 
@@ -90,6 +91,7 @@ async def get_summary(
 @router.get("/admins", response_model=AdminsStatsResponse)
 async def get_admins(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminsStatsResponse:
@@ -99,7 +101,7 @@ async def get_admins(
             selectinload(Bot.account).selectinload(Account.owner),
             selectinload(Bot.account).selectinload(Account.operators),
         )
-        .where(Bot.id == bot_id)
+        .where(Bot.id == accessible_bot.id)
     )
 
     if not bot:

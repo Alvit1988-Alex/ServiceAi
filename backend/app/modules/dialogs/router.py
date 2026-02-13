@@ -6,9 +6,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db_session
+from app.dependencies import get_accessible_bot, get_db_session, require_bot_access
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
+from app.modules.bots.models import Bot
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.webchat_handler import handle_webchat_ws_message
 from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
@@ -73,6 +74,7 @@ async def _unlock_expired_dialogs(
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])
 async def list_dialogs(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     status: DialogStatus | None = None,
     channel_type: ChannelType | None = None,
     assigned_admin_id: int | None = None,
@@ -90,7 +92,7 @@ async def list_dialogs(
     dialogs, total, has_next = await service.list(
         session=session,
         filters={
-            "bot_id": bot_id,
+            "bot_id": accessible_bot.id,
             "status": status,
             "channel_type": channel_type,
             "assigned_admin_id": assigned_admin_id,
@@ -104,7 +106,7 @@ async def list_dialogs(
     )
 
     dialogs = await _unlock_expired_dialogs(
-        dialogs, service=service, session=session, bot_id=bot_id, include_messages=True
+        dialogs, service=service, session=session, bot_id=accessible_bot.id, include_messages=True
     )
 
     items = [
@@ -124,6 +126,7 @@ async def list_dialogs(
 @router.get("/bots/{bot_id}/search", response_model=ListResponse[DialogShort])
 async def search_dialogs(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     query: str | None = None,
     status: DialogStatus | None = None,
     assigned_admin_id: int | None = None,
@@ -140,7 +143,7 @@ async def search_dialogs(
 
     dialogs, total, has_next = await service.search_dialogs(
         session=session,
-        bot_id=bot_id,
+        bot_id=accessible_bot.id,
         query=query,
         status=status,
         assigned_admin_id=assigned_admin_id,
@@ -150,7 +153,7 @@ async def search_dialogs(
     )
 
     dialogs = await _unlock_expired_dialogs(
-        dialogs, service=service, session=session, bot_id=bot_id, include_messages=True
+        dialogs, service=service, session=session, bot_id=accessible_bot.id, include_messages=True
     )
 
     items = [
@@ -173,14 +176,15 @@ async def search_dialogs(
 async def get_dialog(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogDetail:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if dialog:
         dialog = await _unlock_expired_dialog(
-            dialog, service=service, session=session, bot_id=bot_id, include_messages=True
+            dialog, service=service, session=session, bot_id=accessible_bot.id, include_messages=True
         )
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
@@ -192,11 +196,12 @@ async def get_dialog(
 async def close_dialog(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogDetail:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
     if dialog.closed:
@@ -204,7 +209,7 @@ async def close_dialog(
 
     dialog = await service.close_dialog(session=session, dialog=dialog)
 
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     dialog_payload = DialogDetail.model_validate(
         dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
     ).model_dump()
@@ -225,11 +230,12 @@ async def close_dialog(
 async def lock_dialog(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogDetail:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
 
@@ -238,7 +244,7 @@ async def lock_dialog(
     except DialogLockError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     dialog_payload = DialogDetail.model_validate(
         dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
     ).model_dump()
@@ -259,11 +265,12 @@ async def lock_dialog(
 async def unlock_dialog(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogDetail:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
 
@@ -272,7 +279,7 @@ async def unlock_dialog(
     except DialogLockError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     dialog_payload = DialogDetail.model_validate(
         dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
     ).model_dump()
@@ -293,12 +300,13 @@ async def unlock_dialog(
 async def switch_dialog_to_auto(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
 ) -> DialogDetail:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
 
@@ -315,7 +323,7 @@ async def switch_dialog_to_auto(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id, include_messages=True)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     dialog_payload = DialogDetail.model_validate(
         dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
     ).model_dump()
@@ -336,14 +344,15 @@ async def switch_dialog_to_auto(
 async def delete_dialog(
     bot_id: int,
     dialog_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> None:
-    dialog = await service.get(session=session, bot_id=bot_id, dialog_id=dialog_id)
+    dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
-    await service.delete(session=session, bot_id=bot_id, dialog_id=dialog_id)
+    await service.delete(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id)
 
 
 @router.get("/dialogs/{dialog_id}/messages", response_model=ListResponse[DialogMessageOut])
@@ -362,6 +371,9 @@ async def list_messages(
     dialog = await dialogs_service.get(session=session, bot_id=None, dialog_id=dialog_id)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
+
+    await require_bot_access(dialog.bot_id, session, current_user)
+
     items, total, has_next = await service.list(
         session=session, filters={"dialog_id": dialog_id, "sender": sender}, page=page, per_page=per_page
     )
@@ -515,12 +527,13 @@ async def create_bot_dialog_message(
     bot_id: int,
     dialog_id: int,
     data: OperatorMessageIn,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogMessageOut:
     return await _create_operator_message(
-        dialog_id=dialog_id, data=data, session=session, service=service, expected_bot_id=bot_id
+        dialog_id=dialog_id, data=data, session=session, service=service, expected_bot_id=accessible_bot.id
     )
 
 
@@ -536,4 +549,10 @@ async def create_dialog_message(
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
 ) -> DialogMessageOut:
+    dialog = await service.get(session=session, bot_id=None, dialog_id=dialog_id)
+    if not dialog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
+
+    await require_bot_access(dialog.bot_id, session, current_user)
+
     return await _create_operator_message(dialog_id=dialog_id, data=data, session=session, service=service)
