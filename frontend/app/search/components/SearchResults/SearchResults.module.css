@@ -5,7 +5,9 @@
 }
 
 .tableWrapper {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
@@ -13,6 +15,7 @@
 
 .table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   background: #ffffff;
   color: #404040;
@@ -58,12 +61,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .paginationControls {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .button {
@@ -100,4 +105,14 @@
   border: 1px solid rgba(0, 0, 0, 0.12);
   color: #404040;
   border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .pagination {
+    flex-wrap: wrap;
+  }
+
+  .paginationControls {
+    flex-wrap: wrap;
+  }
 }
