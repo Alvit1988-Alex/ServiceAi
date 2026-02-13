@@ -1,10 +1,11 @@
 """Bots API router."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db_session
+from app.dependencies import get_accessible_account_ids, get_accessible_bot, get_db_session
 from app.modules.accounts.service import AccountsService
-from app.modules.accounts.models import User
+from app.modules.accounts.models import User, UserRole
+from app.modules.bots.models import Bot
 from app.modules.bots.schemas import BotCreate, BotCreateInternal, BotOut, BotUpdate, ListResponse
 from app.modules.bots.service import BotsService
 from app.security.auth import get_current_user
@@ -31,45 +32,38 @@ async def list_bots(
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> ListResponse[BotOut]:
-    items = await service.list(session=session)
+    if current_user.role == UserRole.admin:
+        items = await service.list(session=session)
+    else:
+        account_ids = await get_accessible_account_ids(session=session, user=current_user)
+        if not account_ids:
+            items = []
+        else:
+            items = await service.list(session=session, extra_clauses=[Bot.account_id.in_(account_ids)])
     return ListResponse[BotOut](items=items)
 
 
 @router.get("/{bot_id}", response_model=BotOut)
 async def get_bot(
-    bot_id: int,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-    service: BotsService = Depends(BotsService),
+    accessible_bot: Bot = Depends(get_accessible_bot),
 ) -> BotOut:
-    db_bot = await service.get(session=session, bot_id=bot_id)
-    if not db_bot:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
-    return db_bot
+    return accessible_bot
 
 
 @router.patch("/{bot_id}", response_model=BotOut)
 async def update_bot(
-    bot_id: int,
     data: BotUpdate,
-    current_user: User = Depends(get_current_user),
+    accessible_bot: Bot = Depends(get_accessible_bot),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> BotOut:
-    db_bot = await service.get(session=session, bot_id=bot_id)
-    if not db_bot:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
-    return await service.update(session=session, db_obj=db_bot, obj_in=data)
+    return await service.update(session=session, db_obj=accessible_bot, obj_in=data)
 
 
 @router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bot(
-    bot_id: int,
-    current_user: User = Depends(get_current_user),
+    accessible_bot: Bot = Depends(get_accessible_bot),
     session: AsyncSession = Depends(get_db_session),
     service: BotsService = Depends(BotsService),
 ) -> None:
-    db_bot = await service.get(session=session, bot_id=bot_id)
-    if not db_bot:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
-    await service.delete(session=session, bot_id=bot_id)
+    await service.delete(session=session, bot_id=accessible_bot.id)

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session_factory
-from app.dependencies import get_db_session
+from app.dependencies import get_accessible_bot, get_db_session
 from app.modules.accounts.models import User
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.channels.schemas import (
@@ -27,6 +27,7 @@ from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
 from app.modules.channels.whatsapp_green_handler import normalize_whatsapp_green_notification
+from app.modules.bots.models import Bot
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.diagnostics.service import DiagnosticsService, get_diagnostics_service
 from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
@@ -194,22 +195,24 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
 async def create_channel(
     bot_id: int,
     data: BotChannelCreate,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
-    channel = await service.create(session=session, bot_id=bot_id, obj_in=data)
+    channel = await service.create(session=session, bot_id=accessible_bot.id, obj_in=data)
     return channel
 
 
 @router.get("", response_model=ListResponse[BotChannelOut])
 async def list_channels(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> ListResponse[BotChannelOut]:
-    items = service.decrypt_many(await service.list(session=session, bot_id=bot_id))
+    items = service.decrypt_many(await service.list(session=session, bot_id=accessible_bot.id))
     return ListResponse[BotChannelOut](items=items)
 
 
@@ -217,11 +220,12 @@ async def list_channels(
 async def get_channel(
     bot_id: int,
     channel_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
-    channel = await service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    channel = await service.get(session=session, bot_id=accessible_bot.id, channel_id=channel_id)
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return service.decrypt(channel)
@@ -230,10 +234,11 @@ async def get_channel(
 @router.get("/webchat/embed")
 async def get_webchat_embed(
     bot_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    channel = await _get_webchat_channel_for_bot(session=session, bot_id=bot_id)
+    channel = await _get_webchat_channel_for_bot(session=session, bot_id=accessible_bot.id)
     _ensure_channel_available(channel)
 
     base_url = settings.front_base_url or settings.public_base_url
@@ -243,7 +248,7 @@ async def get_webchat_embed(
             detail="Frontend base URL is not configured",
         )
 
-    webchat_url = f"{base_url.rstrip('/')}/webchat?bot_id={bot_id}"
+    webchat_url = f"{base_url.rstrip('/')}/webchat?bot_id={accessible_bot.id}"
     embed_code = (
         f'<iframe src="{webchat_url}" '
         'style="width: 100%; height: 600px; border: 0;" '
@@ -257,11 +262,12 @@ async def update_channel(
     bot_id: int,
     channel_id: int,
     data: BotChannelUpdate,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> BotChannelOut:
-    channel = await service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    channel = await service.get(session=session, bot_id=accessible_bot.id, channel_id=channel_id)
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     updated = await service.update(session=session, db_obj=channel, obj_in=data)
@@ -272,14 +278,15 @@ async def update_channel(
 async def delete_channel(
     bot_id: int,
     channel_id: int,
+    accessible_bot: Bot = Depends(get_accessible_bot),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: ChannelsService = Depends(ChannelsService),
 ) -> None:
-    channel = await service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+    channel = await service.get(session=session, bot_id=accessible_bot.id, channel_id=channel_id)
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    await service.delete(session=session, bot_id=bot_id, channel_id=channel_id)
+    await service.delete(session=session, bot_id=accessible_bot.id, channel_id=channel_id)
 
 
 @router.post("/webhooks/telegram/{channel_id}")
