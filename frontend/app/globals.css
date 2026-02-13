@@ -173,7 +173,6 @@ body {
 @media (max-width: 720px) {
   .main-content {
     padding: 12px;
-    overflow-x: hidden;
   }
 
   .page-frame {
