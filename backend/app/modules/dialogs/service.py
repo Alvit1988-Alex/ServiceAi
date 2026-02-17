@@ -163,7 +163,7 @@ class DialogsService:
                 search_expr
             )
 
-        stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
+        stmt = stmt.options(selectinload(Dialog.messages))
         stmt = stmt.order_by(Dialog.last_message_at.desc()).offset(offset).limit(limit)
 
         result = await session.execute(stmt)
