@@ -163,7 +163,6 @@ class DialogsService:
                 search_expr
             )
 
-        stmt = stmt.options(selectinload(Dialog.messages))
         stmt = stmt.order_by(Dialog.last_message_at.desc()).offset(offset).limit(limit)
 
         result = await session.execute(stmt)
@@ -546,6 +545,26 @@ class DialogMessagesService:
         items = result.scalars().all()
         has_next = page * per_page < total
         return items, total, has_next
+
+    async def get_last_messages_map(
+        self,
+        session: AsyncSession,
+        dialog_ids: list[int],
+    ) -> dict[int, DialogMessage]:
+        if not dialog_ids:
+            return {}
+
+        dialog_ids = list(set(dialog_ids))
+
+        stmt = (
+            select(DialogMessage)
+            .where(DialogMessage.dialog_id.in_(dialog_ids))
+            .distinct(DialogMessage.dialog_id)
+            .order_by(DialogMessage.dialog_id, DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        )
+        result = await session.execute(stmt)
+        messages = result.scalars().all()
+        return {message.dialog_id: message for message in messages}
 
     async def delete(self, session: AsyncSession, message_id: int) -> None:
         obj = await self.get(session, message_id)
