@@ -110,7 +110,10 @@ async def list_dialogs(
     )
 
     items = [
-        DialogShort.model_validate(dialog, update={"last_message": dialog.messages[-1] if dialog.messages else None})
+        DialogShort.model_validate(
+            dialog,
+            update={"last_message": max(dialog.messages, key=lambda m: m.created_at) if dialog.messages else None},
+        )
         for dialog in dialogs
     ]
 
@@ -157,7 +160,10 @@ async def search_dialogs(
     )
 
     items = [
-        DialogShort.model_validate(dialog, update={"last_message": dialog.messages[-1] if dialog.messages else None})
+        DialogShort.model_validate(
+            dialog,
+            update={"last_message": max(dialog.messages, key=lambda m: m.created_at) if dialog.messages else None},
+        )
         for dialog in dialogs
     ]
 
