@@ -86,6 +86,7 @@ async def list_dialogs(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
+    messages_service: DialogMessagesService = Depends(DialogMessagesService),
 ) -> ListResponse[DialogShort]:
     validate_pagination(page, per_page)
 
@@ -102,17 +103,17 @@ async def list_dialogs(
         },
         page=page,
         per_page=per_page,
-        include_messages=True,
+        include_messages=False,
     )
 
-    dialogs = await _unlock_expired_dialogs(
-        dialogs, service=service, session=session, bot_id=accessible_bot.id, include_messages=True
-    )
+
+    dialog_ids = [dialog.id for dialog in dialogs]
+    last_map = await messages_service.get_last_messages_map(session=session, dialog_ids=dialog_ids)
 
     items = [
         DialogShort.model_validate(
             dialog,
-            update={"last_message": max(dialog.messages, key=lambda m: m.created_at) if dialog.messages else None},
+            update={"last_message": last_map.get(dialog.id)},
         )
         for dialog in dialogs
     ]
@@ -139,6 +140,7 @@ async def search_dialogs(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
+    messages_service: DialogMessagesService = Depends(DialogMessagesService),
 ) -> ListResponse[DialogShort]:
     validate_pagination(1, limit)
     if offset < 0:
@@ -155,14 +157,14 @@ async def search_dialogs(
         offset=offset,
     )
 
-    dialogs = await _unlock_expired_dialogs(
-        dialogs, service=service, session=session, bot_id=accessible_bot.id, include_messages=True
-    )
+
+    dialog_ids = [dialog.id for dialog in dialogs]
+    last_map = await messages_service.get_last_messages_map(session=session, dialog_ids=dialog_ids)
 
     items = [
         DialogShort.model_validate(
             dialog,
-            update={"last_message": max(dialog.messages, key=lambda m: m.created_at) if dialog.messages else None},
+            update={"last_message": last_map.get(dialog.id)},
         )
         for dialog in dialogs
     ]
