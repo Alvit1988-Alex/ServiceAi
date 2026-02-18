@@ -33,6 +33,19 @@ def _resolve_admin_targets(dialog_payload: dict) -> list[int] | None:
     return [admin_id] if admin_id is not None else None
 
 
+def _build_dialog_short(dialog: Dialog, last_message: object | None) -> DialogShort:
+    base = DialogShort.model_validate(dialog)
+    last_out = DialogMessageOut.model_validate(last_message) if last_message else None
+    return base.model_copy(update={"last_message": last_out})
+
+
+def _build_dialog_detail(dialog: Dialog) -> DialogDetail:
+    base = DialogDetail.model_validate(dialog)
+    msgs_sorted = sorted(dialog.messages, key=lambda m: m.created_at) if dialog.messages else []
+    msgs_out = [DialogMessageOut.model_validate(message) for message in msgs_sorted]
+    return base.model_copy(update={"messages": msgs_out})
+
+
 async def _unlock_expired_dialog(
     dialog: Dialog,
     *,
@@ -110,13 +123,7 @@ async def list_dialogs(
     dialog_ids = [dialog.id for dialog in dialogs]
     last_map = await messages_service.get_last_messages_map(session=session, dialog_ids=dialog_ids)
 
-    items = [
-        DialogShort.model_validate(
-            dialog,
-            update={"last_message": last_map.get(dialog.id)},
-        )
-        for dialog in dialogs
-    ]
+    items = [_build_dialog_short(dialog, last_map.get(dialog.id)) for dialog in dialogs]
 
     return ListResponse[DialogShort](
         items=items,
@@ -161,13 +168,7 @@ async def search_dialogs(
     dialog_ids = [dialog.id for dialog in dialogs]
     last_map = await messages_service.get_last_messages_map(session=session, dialog_ids=dialog_ids)
 
-    items = [
-        DialogShort.model_validate(
-            dialog,
-            update={"last_message": last_map.get(dialog.id)},
-        )
-        for dialog in dialogs
-    ]
+    items = [_build_dialog_short(dialog, last_map.get(dialog.id)) for dialog in dialogs]
 
     page = offset // limit + 1 if limit else 1
 
@@ -196,8 +197,7 @@ async def get_dialog(
         )
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
-    messages = sorted(dialog.messages, key=lambda m: m.created_at) if dialog.messages else []
-    return DialogDetail.model_validate(dialog, update={"messages": messages})
+    return _build_dialog_detail(dialog)
 
 
 @router.post("/bots/{bot_id}/dialogs/{dialog_id}/close", response_model=DialogDetail)
@@ -218,9 +218,7 @@ async def close_dialog(
     dialog = await service.close_dialog(session=session, dialog=dialog)
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = DialogDetail.model_validate(
-        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
-    ).model_dump()
+    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -231,7 +229,7 @@ async def close_dialog(
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 
-    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
+    return _build_dialog_detail(dialog)
 
 
 @router.post("/bots/{bot_id}/dialogs/{dialog_id}/lock", response_model=DialogDetail)
@@ -253,9 +251,7 @@ async def lock_dialog(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = DialogDetail.model_validate(
-        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
-    ).model_dump()
+    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -266,7 +262,7 @@ async def lock_dialog(
         message={"event": "dialog_locked", "data": dialog_payload},
     )
 
-    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
+    return _build_dialog_detail(dialog)
 
 
 @router.post("/bots/{bot_id}/dialogs/{dialog_id}/unlock", response_model=DialogDetail)
@@ -288,9 +284,7 @@ async def unlock_dialog(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = DialogDetail.model_validate(
-        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
-    ).model_dump()
+    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -301,7 +295,7 @@ async def unlock_dialog(
         message={"event": "dialog_unlocked", "data": dialog_payload},
     )
 
-    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
+    return _build_dialog_detail(dialog)
 
 
 @router.post("/bots/{bot_id}/dialogs/{dialog_id}/auto", response_model=DialogDetail)
@@ -332,9 +326,7 @@ async def switch_dialog_to_auto(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = DialogDetail.model_validate(
-        dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)} if dialog else {}
-    ).model_dump()
+    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -345,7 +337,7 @@ async def switch_dialog_to_auto(
         message={"event": "dialog_updated", "data": dialog_payload},
     )
 
-    return DialogDetail.model_validate(dialog, update={"messages": sorted(dialog.messages, key=lambda m: m.created_at)})
+    return _build_dialog_detail(dialog)
 
 
 @router.delete("/bots/{bot_id}/dialogs/{dialog_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -495,9 +487,7 @@ async def _create_operator_message(
 
     dialog_detail = await service.get(session=session, bot_id=None, dialog_id=dialog_id, include_messages=True)
     message_payload = DialogMessageOut.model_validate(message).model_dump()
-    dialog_payload = DialogDetail.model_validate(
-        dialog_detail, update={"messages": sorted(dialog_detail.messages, key=lambda m: m.created_at)}
-    ).model_dump()
+    dialog_payload = _build_dialog_detail(dialog_detail).model_dump()
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
