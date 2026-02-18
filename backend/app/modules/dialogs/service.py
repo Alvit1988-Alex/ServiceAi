@@ -52,7 +52,8 @@ class DialogsService:
         if bot_id is not None:
             stmt = stmt.where(Dialog.bot_id == bot_id)
         if include_messages:
-            stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
+            # Keep eager loading simple; message ordering is handled when serializing the response.
+            stmt = stmt.options(selectinload(Dialog.messages))
         result = await session.execute(stmt)
         return result.scalars().unique().first()
 
@@ -110,7 +111,8 @@ class DialogsService:
 
         stmt = select(Dialog).where(*conditions).order_by(Dialog.updated_at.desc())
         if include_messages:
-            stmt = stmt.options(selectinload(Dialog.messages).order_by(DialogMessage.created_at.asc()))
+            # Keep eager loading simple; message ordering is handled when serializing the response.
+            stmt = stmt.options(selectinload(Dialog.messages))
 
         total_result = await session.execute(
             select(func.count()).select_from(select(Dialog.id).where(*conditions).subquery())
