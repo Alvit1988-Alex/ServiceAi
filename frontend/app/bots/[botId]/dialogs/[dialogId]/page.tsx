@@ -75,7 +75,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     <AuthGuard>
       <LayoutShell title="Диалог" description="Просматривайте сообщения и управляйте статусом диалога.">
         <div className={styles.container}>
-          <Link className={styles.backLink} href={`/bots/${botId}/dialogs`}>
+          <Link className={styles.backLink} href={`/search?bot_id=${params.botId}`}>
             ← Назад к диалогам
           </Link>
 
