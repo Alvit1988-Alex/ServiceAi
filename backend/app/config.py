@@ -98,6 +98,12 @@ class Settings(BaseSettings):
         description="Publicly accessible frontend base URL used for building webchat embed links",
     )
 
+    frontend_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FRONTEND_BASE_URL", "frontend_base_url"),
+        description="Publicly accessible frontend base URL used for OAuth callback redirects",
+    )
+
     # Internal security
     channel_config_secret_key: str = Field(
         ...,

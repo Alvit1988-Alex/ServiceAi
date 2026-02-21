@@ -193,7 +193,7 @@ async def bitrix_oauth_callback(
     session.add(integration)
     await session.commit()
 
-    frontend_base = settings.front_base_url or "http://localhost:3000"
+    frontend_base = settings.frontend_base_url or "http://localhost:3000"
     return RedirectResponse(
         url=f"{frontend_base}/integrations?bot={bot_id}&success=1", status_code=302
     )
