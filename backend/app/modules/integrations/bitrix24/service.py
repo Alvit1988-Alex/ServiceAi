@@ -23,6 +23,10 @@ from app.modules.integrations.bitrix24.models import BitrixDialogLink, BitrixInt
 logger = logging.getLogger(__name__)
 
 
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class BitrixIntegrationError(Exception):
     pass
 
@@ -195,7 +199,7 @@ class Bitrix24Service:
         if not integration or not integration.enabled:
             return None
 
-        if integration.expires_at and integration.expires_at <= datetime.utcnow():
+        if integration.expires_at and integration.expires_at <= utcnow_naive():
             integration = await self.refresh_access_token(
                 session=session, integration=integration
             )
@@ -213,7 +217,7 @@ class Bitrix24Service:
         active_integration = integration
         if (
             active_integration.expires_at
-            and active_integration.expires_at <= datetime.utcnow()
+            and active_integration.expires_at <= utcnow_naive()
         ):
             active_integration = await self.refresh_access_token(
                 session=session, integration=active_integration

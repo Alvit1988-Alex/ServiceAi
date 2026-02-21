@@ -48,8 +48,23 @@ export default function IntegrationsPage() {
     try {
       const botsData = await listBots();
       setBots(botsData);
-      if (botsData.length > 0) {
+
+      const params = new URLSearchParams(window.location.search);
+      const botFromQuery = Number(params.get("bot") ?? "");
+      const hasBotFromQuery = Number.isInteger(botFromQuery) && botFromQuery > 0;
+      const queryBotExists = hasBotFromQuery && botsData.some((bot) => bot.id === botFromQuery);
+
+      if (queryBotExists) {
+        setSelectedBotId(botFromQuery);
+      } else if (botsData.length > 0) {
         setSelectedBotId((prev) => prev ?? botsData[0].id);
+      }
+
+      if (params.get("success") === "1") {
+        setSuccess("Bitrix24 подключен. Укажите Open Line ID и сохраните настройки.");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("success");
+        window.history.replaceState({}, "", url.toString());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить ботов");
