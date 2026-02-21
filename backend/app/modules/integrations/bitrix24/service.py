@@ -133,7 +133,10 @@ class Bitrix24Service:
                     extra={"status_code": response.status_code},
                 )
                 raise BitrixIntegrationError("Нет прав доступа (scope)")
-            data = response.json()
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise BitrixIntegrationError("Не удалось получить токен Bitrix24") from exc
             if data.get("error"):
                 raise BitrixIntegrationError("Нет прав доступа (scope)")
             return data
@@ -162,7 +165,10 @@ class Bitrix24Service:
                     },
                 )
                 raise BitrixIntegrationError("Не удалось обновить токен")
-            data = response.json()
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise BitrixIntegrationError("Не удалось обновить токен") from exc
 
         access_token = data.get("access_token")
         refresh_token = data.get("refresh_token")

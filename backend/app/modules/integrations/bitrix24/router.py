@@ -350,6 +350,8 @@ async def bitrix_events(
         data_dict: dict = {}
 
         def set_nested(target: dict, path: list[str], value: str) -> None:
+            if not path:
+                return
             cursor = target
             for key in path[:-1]:
                 nested = cursor.get(key)
@@ -393,6 +395,8 @@ async def bitrix_events(
 
                 if key.startswith("data["):
                     path = [segment for segment in key[5:].replace("]", "").split("[") if segment]
+                    if not path:
+                        continue
                     supported_paths = {
                         ("message", "text"),
                         ("text",),
