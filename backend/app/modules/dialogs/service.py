@@ -23,7 +23,7 @@ from app.modules.dialogs.schemas import (
     DialogUpdate,
 )
 from app.modules.dialogs.websocket_manager import WebSocketManager
-from app.modules.integrations.bitrix24.service import Bitrix24Service, BitrixIntegrationError
+from app.modules.integrations.bitrix24.service import Bitrix24Service
 from app.utils.validators import validate_pagination
 
 logger = logging.getLogger(__name__)
@@ -441,36 +441,14 @@ class DialogsService:
         await session.refresh(user_message)
 
         bitrix_service = Bitrix24Service()
-
-        async def _sync_bitrix24() -> None:
-            integration = await bitrix_service.ensure_active_integration(
-                session=session,
+        asyncio.create_task(
+            bitrix_service.sync_incoming_user_message(
                 bot_id=incoming_message.bot_id,
-            )
-            if not (integration and incoming_message.text and incoming_message.text.strip()):
-                return
-
-            link = await bitrix_service.send_user_message_to_openline(
-                session=session,
-                integration=integration,
-                dialog=dialog,
+                dialog_id=dialog.id,
                 text=incoming_message.text,
+                dialog_created=dialog_created,
             )
-            if dialog_created and integration.auto_create_lead_on_first_message and not link.bitrix_lead_id:
-                await bitrix_service.create_lead_for_dialog(session=session, integration=integration, dialog=dialog)
-
-        try:
-            await asyncio.wait_for(_sync_bitrix24(), timeout=3.0)
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Bitrix24 integration timeout",
-                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id},
-            )
-        except BitrixIntegrationError as exc:
-            logger.warning(
-                "Bitrix24 integration error",
-                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
-            )
+        )
 
         if (
             dialog.assigned_admin_id is not None

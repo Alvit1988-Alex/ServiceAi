@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import async_session_factory
 from app.modules.dialogs.models import Dialog
 from app.modules.integrations.bitrix24.models import BitrixDialogLink, BitrixIntegration
 
@@ -405,3 +406,62 @@ class Bitrix24Service:
         await session.commit()
         await session.refresh(link)
         return link
+
+
+    async def sync_incoming_user_message(
+        self,
+        *,
+        bot_id: int,
+        dialog_id: int,
+        text: str | None,
+        dialog_created: bool,
+    ) -> None:
+        if not (text and text.strip()):
+            return
+
+        async def _sync() -> None:
+            async with async_session_factory() as session:
+                integration = await self.ensure_active_integration(session=session, bot_id=bot_id)
+                if integration is None:
+                    return
+
+                result = await session.execute(select(Dialog).where(Dialog.id == dialog_id))
+                dialog = result.scalars().first()
+                if dialog is None:
+                    return
+
+                link = await self.send_user_message_to_openline(
+                    session=session,
+                    integration=integration,
+                    dialog=dialog,
+                    text=text,
+                )
+                if (
+                    dialog_created
+                    and integration.auto_create_lead_on_first_message
+                    and not link.bitrix_lead_id
+                ):
+                    await self.create_lead_for_dialog(
+                        session=session,
+                        integration=integration,
+                        dialog=dialog,
+                    )
+
+        try:
+            await asyncio.wait_for(_sync(), timeout=3.0)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Bitrix24 integration timeout",
+                extra={"bot_id": bot_id, "dialog_id": dialog_id},
+            )
+        except BitrixIntegrationError as exc:
+            logger.warning(
+                "Bitrix24 integration error",
+                extra={"bot_id": bot_id, "dialog_id": dialog_id, "error": str(exc)},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Bitrix24 background sync failed",
+                extra={"bot_id": bot_id, "dialog_id": dialog_id, "error": str(exc)},
+                exc_info=True,
+            )
