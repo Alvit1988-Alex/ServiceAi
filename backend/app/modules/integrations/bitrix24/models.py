@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -25,8 +25,12 @@ class BitrixIntegration(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     scope: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     openline_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    auto_create_lead_on_first_message: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auto_create_lead_on_first_message: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
