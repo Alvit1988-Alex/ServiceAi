@@ -342,9 +342,72 @@ async def bitrix_events(
     if payload_dict is None:
         try:
             form_data = await request.form()
-            payload_dict = dict(form_data)
         except Exception:
-            payload_dict = {}
+            form_data = None
+
+        payload_dict = {}
+        auth_dict: dict[str, str] = {}
+        data_dict: dict = {}
+
+        def set_nested(target: dict, path: list[str], value: str) -> None:
+            cursor = target
+            for key in path[:-1]:
+                nested = cursor.get(key)
+                if not isinstance(nested, dict):
+                    nested = {}
+                    cursor[key] = nested
+                cursor = nested
+            cursor[path[-1]] = value
+
+        if form_data is not None:
+            for key, value in form_data.multi_items():
+                value_str = str(value)
+
+                if key == "event":
+                    payload_dict["event"] = value_str
+                    continue
+
+                if key == "auth":
+                    try:
+                        parsed_auth = json.loads(value_str)
+                        if isinstance(parsed_auth, dict):
+                            auth_dict.update({str(k): str(v) for k, v in parsed_auth.items()})
+                    except Exception:
+                        pass
+                    continue
+
+                if key.startswith("auth[") and key.endswith("]"):
+                    auth_key = key[5:-1]
+                    if auth_key:
+                        auth_dict[auth_key] = value_str
+                    continue
+
+                if key == "data":
+                    try:
+                        parsed_data = json.loads(value_str)
+                        if isinstance(parsed_data, dict):
+                            data_dict.update(parsed_data)
+                    except Exception:
+                        pass
+                    continue
+
+                if key.startswith("data["):
+                    path = [segment for segment in key[5:].replace("]", "").split("[") if segment]
+                    supported_paths = {
+                        ("message", "text"),
+                        ("text",),
+                        ("chat", "id"),
+                        ("chat_id",),
+                        ("user", "id"),
+                        ("dialog_id",),
+                    }
+                    if tuple(path) in supported_paths:
+                        set_nested(data_dict, path, value_str)
+
+        if auth_dict:
+            payload_dict["auth"] = auth_dict
+        if data_dict:
+            payload_dict["data"] = data_dict
 
     event = payload_dict.get("event") if isinstance(payload_dict, dict) else None
     data = payload_dict.get("data") if isinstance(payload_dict, dict) else None

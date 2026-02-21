@@ -441,7 +441,7 @@ class DialogsService:
 
         bitrix_service = Bitrix24Service()
         integration = await bitrix_service.ensure_active_integration(session=session, bot_id=incoming_message.bot_id)
-        if integration and incoming_message.text:
+        if integration and incoming_message.text and incoming_message.text.strip():
             try:
                 link = await bitrix_service.send_user_message_to_openline(
                     session=session,

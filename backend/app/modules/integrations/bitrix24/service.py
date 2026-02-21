@@ -244,7 +244,14 @@ class Bitrix24Service:
                     await self._backoff(attempt)
                     continue
 
-                data = response.json()
+                try:
+                    data = response.json()
+                except ValueError as exc:
+                    if attempt == max_retries:
+                        raise BitrixIntegrationError("Ошибка Bitrix24 API") from exc
+                    await self._backoff(attempt)
+                    continue
+
                 error_code = str(data.get("error", ""))
                 if error_code in {"QUERY_LIMIT_EXCEEDED", "TOO_MANY_REQUESTS"}:
                     if attempt == max_retries:
