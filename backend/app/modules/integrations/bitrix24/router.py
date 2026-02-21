@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,6 +190,7 @@ async def bitrix_oauth_callback(
     )
     integration.scope = token_data.get("scope")
     integration.enabled = True
+    integration.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
     session.add(integration)
     await session.commit()
@@ -324,11 +326,49 @@ async def create_lead_for_dialog(
 
 @router.post("/events")
 async def bitrix_events(
-    payload: BitrixEventPayload,
+    request: Request,
     session: AsyncSession = Depends(get_db_session),
     dialogs_service: DialogsService = Depends(DialogsService),
     bitrix_service: Bitrix24Service = Depends(Bitrix24Service),
 ) -> dict[str, str]:
+    payload_dict: dict | None = None
+    try:
+        parsed_json = await request.json()
+        if isinstance(parsed_json, dict):
+            payload_dict = parsed_json
+    except Exception:
+        payload_dict = None
+
+    if payload_dict is None:
+        try:
+            form_data = await request.form()
+            payload_dict = dict(form_data)
+        except Exception:
+            payload_dict = {}
+
+    event = payload_dict.get("event") if isinstance(payload_dict, dict) else None
+    data = payload_dict.get("data") if isinstance(payload_dict, dict) else None
+    auth = payload_dict.get("auth") if isinstance(payload_dict, dict) else None
+
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            data = None
+
+    if isinstance(auth, str):
+        try:
+            auth = json.loads(auth)
+        except Exception:
+            auth = None
+
+    if data is not None and not isinstance(data, dict):
+        data = None
+    if auth is not None and not isinstance(auth, dict):
+        auth = None
+
+    payload = BitrixEventPayload(event=event, data=data, auth=auth)
+
     if not settings.bitrix24_app_application_token:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
