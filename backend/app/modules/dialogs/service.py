@@ -1,6 +1,7 @@
 """Dialog service implementing CRUD operations."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -21,7 +22,10 @@ from app.modules.dialogs.schemas import (
     DialogUpdate,
 )
 from app.modules.dialogs.websocket_manager import WebSocketManager
+from app.modules.integrations.bitrix24.service import Bitrix24Service, BitrixIntegrationError
 from app.utils.validators import validate_pagination
+
+logger = logging.getLogger(__name__)
 
 
 class DialogLockError(Exception):
@@ -434,6 +438,24 @@ class DialogsService:
         await session.commit()
         await session.refresh(dialog)
         await session.refresh(user_message)
+
+        bitrix_service = Bitrix24Service()
+        integration = await bitrix_service.ensure_active_integration(session=session, bot_id=incoming_message.bot_id)
+        if integration and incoming_message.text:
+            try:
+                link = await bitrix_service.send_user_message_to_openline(
+                    session=session,
+                    integration=integration,
+                    dialog=dialog,
+                    text=incoming_message.text,
+                )
+                if dialog_created and integration.auto_create_lead_on_first_message and not link.bitrix_lead_id:
+                    await bitrix_service.create_lead_for_dialog(session=session, integration=integration, dialog=dialog)
+            except BitrixIntegrationError as exc:
+                logger.warning(
+                    "Bitrix24 integration error",
+                    extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
+                )
 
         if (
             dialog.assigned_admin_id is not None

@@ -187,6 +187,36 @@ class Settings(BaseSettings):
         description="Filesystem path to frontend public/static for webchat assets",
     )
 
+    # Bitrix24 OAuth
+    bitrix24_app_client_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BITRIX24_APP_CLIENT_ID", "bitrix24_app_client_id"),
+    )
+    bitrix24_app_client_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BITRIX24_APP_CLIENT_SECRET", "bitrix24_app_client_secret"),
+    )
+    bitrix24_app_redirect_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BITRIX24_APP_REDIRECT_URL", "bitrix24_app_redirect_url"),
+    )
+    bitrix24_app_scopes: str = Field(
+        default="imopenlines,im,crm",
+        validation_alias=AliasChoices("BITRIX24_APP_SCOPES", "bitrix24_app_scopes"),
+    )
+    bitrix24_oauth_token_url: str | None = Field(
+        default="https://oauth.bitrix.info/oauth/token/",
+        validation_alias=AliasChoices("BITRIX24_OAUTH_TOKEN_URL", "bitrix24_oauth_token_url"),
+    )
+    bitrix24_app_application_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BITRIX24_APP_APPLICATION_TOKEN", "bitrix24_app_application_token"),
+    )
+    bitrix24_connect_state_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("BITRIX24_CONNECT_STATE_SECRET", "bitrix24_connect_state_secret"),
+    )
+
     # ---------- helpers ----------
     @classmethod
     def _parse_csv_list(cls, value: Any) -> list[str] | None:
