@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, true
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -17,7 +17,9 @@ class BitrixIntegration(Base):
     __table_args__ = (UniqueConstraint("bot_id", name="uq_bitrix_integrations_bot_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False, index=True)
+    bot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False
+    )
     portal_url: Mapped[str] = mapped_column(String(255), nullable=False)
     member_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     access_token: Mapped[str | None] = mapped_column(String(2048), nullable=True)
@@ -39,8 +41,6 @@ class BitrixDialogLink(Base):
     __tablename__ = "bitrix_dialog_links"
     __table_args__ = (
         UniqueConstraint("dialog_id", name="uq_bitrix_dialog_links_dialog_id"),
-        Index("ix_bitrix_dialog_links_bot_id", "bot_id"),
-        Index("ix_bitrix_dialog_links_chat_id", "bitrix_chat_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

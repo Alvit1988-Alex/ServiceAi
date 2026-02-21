@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     frontend_base_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("FRONTEND_BASE_URL", "frontend_base_url"),
-        description="Publicly accessible frontend base URL used for OAuth callback redirects",
+        description="Publicly accessible frontend URL used only for post-OAuth redirects (e.g. /integrations)",
     )
 
     # Internal security

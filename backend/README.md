@@ -156,7 +156,8 @@ CLI использует встроенный HTTP-клиент на базе `h
    - `BITRIX24_APP_REDIRECT_URL`
    - `BITRIX24_APP_SCOPES` (минимум: `imopenlines,im,crm`)
    - `BITRIX24_CONNECT_STATE_SECRET`
-   - `FRONTEND_BASE_URL` — базовый URL frontend для редиректа после OAuth (если не задан, используется `http://localhost:3000`).
+   - `PUBLIC_BASE_URL` — публичный URL backend (для вебхуков/публичных callback URL).
+   - `FRONTEND_BASE_URL` — URL frontend для редиректа после OAuth на страницу `/integrations` (если не задан, используется `http://localhost:3000`).
 3. В Bitrix24 включите Open Lines / Connectors и привяжите приложение.
 4. В UI откройте `Интеграции`, выберите бота, введите портал (`mycompany.bitrix24.ru`) и нажмите `Подключить`.
 5. После подключения входящие сообщения отправляются в Open Lines, ответы операторов из Bitrix24 принимаются endpoint `POST /integrations/bitrix24/events` и пересылаются пользователю в исходный канал.
