@@ -53,6 +53,8 @@ class Bitrix24Service:
         return f"https://{domain}"
 
     def _sign_state(self, payload: dict[str, Any]) -> str:
+        if not settings.bitrix24_connect_state_secret:
+            raise BitrixIntegrationError("Bitrix24 OAuth не настроен")
         secret = settings.bitrix24_connect_state_secret.encode("utf-8")
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         signature = hmac.new(secret, raw, hashlib.sha256).hexdigest()
