@@ -25,8 +25,8 @@ def upgrade() -> None:
         sa.Column("scope", sa.String(length=1000), nullable=True),
         sa.Column("auto_create_lead_on_first_message", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("bot_id", name="uq_bitrix_integrations_bot_id"),
     )
     op.create_index("ix_bitrix_integrations_bot_id", "bitrix_integrations", ["bot_id"], unique=False)
@@ -38,8 +38,8 @@ def upgrade() -> None:
         sa.Column("bot_id", sa.Integer(), sa.ForeignKey("bots.id", ondelete="CASCADE"), nullable=False),
         sa.Column("bitrix_chat_id", sa.String(length=255), nullable=True),
         sa.Column("bitrix_lead_id", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("dialog_id", name="uq_bitrix_dialog_links_dialog_id"),
     )
     op.create_index("ix_bitrix_dialog_links_bot_id", "bitrix_dialog_links", ["bot_id"], unique=False)
