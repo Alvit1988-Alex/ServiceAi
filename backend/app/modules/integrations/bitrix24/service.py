@@ -125,7 +125,7 @@ class Bitrix24Service:
             "code": code,
             "redirect_uri": settings.bitrix24_app_redirect_url,
         }
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(token_url, data=payload)
             if response.status_code >= 400:
                 logger.error(
@@ -154,7 +154,7 @@ class Bitrix24Service:
             "client_secret": settings.bitrix24_app_client_secret,
             "refresh_token": integration.refresh_token,
         }
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(token_url, data=payload)
             if response.status_code >= 400:
                 logger.error(
@@ -234,7 +234,7 @@ class Bitrix24Service:
 
         for attempt in range(1, max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=20.0) as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.post(endpoint, json=payload)
 
                 if response.status_code == 401 and attempt == 1:

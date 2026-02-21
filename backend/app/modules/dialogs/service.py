@@ -1,6 +1,7 @@
 """Dialog service implementing CRUD operations."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -440,22 +441,36 @@ class DialogsService:
         await session.refresh(user_message)
 
         bitrix_service = Bitrix24Service()
-        integration = await bitrix_service.ensure_active_integration(session=session, bot_id=incoming_message.bot_id)
-        if integration and incoming_message.text and incoming_message.text.strip():
-            try:
-                link = await bitrix_service.send_user_message_to_openline(
-                    session=session,
-                    integration=integration,
-                    dialog=dialog,
-                    text=incoming_message.text,
-                )
-                if dialog_created and integration.auto_create_lead_on_first_message and not link.bitrix_lead_id:
-                    await bitrix_service.create_lead_for_dialog(session=session, integration=integration, dialog=dialog)
-            except BitrixIntegrationError as exc:
-                logger.warning(
-                    "Bitrix24 integration error",
-                    extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
-                )
+
+        async def _sync_bitrix24() -> None:
+            integration = await bitrix_service.ensure_active_integration(
+                session=session,
+                bot_id=incoming_message.bot_id,
+            )
+            if not (integration and incoming_message.text and incoming_message.text.strip()):
+                return
+
+            link = await bitrix_service.send_user_message_to_openline(
+                session=session,
+                integration=integration,
+                dialog=dialog,
+                text=incoming_message.text,
+            )
+            if dialog_created and integration.auto_create_lead_on_first_message and not link.bitrix_lead_id:
+                await bitrix_service.create_lead_for_dialog(session=session, integration=integration, dialog=dialog)
+
+        try:
+            await asyncio.wait_for(_sync_bitrix24(), timeout=3.0)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Bitrix24 integration timeout",
+                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id},
+            )
+        except BitrixIntegrationError as exc:
+            logger.warning(
+                "Bitrix24 integration error",
+                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
+            )
 
         if (
             dialog.assigned_admin_id is not None
