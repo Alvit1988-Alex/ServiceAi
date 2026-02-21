@@ -105,7 +105,12 @@ async def connect_bitrix24(
 ) -> BitrixConnectResponse:
     await require_bot_access(payload.bot_id, session, current_user)
 
-    if not settings.bitrix24_app_client_id or not settings.bitrix24_app_client_secret or not settings.bitrix24_app_redirect_url or not settings.bitrix24_connect_state_secret:
+    if (
+        not settings.bitrix24_app_client_id
+        or not settings.bitrix24_app_client_secret
+        or not settings.bitrix24_app_redirect_url
+        or not settings.bitrix24_connect_state_secret
+    ):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bitrix24 OAuth не настроен")
 
     try:
@@ -127,7 +132,12 @@ async def bitrix_oauth_callback(
     if not code or not state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OAuth callback params")
 
-    if not settings.bitrix24_app_client_id or not settings.bitrix24_app_client_secret or not settings.bitrix24_app_redirect_url or not settings.bitrix24_connect_state_secret:
+    if (
+        not settings.bitrix24_app_client_id
+        or not settings.bitrix24_app_client_secret
+        or not settings.bitrix24_app_redirect_url
+        or not settings.bitrix24_connect_state_secret
+    ):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bitrix24 OAuth не настроен")
 
     try:
