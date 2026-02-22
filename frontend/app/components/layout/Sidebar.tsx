@@ -10,6 +10,7 @@ const navItems = [
   { label: "Дашборд", href: "/" },
   { label: "Боты", href: "/bots" },
   { label: "Поиск", href: "/search" },
+  { label: "Интеграции", href: "/integrations" },
   { label: "Настройки", href: "/settings" },
 ];
 

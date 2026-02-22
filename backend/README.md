@@ -146,3 +146,18 @@ python -m app.diagnostics --base-url http://localhost:8000 --mode deep --account
 ```
 Опционально добавьте `--internal-key`, если ключ не задан в окружении. Флаг `--verbose` выводит детали проверок.
 CLI использует встроенный HTTP-клиент на базе `httpx`, дополнительный `curl` не требуется (Windows и Linux работают «из коробки»).
+
+## Интеграция Bitrix24 (OAuth + Open Lines)
+1. Создайте локальное приложение в Bitrix24 и укажите redirect URL на backend:
+   - `https://<backend-domain>/integrations/bitrix24/oauth/callback`
+2. Заполните env:
+   - `BITRIX24_APP_CLIENT_ID`
+   - `BITRIX24_APP_CLIENT_SECRET`
+   - `BITRIX24_APP_REDIRECT_URL`
+   - `BITRIX24_APP_SCOPES` (минимум: `imopenlines,im,crm`)
+   - `BITRIX24_CONNECT_STATE_SECRET`
+   - `PUBLIC_BASE_URL` — публичный URL backend (для вебхуков/публичных callback URL).
+   - `FRONTEND_BASE_URL` — URL frontend для редиректа после OAuth на страницу `/integrations` (если не задан, используется `http://localhost:3000`).
+3. В Bitrix24 включите Open Lines / Connectors и привяжите приложение.
+4. В UI откройте `Интеграции`, выберите бота, введите портал (`mycompany.bitrix24.ru`) и нажмите `Подключить`.
+5. После подключения входящие сообщения отправляются в Open Lines, ответы операторов из Bitrix24 принимаются endpoint `POST /integrations/bitrix24/events` и пересылаются пользователю в исходный канал.
