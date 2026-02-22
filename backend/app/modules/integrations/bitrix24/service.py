@@ -64,9 +64,7 @@ class Bitrix24Service:
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         signature = hmac.new(secret, raw, hashlib.sha256).hexdigest()
         packed = {"payload": payload, "sig": signature}
-        token = base64.urlsafe_b64encode(
-            json.dumps(packed, separators=(",", ":")).encode("utf-8")
-        ).decode("utf-8")
+        token = base64.urlsafe_b64encode(json.dumps(packed, separators=(",", ":")).encode("utf-8")).decode("utf-8")
         return token
 
     def _verify_state(self, token: str) -> dict[str, Any]:
@@ -126,50 +124,57 @@ class Bitrix24Service:
             "code": code,
             "redirect_uri": settings.bitrix24_app_redirect_url,
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(token_url, data=payload)
-            if response.status_code >= 400:
-                logger.error(
-                    "Bitrix token exchange failed",
-                    extra={"status_code": response.status_code},
-                )
-                raise BitrixIntegrationError("Нет прав доступа (scope)")
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise BitrixIntegrationError("Не удалось получить токен Bitrix24") from exc
-            if data.get("error"):
-                raise BitrixIntegrationError("Нет прав доступа (scope)")
-            return data
 
-    async def refresh_access_token(
-        self, session: AsyncSession, integration: BitrixIntegration
-    ) -> BitrixIntegration:
-        token_url = (
-            settings.bitrix24_oauth_token_url
-            or f"{integration.portal_url}/oauth/token/"
-        )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(token_url, data=payload)
+        except (httpx.TimeoutException, httpx.RequestError) as exc:
+            raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
+
+        if response.status_code >= 400:
+            logger.error("Bitrix token exchange failed", extra={"status_code": response.status_code})
+            raise BitrixIntegrationError("Нет прав доступа (scope)")
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise BitrixIntegrationError("Не удалось получить токен Bitrix24") from exc
+
+        if data.get("error"):
+            raise BitrixIntegrationError("Нет прав доступа (scope)")
+
+        return data
+
+    async def refresh_access_token(self, session: AsyncSession, integration: BitrixIntegration) -> BitrixIntegration:
+        token_url = settings.bitrix24_oauth_token_url or f"{integration.portal_url}/oauth/token/"
+
+        if not integration.refresh_token:
+            raise BitrixIntegrationError("Отсутствует refresh_token")
+
         payload = {
             "grant_type": "refresh_token",
             "client_id": settings.bitrix24_app_client_id,
             "client_secret": settings.bitrix24_app_client_secret,
             "refresh_token": integration.refresh_token,
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(token_url, data=payload)
-            if response.status_code >= 400:
-                logger.error(
-                    "Bitrix token refresh failed",
-                    extra={
-                        "status_code": response.status_code,
-                        "bot_id": integration.bot_id,
-                    },
-                )
-                raise BitrixIntegrationError("Не удалось обновить токен")
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise BitrixIntegrationError("Не удалось обновить токен") from exc
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(token_url, data=payload)
+        except (httpx.TimeoutException, httpx.RequestError) as exc:
+            raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
+
+        if response.status_code >= 400:
+            logger.error(
+                "Bitrix token refresh failed",
+                extra={"status_code": response.status_code, "bot_id": integration.bot_id},
+            )
+            raise BitrixIntegrationError("Не удалось обновить токен")
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise BitrixIntegrationError("Не удалось обновить токен") from exc
 
         access_token = data.get("access_token")
         refresh_token = data.get("refresh_token")
@@ -179,9 +184,7 @@ class Bitrix24Service:
         integration.access_token = access_token
         integration.refresh_token = refresh_token
         expires_in = int(data.get("expires_in", 3600))
-        integration.expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-            seconds=expires_in - 30
-        )
+        integration.expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=expires_in - 30)
         integration.scope = data.get("scope") or integration.scope
         integration.member_id = data.get("member_id") or integration.member_id
         integration.enabled = True
@@ -191,25 +194,17 @@ class Bitrix24Service:
         await session.refresh(integration)
         return integration
 
-    async def get_integration(
-        self, session: AsyncSession, bot_id: int
-    ) -> BitrixIntegration | None:
-        result = await session.execute(
-            select(BitrixIntegration).where(BitrixIntegration.bot_id == bot_id)
-        )
+    async def get_integration(self, session: AsyncSession, bot_id: int) -> BitrixIntegration | None:
+        result = await session.execute(select(BitrixIntegration).where(BitrixIntegration.bot_id == bot_id))
         return result.scalars().first()
 
-    async def ensure_active_integration(
-        self, session: AsyncSession, bot_id: int
-    ) -> BitrixIntegration | None:
+    async def ensure_active_integration(self, session: AsyncSession, bot_id: int) -> BitrixIntegration | None:
         integration = await self.get_integration(session=session, bot_id=bot_id)
         if not integration or not integration.enabled:
             return None
 
         if integration.expires_at and integration.expires_at <= utcnow_naive():
-            integration = await self.refresh_access_token(
-                session=session, integration=integration
-            )
+            integration = await self.refresh_access_token(session=session, integration=integration)
         return integration
 
     async def call_rest(
@@ -222,13 +217,8 @@ class Bitrix24Service:
         max_retries: int = 3,
     ) -> dict[str, Any]:
         active_integration = integration
-        if (
-            active_integration.expires_at
-            and active_integration.expires_at <= utcnow_naive()
-        ):
-            active_integration = await self.refresh_access_token(
-                session=session, integration=active_integration
-            )
+        if active_integration.expires_at and active_integration.expires_at <= utcnow_naive():
+            active_integration = await self.refresh_access_token(session=session, integration=active_integration)
 
         endpoint = f"{active_integration.portal_url}/rest/{method_name}.json"
         payload = {**params, "auth": active_integration.access_token}
@@ -239,9 +229,7 @@ class Bitrix24Service:
                     response = await client.post(endpoint, json=payload)
 
                 if response.status_code == 401 and attempt == 1:
-                    active_integration = await self.refresh_access_token(
-                        session=session, integration=active_integration
-                    )
+                    active_integration = await self.refresh_access_token(session=session, integration=active_integration)
                     payload["auth"] = active_integration.access_token
                     continue
 
@@ -267,24 +255,16 @@ class Bitrix24Service:
                     continue
 
                 if data.get("error"):
-                    raise BitrixIntegrationError(
-                        data.get("error_description") or "Ошибка Bitrix24 API"
-                    )
+                    raise BitrixIntegrationError(data.get("error_description") or "Ошибка Bitrix24 API")
 
                 return data
             except (httpx.TimeoutException, httpx.RequestError) as exc:
                 logger.warning(
                     "Bitrix REST call failed",
-                    extra={
-                        "method": method_name,
-                        "attempt": attempt,
-                        "bot_id": integration.bot_id,
-                    },
+                    extra={"method": method_name, "attempt": attempt, "bot_id": integration.bot_id},
                 )
                 if attempt == max_retries:
-                    raise BitrixIntegrationError(
-                        "Ошибка соединения с Bitrix24"
-                    ) from exc
+                    raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
                 await self._backoff(attempt)
 
         raise BitrixIntegrationError("Ошибка Bitrix24 API")
@@ -296,12 +276,8 @@ class Bitrix24Service:
     def parse_state(self, state: str) -> dict[str, Any]:
         return self._verify_state(state)
 
-    async def get_or_create_dialog_link(
-        self, session: AsyncSession, dialog: Dialog
-    ) -> BitrixDialogLink:
-        result = await session.execute(
-            select(BitrixDialogLink).where(BitrixDialogLink.dialog_id == dialog.id)
-        )
+    async def get_or_create_dialog_link(self, session: AsyncSession, dialog: Dialog) -> BitrixDialogLink:
+        result = await session.execute(select(BitrixDialogLink).where(BitrixDialogLink.dialog_id == dialog.id))
         link = result.scalars().first()
         if link:
             return link
@@ -342,9 +318,7 @@ class Bitrix24Service:
                         "date": int(time.time()),
                         "text": text,
                     },
-                    "chat": {
-                        "id": str(dialog.id),
-                    },
+                    "chat": {"id": str(dialog.id)},
                 }
             ],
         }
@@ -371,9 +345,7 @@ class Bitrix24Service:
             params={
                 "CONNECTOR": self.connector_name,
                 "LINE": integration.openline_id,
-                "MESSAGES": [
-                    {"im": {"chat_id": link.bitrix_chat_id or str(dialog.id)}}
-                ],
+                "MESSAGES": [{"im": {"chat_id": link.bitrix_chat_id or str(dialog.id)}}],
             },
         )
 
@@ -407,7 +379,6 @@ class Bitrix24Service:
         await session.refresh(link)
         return link
 
-
     async def sync_incoming_user_message(
         self,
         *,
@@ -436,11 +407,7 @@ class Bitrix24Service:
                     dialog=dialog,
                     text=text,
                 )
-                if (
-                    dialog_created
-                    and integration.auto_create_lead_on_first_message
-                    and not link.bitrix_lead_id
-                ):
+                if dialog_created and integration.auto_create_lead_on_first_message and not link.bitrix_lead_id:
                     await self.create_lead_for_dialog(
                         session=session,
                         integration=integration,
@@ -450,10 +417,7 @@ class Bitrix24Service:
         try:
             await asyncio.wait_for(_sync(), timeout=3.0)
         except asyncio.TimeoutError:
-            logger.warning(
-                "Bitrix24 integration timeout",
-                extra={"bot_id": bot_id, "dialog_id": dialog_id},
-            )
+            logger.warning("Bitrix24 integration timeout", extra={"bot_id": bot_id, "dialog_id": dialog_id})
         except BitrixIntegrationError as exc:
             logger.warning(
                 "Bitrix24 integration error",

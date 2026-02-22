@@ -4,25 +4,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.database import engine
-
 from app.config import settings
+from app.database import engine
 from app.modules.accounts import router as accounts_router
-from app.modules.auth import router as auth_router
 from app.modules.ai import router as ai_router
+from app.modules.auth import router as auth_router
 from app.modules.bots import router as bots_router
 from app.modules.channels import router as channels_router
-from app.modules.dialogs import router as dialogs_router
-from app.modules.stats import router as stats_router
 from app.modules.diagnostics import router as diagnostics_router
-from app.modules.webchat.router import router as webchat_router
+from app.modules.dialogs import router as dialogs_router
 from app.modules.integrations.bitrix24 import router as bitrix_integrations_router
-
+from app.modules.stats import router as stats_router
+from app.modules.webchat.router import router as webchat_router
 
 app = FastAPI(
     title=settings.app_name,
     debug=settings.runtime_debug,
 )
+
 
 def configure_cors() -> None:
     debug = settings.runtime_debug
