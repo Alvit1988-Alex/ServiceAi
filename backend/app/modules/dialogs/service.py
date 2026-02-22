@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -22,7 +23,10 @@ from app.modules.dialogs.schemas import (
     DialogUpdate,
 )
 from app.modules.dialogs.websocket_manager import WebSocketManager
+from app.modules.integrations.bitrix24.service import Bitrix24Service
 from app.utils.validators import validate_pagination
+
+logger = logging.getLogger(__name__)
 
 
 class DialogLockError(Exception):
@@ -228,16 +232,12 @@ class DialogsService:
         await session.refresh(dialog)
         return dialog
 
-    async def unlock_if_expired(
-        self, session: AsyncSession, dialog: Dialog
-    ) -> tuple[Dialog, bool]:
+    async def unlock_if_expired(self, session: AsyncSession, dialog: Dialog) -> tuple[Dialog, bool]:
         """Unlock a dialog when its lock has expired."""
 
         if dialog.is_locked and dialog.locked_until and dialog.locked_until < datetime.utcnow():
             admin_id = dialog.assigned_admin_id if dialog.assigned_admin_id is not None else 0
-            unlocked_dialog = await self.unlock_dialog(
-                session=session, dialog=dialog, admin_id=admin_id
-            )
+            unlocked_dialog = await self.unlock_dialog(session=session, dialog=dialog, admin_id=admin_id)
             return unlocked_dialog, True
 
         return dialog, False
@@ -269,9 +269,7 @@ class DialogsService:
 
         last_message = dialog.messages[-1] if dialog.messages else None
         if last_message and last_message.sender == MessageSender.USER:
-            answer = await ai_service.answer(
-                bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or ""
-            )
+            answer = await ai_service.answer(bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or "")
 
             if answer.answer is None or answer.answer == "":
                 dialog.status = DialogStatus.WAIT_OPERATOR
@@ -290,9 +288,7 @@ class DialogsService:
 
                 dialog_payload = DialogOut.model_validate(dialog).model_dump()
                 message_payload = DialogMessageOut.model_validate(system_message).model_dump()
-                admin_targets = (
-                    [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
-                )
+                admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
 
                 await ws_manager.broadcast_to_admins(
                     {"event": "message_created", "data": message_payload},
@@ -329,9 +325,7 @@ class DialogsService:
 
                 dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
                 message_payload = DialogMessageOut.model_validate(message).model_dump()
-                admin_targets = (
-                    [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
-                )
+                admin_targets = [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
 
                 await ws_manager.broadcast_new_message(
                     dialog_payload=dialog_payload,
@@ -373,9 +367,7 @@ class DialogsService:
         else:
             dialog.status = DialogStatus.WAIT_USER
             dialog.waiting_time_seconds = (
-                int((now - dialog.last_user_message_at).total_seconds())
-                if dialog.last_user_message_at
-                else 0
+                int((now - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
             dialog.unread_messages_count = 0
         dialog.updated_at = now
@@ -436,8 +428,6 @@ class DialogsService:
         await session.refresh(dialog)
         await session.refresh(user_message)
 
-        from app.modules.integrations.bitrix24.service import Bitrix24Service
-
         bitrix_service = Bitrix24Service()
         try:
             asyncio.create_task(
@@ -449,18 +439,12 @@ class DialogsService:
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            import logging
-
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Bitrix24 sync scheduling failed",
                 extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
             )
 
-        if (
-            dialog.assigned_admin_id is not None
-            and dialog.locked_until is not None
-            and dialog.locked_until > now
-        ):
+        if dialog.assigned_admin_id is not None and dialog.locked_until is not None and dialog.locked_until > now:
             return user_message, None, dialog, dialog_created
 
         bot_message: DialogMessage | None = None
@@ -493,9 +477,7 @@ class DialogsService:
             )
 
             bot_response_time_seconds = (
-                int((datetime.utcnow() - dialog.last_user_message_at).total_seconds())
-                if dialog.last_user_message_at
-                else 0
+                int((datetime.utcnow() - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
             dialog.status = DialogStatus.WAIT_USER
             dialog.updated_at = datetime.utcnow()

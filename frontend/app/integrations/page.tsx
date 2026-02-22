@@ -134,7 +134,7 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function handleSaveSettings(autoCreateLead: boolean) {
+  async function handleSaveSettings(autoCreateLeadValue: boolean) {
     if (!selectedBotId) {
       return;
     }
@@ -146,7 +146,7 @@ export default function IntegrationsPage() {
     try {
       const next = await updateBitrixSettings(selectedBotId, {
         openline_id: openlineId.trim() || null,
-        auto_create_lead_on_first_message: autoCreateLead,
+        auto_create_lead_on_first_message: autoCreateLeadValue,
       });
       setStatus(next);
       setOpenlineId(next.openline_id ?? "");
@@ -161,10 +161,7 @@ export default function IntegrationsPage() {
 
   return (
     <AuthGuard>
-      <LayoutShell
-        title="Интеграции"
-        description="Подключите внешние каналы и CRM для работы операторов."
-      >
+      <LayoutShell title="Интеграции" description="Подключите внешние каналы и CRM для работы операторов.">
         <div className={styles.page}>
           <section className={styles.card}>
             <h2>Bitrix24</h2>
@@ -222,16 +219,12 @@ export default function IntegrationsPage() {
               <span className={styles.muted}>
                 {status?.connected ? "Подключено" : "Не подключено"}
                 {status?.portal_url ? ` · ${status.portal_url}` : ""}
-                {status?.connected_at
-                  ? ` · ${new Date(status.connected_at).toLocaleString()}`
-                  : ""}
+                {status?.connected_at ? ` · ${new Date(status.connected_at).toLocaleString()}` : ""}
               </span>
             </div>
 
             {status?.connected && !status.openline_id && (
-              <p className={styles.warning}>
-                Укажите Open Line ID, иначе сообщения не будут отправляться в Bitrix.
-              </p>
+              <p className={styles.warning}>Укажите Open Line ID, иначе сообщения не будут отправляться в Bitrix.</p>
             )}
           </section>
 
@@ -272,9 +265,7 @@ export default function IntegrationsPage() {
               </button>
             </div>
 
-            <p className={styles.muted}>
-              Если авто-создание лида отключено, лид можно создавать вручную по диалогу.
-            </p>
+            <p className={styles.muted}>Если авто-создание лида отключено, лид можно создавать вручную по диалогу.</p>
           </section>
 
           {error && <p className={styles.error}>{error}</p>}

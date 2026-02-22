@@ -63,9 +63,7 @@ def _extract_hosts_from_auth(auth: dict) -> list[str]:
     return [host for host in hosts if host]
 
 
-async def _resolve_dialog_for_event(
-    session: AsyncSession, payload: BitrixEventPayload
-) -> Dialog | None:
+async def _resolve_dialog_for_event(session: AsyncSession, payload: BitrixEventPayload) -> Dialog | None:
     data = payload.data or {}
 
     user_info = data.get("user") if isinstance(data.get("user"), dict) else {}
@@ -91,11 +89,7 @@ async def _resolve_dialog_for_event(
     if bitrix_chat_id is None:
         return None
 
-    link_result = await session.execute(
-        select(BitrixDialogLink).where(
-            BitrixDialogLink.bitrix_chat_id == str(bitrix_chat_id)
-        )
-    )
+    link_result = await session.execute(select(BitrixDialogLink).where(BitrixDialogLink.bitrix_chat_id == str(bitrix_chat_id)))
     link = link_result.scalars().first()
     if not link:
         return None
@@ -126,13 +120,9 @@ async def connect_bitrix24(
 
     try:
         portal_url = bitrix_service.normalize_portal_url(payload.portal_domain)
-        auth_url = bitrix_service.build_auth_url(
-            bot_id=payload.bot_id, portal_url=portal_url
-        )
+        auth_url = bitrix_service.build_auth_url(bot_id=payload.bot_id, portal_url=portal_url)
     except BitrixIntegrationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return BitrixConnectResponse(auth_url=auth_url)
 
@@ -165,17 +155,11 @@ async def bitrix_oauth_callback(
         state_data = bitrix_service.parse_state(state)
         bot_id = int(state_data["bot_id"])
         portal_url = str(state_data["portal_url"])
-        token_data = await bitrix_service.exchange_code(
-            code=code, portal_url=portal_url
-        )
+        token_data = await bitrix_service.exchange_code(code=code, portal_url=portal_url)
     except BitrixIntegrationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    result = await session.execute(
-        select(BitrixIntegration).where(BitrixIntegration.bot_id == bot_id)
-    )
+    result = await session.execute(select(BitrixIntegration).where(BitrixIntegration.bot_id == bot_id))
     integration = result.scalars().first()
     if not integration:
         integration = BitrixIntegration(bot_id=bot_id, portal_url=portal_url)
@@ -185,9 +169,7 @@ async def bitrix_oauth_callback(
     integration.member_id = token_data.get("member_id")
     integration.access_token = token_data.get("access_token")
     integration.refresh_token = token_data.get("refresh_token")
-    integration.expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-        seconds=expires_in - 30
-    )
+    integration.expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=expires_in - 30)
     integration.scope = token_data.get("scope")
     integration.enabled = True
     integration.updated_at = datetime.now(UTC).replace(tzinfo=None)
@@ -196,9 +178,7 @@ async def bitrix_oauth_callback(
     await session.commit()
 
     frontend_base = settings.frontend_base_url or "http://localhost:3000"
-    return RedirectResponse(
-        url=f"{frontend_base}/integrations?bot={bot_id}&success=1", status_code=302
-    )
+    return RedirectResponse(url=f"{frontend_base}/integrations?bot={bot_id}&success=1", status_code=302)
 
 
 @router.get("/status", response_model=BitrixStatusResponse)
@@ -235,9 +215,7 @@ async def disconnect_bitrix24(
     bitrix_service: Bitrix24Service = Depends(Bitrix24Service),
 ) -> BitrixStatusResponse:
     await require_bot_access(payload.bot_id, session, current_user)
-    integration = await bitrix_service.get_integration(
-        session=session, bot_id=payload.bot_id
-    )
+    integration = await bitrix_service.get_integration(session=session, bot_id=payload.bot_id)
     if integration:
         integration.enabled = False
         integration.access_token = None
@@ -261,18 +239,12 @@ async def update_bitrix24_settings(
     bitrix_service: Bitrix24Service = Depends(Bitrix24Service),
 ) -> BitrixStatusResponse:
     await require_bot_access(payload.bot_id, session, current_user)
-    integration = await bitrix_service.get_integration(
-        session=session, bot_id=payload.bot_id
-    )
+    integration = await bitrix_service.get_integration(session=session, bot_id=payload.bot_id)
     if not integration:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Интеграция не подключена"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Интеграция не подключена")
 
     if payload.auto_create_lead_on_first_message is not None:
-        integration.auto_create_lead_on_first_message = (
-            payload.auto_create_lead_on_first_message
-        )
+        integration.auto_create_lead_on_first_message = payload.auto_create_lead_on_first_message
     integration.openline_id = (payload.openline_id or "").strip() or None
     session.add(integration)
     await session.commit()
@@ -298,15 +270,11 @@ async def create_lead_for_dialog(
     dialog_result = await session.execute(select(Dialog).where(Dialog.id == dialog_id))
     dialog = dialog_result.scalars().first()
     if not dialog:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
 
     await require_bot_access(dialog.bot_id, session, current_user)
 
-    integration = await bitrix_service.ensure_active_integration(
-        session=session, bot_id=dialog.bot_id
-    )
+    integration = await bitrix_service.ensure_active_integration(session=session, bot_id=dialog.bot_id)
     if not integration:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -314,13 +282,9 @@ async def create_lead_for_dialog(
         )
 
     try:
-        link = await bitrix_service.create_lead_for_dialog(
-            session=session, integration=integration, dialog=dialog
-        )
+        link = await bitrix_service.create_lead_for_dialog(session=session, integration=integration, dialog=dialog)
     except BitrixIntegrationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return {"dialog_id": dialog.id, "bitrix_lead_id": link.bitrix_lead_id}
 
@@ -445,9 +409,7 @@ async def bitrix_events(
 
     auth = payload.auth or {}
     application_token = str(auth.get("application_token") or "")
-    if not application_token or not hmac.compare_digest(
-        application_token, settings.bitrix24_app_application_token
-    ):
+    if not application_token or not hmac.compare_digest(application_token, settings.bitrix24_app_application_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     event_name = (payload.event or "").lower()
@@ -458,41 +420,25 @@ async def bitrix_events(
     if not dialog:
         return {"status": "ignored"}
 
-    integration = await bitrix_service.get_integration(
-        session=session, bot_id=dialog.bot_id
-    )
+    integration = await bitrix_service.get_integration(session=session, bot_id=dialog.bot_id)
     if not integration or not integration.enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     auth_member_id = auth.get("member_id")
     if integration.member_id:
-        if not auth_member_id or not hmac.compare_digest(
-            str(auth_member_id), str(integration.member_id)
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+        if not auth_member_id or not hmac.compare_digest(str(auth_member_id), str(integration.member_id)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     else:
         integration_host = (urlparse(integration.portal_url).netloc or "").lower()
         auth_hosts = _extract_hosts_from_auth(auth)
         if not integration_host or not auth_hosts:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
-        host_match = any(
-            hmac.compare_digest(host, integration_host) for host in auth_hosts
-        )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        host_match = any(hmac.compare_digest(host, integration_host) for host in auth_hosts)
         if not host_match:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     data = payload.data or {}
-    text = (
-        data.get("message", {}).get("text")
-        if isinstance(data.get("message"), dict)
-        else None
-    )
+    text = data.get("message", {}).get("text") if isinstance(data.get("message"), dict) else None
     text = text or data.get("text")
     if not text:
         return {"status": "ignored"}
@@ -510,23 +456,17 @@ async def bitrix_events(
 
     sender_cls = get_sender(dialog.channel_type)
     await sender_cls().send_text(
-        bot_id=dialog.bot_id, external_chat_id=dialog.external_chat_id, text=text
+        bot_id=dialog.bot_id,
+        external_chat_id=dialog.external_chat_id,
+        text=text,
     )
 
     dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
     message_payload = DialogMessageOut.model_validate(message).model_dump()
-    admin_targets = (
-        [updated_dialog.assigned_admin_id]
-        if updated_dialog.assigned_admin_id is not None
-        else None
-    )
+    admin_targets = [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
 
-    await manager.broadcast_to_admins(
-        {"event": "message_created", "data": message_payload}, admin_ids=admin_targets
-    )
-    await manager.broadcast_to_admins(
-        {"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets
-    )
+    await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
+    await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
     await manager.broadcast_to_webchat(
         bot_id=updated_dialog.bot_id,
         session_id=updated_dialog.external_chat_id,
@@ -540,10 +480,6 @@ async def bitrix_events(
 
     logger.info(
         "Bitrix operator message delivered",
-        extra={
-            "dialog_id": dialog.id,
-            "bot_id": dialog.bot_id,
-            "event_name": event_name,
-        },
+        extra={"dialog_id": dialog.id, "bot_id": dialog.bot_id, "event_name": event_name},
     )
     return {"status": "ok"}
