@@ -1,6 +1,7 @@
 """Dialog service implementing CRUD operations."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -434,6 +435,26 @@ class DialogsService:
         await session.commit()
         await session.refresh(dialog)
         await session.refresh(user_message)
+
+        from app.modules.integrations.bitrix24.service import Bitrix24Service
+
+        bitrix_service = Bitrix24Service()
+        try:
+            asyncio.create_task(
+                bitrix_service.sync_incoming_user_message(
+                    bot_id=incoming_message.bot_id,
+                    dialog_id=dialog.id,
+                    text=incoming_message.text,
+                    dialog_created=dialog_created,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Bitrix24 sync scheduling failed",
+                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
+            )
 
         if (
             dialog.assigned_admin_id is not None
