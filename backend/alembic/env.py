@@ -36,6 +36,7 @@ def _include_models() -> None:
     import app.modules.channels.models  # noqa: F401
     import app.modules.dialogs.models  # noqa: F401
     import app.modules.diagnostics.models  # noqa: F401
+    import app.modules.integrations.bitrix24.models  # noqa: F401
 
 
 _include_models()
