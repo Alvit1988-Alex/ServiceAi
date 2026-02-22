@@ -30,7 +30,7 @@ class BitrixDisconnectRequest(BaseModel):
 class BitrixSettingsUpdateRequest(BaseModel):
     bot_id: int = Field(gt=0)
     openline_id: str | None = None
-    auto_create_lead_on_first_message: bool
+    auto_create_lead_on_first_message: bool | None = None
 
 
 class BitrixEventPayload(BaseModel):

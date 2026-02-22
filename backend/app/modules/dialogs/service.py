@@ -23,7 +23,6 @@ from app.modules.dialogs.schemas import (
     DialogUpdate,
 )
 from app.modules.dialogs.websocket_manager import WebSocketManager
-from app.modules.integrations.bitrix24.service import Bitrix24Service
 from app.utils.validators import validate_pagination
 
 logger = logging.getLogger(__name__)
@@ -439,6 +438,8 @@ class DialogsService:
         await session.commit()
         await session.refresh(dialog)
         await session.refresh(user_message)
+
+        from app.modules.integrations.bitrix24.service import Bitrix24Service
 
         bitrix_service = Bitrix24Service()
         asyncio.create_task(

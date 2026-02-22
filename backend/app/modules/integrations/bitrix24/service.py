@@ -126,21 +126,25 @@ class Bitrix24Service:
             "code": code,
             "redirect_uri": settings.bitrix24_app_redirect_url,
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(token_url, data=payload)
-            if response.status_code >= 400:
-                logger.error(
-                    "Bitrix token exchange failed",
-                    extra={"status_code": response.status_code},
-                )
-                raise BitrixIntegrationError("Нет прав доступа (scope)")
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise BitrixIntegrationError("Не удалось получить токен Bitrix24") from exc
-            if data.get("error"):
-                raise BitrixIntegrationError("Нет прав доступа (scope)")
-            return data
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(token_url, data=payload)
+        except (httpx.TimeoutException, httpx.RequestError) as exc:
+            raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
+
+        if response.status_code >= 400:
+            logger.error(
+                "Bitrix token exchange failed",
+                extra={"status_code": response.status_code},
+            )
+            raise BitrixIntegrationError("Нет прав доступа (scope)")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise BitrixIntegrationError("Не удалось получить токен Bitrix24") from exc
+        if data.get("error"):
+            raise BitrixIntegrationError("Нет прав доступа (scope)")
+        return data
 
     async def refresh_access_token(
         self, session: AsyncSession, integration: BitrixIntegration
@@ -149,27 +153,34 @@ class Bitrix24Service:
             settings.bitrix24_oauth_token_url
             or f"{integration.portal_url}/oauth/token/"
         )
+        if not integration.refresh_token:
+            raise BitrixIntegrationError("Отсутствует refresh_token")
+
         payload = {
             "grant_type": "refresh_token",
             "client_id": settings.bitrix24_app_client_id,
             "client_secret": settings.bitrix24_app_client_secret,
             "refresh_token": integration.refresh_token,
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(token_url, data=payload)
-            if response.status_code >= 400:
-                logger.error(
-                    "Bitrix token refresh failed",
-                    extra={
-                        "status_code": response.status_code,
-                        "bot_id": integration.bot_id,
-                    },
-                )
-                raise BitrixIntegrationError("Не удалось обновить токен")
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise BitrixIntegrationError("Не удалось обновить токен") from exc
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(token_url, data=payload)
+        except (httpx.TimeoutException, httpx.RequestError) as exc:
+            raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
+
+        if response.status_code >= 400:
+            logger.error(
+                "Bitrix token refresh failed",
+                extra={
+                    "status_code": response.status_code,
+                    "bot_id": integration.bot_id,
+                },
+            )
+            raise BitrixIntegrationError("Не удалось обновить токен")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise BitrixIntegrationError("Не удалось обновить токен") from exc
 
         access_token = data.get("access_token")
         refresh_token = data.get("refresh_token")

@@ -269,9 +269,10 @@ async def update_bitrix24_settings(
             status_code=status.HTTP_404_NOT_FOUND, detail="Интеграция не подключена"
         )
 
-    integration.auto_create_lead_on_first_message = (
-        payload.auto_create_lead_on_first_message
-    )
+    if payload.auto_create_lead_on_first_message is not None:
+        integration.auto_create_lead_on_first_message = (
+            payload.auto_create_lead_on_first_message
+        )
     integration.openline_id = (payload.openline_id or "").strip() or None
     session.add(integration)
     await session.commit()
@@ -464,8 +465,10 @@ async def bitrix_events(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     auth_member_id = auth.get("member_id")
-    if auth_member_id and integration.member_id:
-        if not hmac.compare_digest(str(auth_member_id), str(integration.member_id)):
+    if integration.member_id:
+        if not auth_member_id or not hmac.compare_digest(
+            str(auth_member_id), str(integration.member_id)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
             )

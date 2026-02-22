@@ -156,6 +156,7 @@ CLI использует встроенный HTTP-клиент на базе `h
    - `BITRIX24_APP_REDIRECT_URL`
    - `BITRIX24_APP_SCOPES` (минимум: `imopenlines,im,crm`)
    - `BITRIX24_CONNECT_STATE_SECRET`
+   - `BITRIX24_APP_APPLICATION_TOKEN` — обязательный токен верификации для `POST /integrations/bitrix24/events`.
    - `PUBLIC_BASE_URL` — публичный URL backend (для вебхуков/публичных callback URL).
    - `FRONTEND_BASE_URL` — URL frontend для редиректа после OAuth на страницу `/integrations` (если не задан, используется `http://localhost:3000`).
 3. В Bitrix24 включите Open Lines / Connectors и привяжите приложение.
