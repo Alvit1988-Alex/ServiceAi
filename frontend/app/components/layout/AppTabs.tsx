@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 
 import styles from "./AppTabs.module.css";
 
-type TabIconName = "dashboard" | "channels" | "training" | "dialogs" | "settings";
+type TabIconName = "dashboard" | "channels" | "training" | "dialogs" | "integrations" | "settings";
 
 const tabs: Array<{ label: string; href: string; icon: TabIconName }> = [
   { label: "Дашборд", href: "/", icon: "dashboard" },
   { label: "Каналы", href: "/channels", icon: "channels" },
   { label: "Обучение ИИ", href: "/knowledge", icon: "training" },
   { label: "Диалоги", href: "/search", icon: "dialogs" },
+  { label: "Интеграции", href: "/integrations", icon: "integrations" },
   { label: "Настройки", href: "/settings", icon: "settings" },
 ];
 
@@ -52,6 +53,14 @@ const renderIcon = (name: TabIconName) => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="6" />
           <path d="m20 20-4.2-4.2" />
+        </svg>
+      );
+    case "integrations":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 8h3a3 3 0 0 1 0 6H8a3 3 0 0 1 0-6Z" />
+          <path d="M13 10h3a3 3 0 1 1 0 6h-3" />
+          <path d="M10 14h4" />
         </svg>
       );
     case "settings":
