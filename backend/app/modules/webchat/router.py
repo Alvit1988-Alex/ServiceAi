@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -50,6 +53,20 @@ def _resolve_ws_url(request: Request, bot_id: int, session_id: str) -> str:
     return f"{ws_scheme}://{host}/ws/webchat/{bot_id}/{session_id}"
 
 
+def _coerce_channel_config(config: Any) -> dict[str, Any]:
+    if isinstance(config, dict):
+        return config
+    if config is None:
+        return {}
+    if isinstance(config, str):
+        try:
+            parsed_config = json.loads(config)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return parsed_config if isinstance(parsed_config, dict) else {}
+    return {}
+
+
 @router.post("/webchat/init", response_model=WebchatInitOut)
 async def init_webchat(
     payload: WebchatInitIn,
@@ -72,10 +89,10 @@ async def init_webchat(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
     bot, channel, avatar_url = row
-    config = channel.config or {}
-    config_theme = config.get("webchat_theme")
+    config_dict = _coerce_channel_config(channel.config)
+    config_theme = config_dict.get("webchat_theme")
     theme = config_theme if config_theme in ("light", "dark", "neutral") else "light"
-    border_width_raw = config.get("webchat_border_width")
+    border_width_raw = config_dict.get("webchat_border_width")
     try:
         border_width = int(border_width_raw) if border_width_raw is not None else 1
     except (TypeError, ValueError):
@@ -89,13 +106,13 @@ async def init_webchat(
         ws_url=ws_url,
         bot=WebchatBotOut(id=bot.id, name=bot.name),
         webchat_config=WebchatConfigOut(
-            name=config.get("webchat_name") or bot.name,
+            name=config_dict.get("webchat_name") or bot.name,
             theme=theme,
             avatar_data_url=avatar_url,
             avatar_url=avatar_url,
-            custom_colors_enabled=bool(config.get("webchat_custom_colors_enabled")),
-            border_color=config.get("webchat_border_color"),
-            button_color=config.get("webchat_button_color"),
+            custom_colors_enabled=bool(config_dict.get("webchat_custom_colors_enabled")),
+            border_color=config_dict.get("webchat_border_color"),
+            button_color=config_dict.get("webchat_button_color"),
             border_width=border_width,
         ),
     )
