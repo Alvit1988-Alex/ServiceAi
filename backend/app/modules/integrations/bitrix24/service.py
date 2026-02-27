@@ -419,8 +419,11 @@ class Bitrix24Service:
         except asyncio.TimeoutError:
             logger.warning("Bitrix24 integration timeout", extra={"bot_id": bot_id, "dialog_id": dialog_id})
         except BitrixIntegrationError as exc:
-            logger.warning(
-                "Bitrix24 integration error",
+            logger.exception(
+                "Bitrix24 integration error for bot_id=%s dialog_id=%s: %s",
+                bot_id,
+                dialog_id,
+                str(exc),
                 extra={"bot_id": bot_id, "dialog_id": dialog_id, "error": str(exc)},
             )
         except Exception as exc:  # noqa: BLE001
