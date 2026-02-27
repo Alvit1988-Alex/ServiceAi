@@ -484,12 +484,23 @@ class DialogsService:
             await session.refresh(system_message)
 
             if answer is None:
-                sender_cls = get_sender(incoming_message.channel_type)
-                await sender_cls().send_text(
-                    bot_id=incoming_message.bot_id,
-                    external_chat_id=incoming_message.external_chat_id,
-                    text=AI_FALLBACK_TEXT,
-                )
+                try:
+                    sender_cls = get_sender(incoming_message.channel_type)
+                    await sender_cls().send_text(
+                        bot_id=incoming_message.bot_id,
+                        external_chat_id=incoming_message.external_chat_id,
+                        text=AI_FALLBACK_TEXT,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "AI fallback send failed",
+                        extra={
+                            "bot_id": incoming_message.bot_id,
+                            "dialog_id": dialog.id,
+                            "channel_type": incoming_message.channel_type,
+                            "external_chat_id": incoming_message.external_chat_id,
+                        },
+                    )
 
             return user_message, system_message, dialog, dialog_created
 
