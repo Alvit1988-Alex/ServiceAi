@@ -27,6 +27,7 @@ from app.modules.integrations.bitrix24.service import Bitrix24Service
 from app.utils.validators import validate_pagination
 
 logger = logging.getLogger(__name__)
+AI_FALLBACK_TEXT = "Сейчас ИИ временно недоступен. Сообщение передано оператору — мы ответим как можно скорее."
 
 
 class DialogLockError(Exception):
@@ -269,16 +270,23 @@ class DialogsService:
 
         last_message = dialog.messages[-1] if dialog.messages else None
         if last_message and last_message.sender == MessageSender.USER:
-            answer = await ai_service.answer(bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or "")
+            try:
+                answer = await ai_service.answer(bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or "")
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "AI answer failed",
+                    extra={"bot_id": dialog.bot_id, "dialog_id": dialog.id},
+                )
+                answer = None
 
-            if answer.answer is None or answer.answer == "":
+            if answer is None or answer.answer is None or answer.answer == "":
                 dialog.status = DialogStatus.WAIT_OPERATOR
                 dialog.updated_at = datetime.utcnow()
 
                 system_message = DialogMessage(
                     dialog_id=dialog.id,
                     sender=MessageSender.BOT,
-                    text="Бот временно не может ответить, передаем оператору...",
+                    text=AI_FALLBACK_TEXT if answer is None else "Бот временно не может ответить, передаем оператору...",
                     payload={"system": True},
                 )
                 session.add_all([dialog, system_message])
@@ -448,25 +456,52 @@ class DialogsService:
             return user_message, None, dialog, dialog_created
 
         bot_message: DialogMessage | None = None
-        answer = await ai_service.answer(
-            bot_id=incoming_message.bot_id,
-            dialog_id=dialog.id,
-            question=incoming_message.text or "",
-        )
+        try:
+            answer = await ai_service.answer(
+                bot_id=incoming_message.bot_id,
+                dialog_id=dialog.id,
+                question=incoming_message.text or "",
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "AI answer failed",
+                extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id},
+            )
+            answer = None
 
-        if answer.answer is None or answer.answer == "":
+        if answer is None or answer.answer is None or answer.answer == "":
             dialog.status = DialogStatus.WAIT_OPERATOR
             dialog.updated_at = datetime.utcnow()
             system_message = DialogMessage(
                 dialog_id=dialog.id,
                 sender=MessageSender.BOT,
-                text="Бот временно не может ответить, передаем оператору...",
+                text=AI_FALLBACK_TEXT if answer is None else "Бот временно не может ответить, передаем оператору...",
                 payload={"system": True},
             )
             session.add_all([dialog, system_message])
             await session.commit()
             await session.refresh(dialog)
             await session.refresh(system_message)
+
+            if answer is None:
+                try:
+                    sender_cls = get_sender(incoming_message.channel_type)
+                    await sender_cls().send_text(
+                        bot_id=incoming_message.bot_id,
+                        external_chat_id=incoming_message.external_chat_id,
+                        text=AI_FALLBACK_TEXT,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "AI fallback send failed",
+                        extra={
+                            "bot_id": incoming_message.bot_id,
+                            "dialog_id": dialog.id,
+                            "channel_type": incoming_message.channel_type,
+                            "external_chat_id": incoming_message.external_chat_id,
+                        },
+                    )
+
             return user_message, system_message, dialog, dialog_created
 
         if answer.can_answer and answer.answer:
