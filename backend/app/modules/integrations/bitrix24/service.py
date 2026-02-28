@@ -354,7 +354,13 @@ class Bitrix24Service:
         text: str,
     ) -> BitrixDialogLink:
         link = await self.get_or_create_dialog_link(session=session, dialog=dialog)
-        await self.ensure_connector_registered(session=session, integration=integration)
+        try:
+            await self.ensure_connector_registered(session=session, integration=integration)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Bitrix24 connector registration attempt failed before send.messages",
+                extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
+            )
 
         if not integration.openline_id:
             raise BitrixIntegrationError(

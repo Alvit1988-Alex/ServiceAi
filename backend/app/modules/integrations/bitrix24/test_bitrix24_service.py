@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from app.config import settings
+import app.modules.integrations.bitrix24.service as bitrix_service_module
 from app.modules.integrations.bitrix24.service import Bitrix24Service, BitrixIntegrationError
 
 
@@ -13,7 +13,7 @@ def test_ensure_connector_registered_is_idempotent(monkeypatch) -> None:
     integration = SimpleNamespace(bot_id=7, portal_url="https://example.bitrix24.ru")
     call_count = {"value": 0}
 
-    monkeypatch.setattr(settings, "public_base_url", "https://example.com")
+    monkeypatch.setattr(bitrix_service_module.settings, "public_base_url", "https://example.com", raising=False)
 
     async def fake_call_rest(**_kwargs):
         call_count["value"] += 1
