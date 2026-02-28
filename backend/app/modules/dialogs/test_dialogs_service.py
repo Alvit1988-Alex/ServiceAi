@@ -3,17 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Callable
-
-import os
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[3]))
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
-os.environ.setdefault("JWT_SECRET_KEY", "test" * 8)
-os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "refresh" * 5)
-os.environ.setdefault("CHANNEL_CONFIG_SECRET_KEY", "secret")
 
 import pytest
 from sqlalchemy import create_engine

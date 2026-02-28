@@ -292,7 +292,7 @@ class Bitrix24Service:
         await session.refresh(link)
         return link
 
-    async def ensure_connector_registered(self, *, session: AsyncSession, integration: BitrixIntegration) -> bool:
+    async def ensure_connector_registered(self, *, session: AsyncSession | None, integration: BitrixIntegration) -> bool:
         handler_base_url = (settings.public_base_url or "").strip().rstrip("/")
         if not handler_base_url:
             logger.warning(
