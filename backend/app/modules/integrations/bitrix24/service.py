@@ -37,7 +37,9 @@ class BitrixRateLimitError(BitrixIntegrationError):
 
 
 class Bitrix24Service:
-    connector_name = "serviceai"
+    CONNECTOR_ID = "serviceai"
+    CONNECTOR_NAME = "ServiceAI"
+    connector_name = CONNECTOR_ID
 
     def normalize_portal_url(self, portal_domain: str) -> str:
         cleaned = portal_domain.strip().lower()
@@ -255,7 +257,9 @@ class Bitrix24Service:
                     continue
 
                 if data.get("error"):
-                    raise BitrixIntegrationError(data.get("error_description") or "Ошибка Bitrix24 API")
+                    error_code = str(data.get("error", ""))
+                    error_description = data.get("error_description") or "Ошибка Bitrix24 API"
+                    raise BitrixIntegrationError(f"{error_code}: {error_description}")
 
                 return data
             except (httpx.TimeoutException, httpx.RequestError) as exc:
@@ -288,6 +292,59 @@ class Bitrix24Service:
         await session.refresh(link)
         return link
 
+    async def ensure_connector_registered(self, *, session: AsyncSession, integration: BitrixIntegration) -> bool:
+        handler_base_url = (settings.public_base_url or "").strip().rstrip("/")
+        if not handler_base_url:
+            logger.warning(
+                "Bitrix24 connector registration skipped: PUBLIC_BASE_URL is not configured",
+                extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
+            )
+            return False
+
+        event_handler_url = f"{handler_base_url}/integrations/bitrix24/events"
+        registration_params = {
+            "CONNECTOR": self.CONNECTOR_ID,
+            "NAME": self.CONNECTOR_NAME,
+            "DESCRIPTION": "ServiceAI OpenLines connector",
+            "URL": event_handler_url,
+            "URL_IM": event_handler_url,
+        }
+        if settings.bitrix24_app_application_token:
+            registration_params["APPLICATION_TOKEN"] = settings.bitrix24_app_application_token
+
+        try:
+            await self.call_rest(
+                session=session,
+                integration=integration,
+                method_name="imconnector.register",
+                params=registration_params,
+                max_retries=1,
+            )
+            logger.info(
+                "Bitrix24 registered connector serviceai",
+                extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
+            )
+            return True
+        except BitrixIntegrationError as exc:
+            error_message = str(exc)
+            lowered_message = error_message.lower()
+            if "already" in lowered_message and any(token in lowered_message for token in {"exist", "register"}):
+                logger.info(
+                    "Bitrix24 connector already exists",
+                    extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
+                )
+                return True
+
+            logger.warning(
+                "Bitrix24 connector registration failed",
+                extra={
+                    "bot_id": integration.bot_id,
+                    "portal_url": integration.portal_url,
+                    "error": error_message,
+                },
+            )
+            return False
+
     async def send_user_message_to_openline(
         self,
         *,
@@ -297,6 +354,7 @@ class Bitrix24Service:
         text: str,
     ) -> BitrixDialogLink:
         link = await self.get_or_create_dialog_link(session=session, dialog=dialog)
+        await self.ensure_connector_registered(session=session, integration=integration)
 
         if not integration.openline_id:
             raise BitrixIntegrationError(
@@ -419,6 +477,11 @@ class Bitrix24Service:
         except asyncio.TimeoutError:
             logger.warning("Bitrix24 integration timeout", extra={"bot_id": bot_id, "dialog_id": dialog_id})
         except BitrixIntegrationError as exc:
+            if "подходящий провайдер" in str(exc).lower():
+                logger.error(
+                    "Bitrix24 connector is not registered: failed to send message to OpenLines",
+                    extra={"bot_id": bot_id, "dialog_id": dialog_id, "error": str(exc)},
+                )
             logger.exception(
                 "Bitrix24 integration error for bot_id=%s dialog_id=%s: %s",
                 bot_id,

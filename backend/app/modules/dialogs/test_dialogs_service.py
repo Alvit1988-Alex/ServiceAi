@@ -25,9 +25,10 @@ from app.database import Base
 from app.modules.accounts.models import Account, User, UserRole
 from app.modules.bots.models import Bot
 from app.modules.channels.models import ChannelType
-from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus
+from app.modules.channels.schemas import NormalizedIncomingMessage
+from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate
-from app.modules.dialogs.service import DialogLockError, DialogsService
+from app.modules.dialogs.service import AI_FALLBACK_TEXT, DialogLockError, DialogsService
 
 
 @compiles(JSONB, "sqlite")
@@ -257,3 +258,56 @@ def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     assert unlocked_dialog.is_locked is False
     assert unlocked_dialog.assigned_admin_id is None
     assert unlocked_dialog.locked_until is None
+
+
+def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Callable[[], AsyncSessionWrapper], monkeypatch):
+    service = DialogsService()
+    bot, _operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    sync_calls: list[dict] = []
+
+    async def fake_sync(self, *, bot_id: int, dialog_id: int, text: str | None, dialog_created: bool) -> None:  # noqa: ANN001
+        sync_calls.append({
+            "bot_id": bot_id,
+            "dialog_id": dialog_id,
+            "text": text,
+            "dialog_created": dialog_created,
+        })
+
+    monkeypatch.setattr(
+        "app.modules.integrations.bitrix24.service.Bitrix24Service.sync_incoming_user_message",
+        fake_sync,
+    )
+
+    class BrokenAIService:
+        async def answer(self, **_kwargs):  # noqa: ANN003
+            raise RuntimeError("lm studio offline")
+
+    async def _exercise():
+        async with db_sessionmaker() as session:
+            incoming = NormalizedIncomingMessage(
+                bot_id=bot.id,
+                channel_id=1,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-ai-down",
+                external_user_id="user-ai-down",
+                text="help",
+                payload={"source": "test"},
+            )
+
+            user_message, bot_message, _dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=incoming,
+                ai_service=BrokenAIService(),
+            )
+            await asyncio.sleep(0)
+            return user_message, bot_message
+
+    user_message, bot_message = run(_exercise())
+
+    assert user_message.sender == MessageSender.USER
+    assert bot_message is not None
+    assert bot_message.text == AI_FALLBACK_TEXT
+    assert len(sync_calls) == 1
+    assert sync_calls[0]["bot_id"] == bot.id
+    assert sync_calls[0]["text"] == "help"

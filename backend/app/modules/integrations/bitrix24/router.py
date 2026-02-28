@@ -177,6 +177,14 @@ async def bitrix_oauth_callback(
     session.add(integration)
     await session.commit()
 
+    try:
+        await bitrix_service.ensure_connector_registered(session=session, integration=integration)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Bitrix24 connector registration after OAuth failed",
+            extra={"bot_id": bot_id, "portal_url": portal_url},
+        )
+
     frontend_base = settings.frontend_base_url or "http://localhost:3000"
     return RedirectResponse(url=f"{frontend_base}/integrations?bot={bot_id}&success=1", status_code=302)
 
