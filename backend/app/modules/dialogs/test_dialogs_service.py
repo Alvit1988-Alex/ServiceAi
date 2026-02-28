@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.database import Base
 from app.modules.accounts.models import Account, User, UserRole
 from app.modules.bots.models import Bot
-from app.modules.channels.models import ChannelType
+from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate
@@ -79,6 +79,7 @@ def db_sessionmaker() -> Callable[[], AsyncSessionWrapper]:
             User.__table__,
             Account.__table__,
             Bot.__table__,
+            BotChannel.__table__,
             Dialog.__table__,
             DialogMessage.__table__,
         ],
@@ -97,6 +98,7 @@ def db_sessionmaker() -> Callable[[], AsyncSessionWrapper]:
             tables=[
                 DialogMessage.__table__,
                 Dialog.__table__,
+                BotChannel.__table__,
                 Bot.__table__,
                 Account.__table__,
                 User.__table__,
@@ -124,14 +126,17 @@ async def _create_base_entities(maker: Callable[[], AsyncSessionWrapper]):
             email="operator2@example.com", password_hash="z", role=UserRole.operator
         )
 
-        session.add_all([owner, account, bot, operator, another_operator])
+        channel = BotChannel(bot=bot, channel_type=ChannelType.WEBCHAT, config={"source": "test"}, is_active=True)
+
+        session.add_all([owner, account, bot, operator, another_operator, channel])
         await session.commit()
 
         await session.refresh(bot)
         await session.refresh(operator)
         await session.refresh(another_operator)
+        await session.refresh(channel)
 
-        return bot, operator, another_operator
+        return bot, operator, another_operator, channel
 
 
 async def _create_dialog(
@@ -154,7 +159,7 @@ async def _create_dialog(
 
 def test_lock_dialog_sets_assignment_and_flag(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "lock-me"))
 
     async def _lock_dialog():
@@ -169,7 +174,7 @@ def test_lock_dialog_sets_assignment_and_flag(db_sessionmaker: Callable[[], Asyn
 
 def test_lock_dialog_conflict_with_foreign_owner(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, another_operator = run(_create_base_entities(db_sessionmaker))
+    bot, operator, another_operator, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "taken"))
 
     async def _prepare_and_lock_with_other():
@@ -188,7 +193,7 @@ def test_lock_dialog_conflict_with_foreign_owner(db_sessionmaker: Callable[[], A
 
 def test_unlock_dialog_requires_owner(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, another_operator = run(_create_base_entities(db_sessionmaker))
+    bot, operator, another_operator, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "unlockable"))
 
     async def _unlock_flow():
@@ -207,7 +212,7 @@ def test_unlock_dialog_requires_owner(db_sessionmaker: Callable[[], AsyncSession
 
 def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     locked_dialog = run(_create_dialog(service, db_sessionmaker, bot, "locked"))
     unlocked_dialog = run(_create_dialog(service, db_sessionmaker, bot, "unlocked"))
 
@@ -232,7 +237,7 @@ def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWr
 
 def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "expire"))
 
     async def _lock_and_expire_dialog():
@@ -262,9 +267,10 @@ def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
 
 def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Callable[[], AsyncSessionWrapper], monkeypatch):
     service = DialogsService()
-    bot, _operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, _operator, _, channel = run(_create_base_entities(db_sessionmaker))
 
     sync_calls: list[dict] = []
+    sync_called = asyncio.Event()
 
     async def fake_sync(self, *, bot_id: int, dialog_id: int, text: str | None, dialog_created: bool) -> None:  # noqa: ANN001
         sync_calls.append({
@@ -273,6 +279,7 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
             "text": text,
             "dialog_created": dialog_created,
         })
+        sync_called.set()
 
     monkeypatch.setattr(
         "app.modules.integrations.bitrix24.service.Bitrix24Service.sync_incoming_user_message",
@@ -287,7 +294,7 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
         async with db_sessionmaker() as session:
             incoming = NormalizedIncomingMessage(
                 bot_id=bot.id,
-                channel_id=1,
+                channel_id=channel.id,
                 channel_type=ChannelType.WEBCHAT,
                 external_chat_id="chat-ai-down",
                 external_user_id="user-ai-down",
@@ -300,7 +307,7 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
                 incoming_message=incoming,
                 ai_service=BrokenAIService(),
             )
-            await asyncio.sleep(0)
+            await asyncio.wait_for(sync_called.wait(), timeout=1.0)
             return user_message, bot_message
 
     user_message, bot_message = run(_exercise())
