@@ -414,10 +414,15 @@ class Bitrix24Service:
                         dialog=dialog,
                     )
 
+        timeout_seconds = settings.bitrix24_background_sync_timeout_seconds
+
         try:
-            await asyncio.wait_for(_sync(), timeout=3.0)
+            await asyncio.wait_for(_sync(), timeout=timeout_seconds)
         except asyncio.TimeoutError:
-            logger.warning("Bitrix24 integration timeout", extra={"bot_id": bot_id, "dialog_id": dialog_id})
+            logger.warning(
+                "Bitrix24 integration timeout",
+                extra={"bot_id": bot_id, "dialog_id": dialog_id, "timeout_seconds": timeout_seconds},
+            )
         except BitrixIntegrationError as exc:
             logger.exception(
                 "Bitrix24 integration error for bot_id=%s dialog_id=%s: %s",

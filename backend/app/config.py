@@ -222,6 +222,13 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("BITRIX24_CONNECT_STATE_SECRET", "bitrix24_connect_state_secret"),
     )
+    bitrix24_background_sync_timeout_seconds: float = Field(
+        default=15.0,
+        validation_alias=AliasChoices(
+            "BITRIX24_BACKGROUND_SYNC_TIMEOUT_SECONDS",
+            "bitrix24_background_sync_timeout_seconds",
+        ),
+    )
 
     # ---------- helpers ----------
     @classmethod
