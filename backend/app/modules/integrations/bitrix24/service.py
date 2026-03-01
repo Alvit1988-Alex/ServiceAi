@@ -40,6 +40,7 @@ class Bitrix24Service:
     CONNECTOR_ID = "serviceai"
     CONNECTOR_NAME = "ServiceAI"
     connector_name = CONNECTOR_ID
+    _registered_cache: set[tuple[str, str]] = set()
 
     def normalize_portal_url(self, portal_domain: str) -> str:
         cleaned = portal_domain.strip().lower()
@@ -301,17 +302,25 @@ class Bitrix24Service:
             )
             return False
 
+        cache_key = (integration.portal_url, str(integration.openline_id or ""))
+        if cache_key in self._registered_cache:
+            return True
+
+        placement_url = f"{handler_base_url}/integrations/bitrix24/placement"
         event_handler_url = f"{handler_base_url}/integrations/bitrix24/events"
         registration_params = {
-            "CONNECTOR": self.CONNECTOR_ID,
+            "ID": self.CONNECTOR_ID,
             "NAME": self.CONNECTOR_NAME,
-            "DESCRIPTION": "ServiceAI OpenLines connector",
-            "URL": event_handler_url,
-            "URL_IM": event_handler_url,
+            "PLACEMENT_HANDLER": placement_url,
+            "ICON": {
+                "DATA_IMAGE": "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20128%20128%27%3E%3Crect%20width%3D%27128%27%20height%3D%27128%27%20rx%3D%2724%27%20fill%3D%27%231900ff%27/%3E%3Cpath%20fill%3D%27white%27%20d%3D%27M36%2064c0-15.5%2012.5-28%2028-28h28v16H64c-6.6%200-12%205.4-12%2012s5.4%2012%2012%2012h28v16H64c-15.5%200-28-12.5-28-28z%27/%3E%3C/svg%3E",
+                "COLOR": "#1900ff",
+                "SIZE": "90%",
+                "POSITION": "center",
+            },
         }
-        if settings.bitrix24_app_application_token:
-            registration_params["APPLICATION_TOKEN"] = settings.bitrix24_app_application_token
 
+        register_ok = False
         try:
             await self.call_rest(
                 session=session,
@@ -320,30 +329,111 @@ class Bitrix24Service:
                 params=registration_params,
                 max_retries=1,
             )
+            register_ok = True
             logger.info(
                 "Bitrix24 registered connector serviceai",
                 extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
             )
-            return True
         except BitrixIntegrationError as exc:
             error_message = str(exc)
-            lowered_message = error_message.lower()
-            if "already" in lowered_message and any(token in lowered_message for token in {"exist", "register"}):
+            error_code = error_message.split(":", 1)[0].strip().upper()
+            already_exists_codes = {
+                "ERROR_CONNECTOR_ALREADY_EXISTS",
+                "CONNECTOR_ALREADY_EXISTS",
+                "ALREADY_EXISTS",
+            }
+            if error_code in already_exists_codes:
+                register_ok = True
                 logger.info(
                     "Bitrix24 connector already exists",
                     extra={"bot_id": integration.bot_id, "portal_url": integration.portal_url},
                 )
-                return True
-
+            else:
+                logger.warning(
+                    "Bitrix24 connector registration failed",
+                    extra={
+                        "bot_id": integration.bot_id,
+                        "portal_url": integration.portal_url,
+                        "error": error_message,
+                    },
+                )
+                return False
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "Bitrix24 connector registration failed",
+                "Bitrix24 connector registration failed unexpectedly",
                 extra={
                     "bot_id": integration.bot_id,
                     "portal_url": integration.portal_url,
-                    "error": error_message,
+                    "error": str(exc),
                 },
+                exc_info=True,
             )
             return False
+
+        if not register_ok:
+            return False
+
+        data_set_ok = True
+        activate_ok = True
+        if integration.openline_id:
+            try:
+                await self.call_rest(
+                    session=session,
+                    integration=integration,
+                    method_name="imconnector.connector.data.set",
+                    params={
+                        "CONNECTOR": self.CONNECTOR_ID,
+                        "LINE": integration.openline_id,
+                        "DATA": {
+                            "URL": event_handler_url,
+                            "URL_IM": event_handler_url,
+                            "NAME": self.CONNECTOR_NAME,
+                        },
+                    },
+                    max_retries=1,
+                )
+            except Exception as exc:  # noqa: BLE001
+                data_set_ok = False
+                logger.warning(
+                    "Bitrix24 connector data.set failed",
+                    extra={
+                        "bot_id": integration.bot_id,
+                        "portal_url": integration.portal_url,
+                        "line": integration.openline_id,
+                        "error": str(exc),
+                    },
+                    exc_info=True,
+                )
+
+            try:
+                await self.call_rest(
+                    session=session,
+                    integration=integration,
+                    method_name="imconnector.activate",
+                    params={
+                        "CONNECTOR": self.CONNECTOR_ID,
+                        "LINE": integration.openline_id,
+                        "ACTIVE": "Y",
+                    },
+                    max_retries=1,
+                )
+            except Exception as exc:  # noqa: BLE001
+                activate_ok = False
+                logger.warning(
+                    "Bitrix24 connector activate failed",
+                    extra={
+                        "bot_id": integration.bot_id,
+                        "portal_url": integration.portal_url,
+                        "line": integration.openline_id,
+                        "error": str(exc),
+                    },
+                    exc_info=True,
+                )
+
+        success = register_ok and data_set_ok and activate_ok
+        if success:
+            self._registered_cache.add(cache_key)
+        return success
 
     async def send_user_message_to_openline(
         self,

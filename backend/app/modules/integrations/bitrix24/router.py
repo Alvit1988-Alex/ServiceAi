@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,6 +96,12 @@ async def _resolve_dialog_for_event(session: AsyncSession, payload: BitrixEventP
 
     result = await session.execute(select(Dialog).where(Dialog.id == link.dialog_id))
     return result.scalars().first()
+
+
+
+@router.get("/placement", response_class=PlainTextResponse)
+async def bitrix_placement() -> PlainTextResponse:
+    return PlainTextResponse("ServiceAI connector configured. You can close this window.")
 
 
 @router.post("/connect", response_model=BitrixConnectResponse)
