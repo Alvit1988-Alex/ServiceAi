@@ -229,6 +229,13 @@ class Settings(BaseSettings):
             "bitrix24_background_sync_timeout_seconds",
         ),
     )
+    bitrix24_whatsapp_connector_name: str = Field(
+        default="whatsappbytwilio",
+        validation_alias=AliasChoices(
+            "BITRIX24_WHATSAPP_CONNECTOR_NAME",
+            "bitrix24_whatsapp_connector_name",
+        ),
+    )
 
     # ---------- helpers ----------
     @classmethod
