@@ -3,17 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Callable
-
-import os
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[3]))
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
-os.environ.setdefault("JWT_SECRET_KEY", "test" * 8)
-os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "refresh" * 5)
-os.environ.setdefault("CHANNEL_CONFIG_SECRET_KEY", "secret")
 
 import pytest
 from sqlalchemy import create_engine
@@ -24,10 +14,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.database import Base
 from app.modules.accounts.models import Account, User, UserRole
 from app.modules.bots.models import Bot
-from app.modules.channels.models import ChannelType
-from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus
+from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.schemas import NormalizedIncomingMessage
+from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogCreate
-from app.modules.dialogs.service import DialogLockError, DialogsService
+from app.modules.dialogs.service import AI_FALLBACK_TEXT, DialogLockError, DialogsService
 
 
 @compiles(JSONB, "sqlite")
@@ -78,6 +69,7 @@ def db_sessionmaker() -> Callable[[], AsyncSessionWrapper]:
             User.__table__,
             Account.__table__,
             Bot.__table__,
+            BotChannel.__table__,
             Dialog.__table__,
             DialogMessage.__table__,
         ],
@@ -96,6 +88,7 @@ def db_sessionmaker() -> Callable[[], AsyncSessionWrapper]:
             tables=[
                 DialogMessage.__table__,
                 Dialog.__table__,
+                BotChannel.__table__,
                 Bot.__table__,
                 Account.__table__,
                 User.__table__,
@@ -123,14 +116,17 @@ async def _create_base_entities(maker: Callable[[], AsyncSessionWrapper]):
             email="operator2@example.com", password_hash="z", role=UserRole.operator
         )
 
-        session.add_all([owner, account, bot, operator, another_operator])
+        channel = BotChannel(bot=bot, channel_type=ChannelType.WEBCHAT, config={"source": "test"}, is_active=True)
+
+        session.add_all([owner, account, bot, operator, another_operator, channel])
         await session.commit()
 
         await session.refresh(bot)
         await session.refresh(operator)
         await session.refresh(another_operator)
+        await session.refresh(channel)
 
-        return bot, operator, another_operator
+        return bot, operator, another_operator, channel
 
 
 async def _create_dialog(
@@ -153,7 +149,7 @@ async def _create_dialog(
 
 def test_lock_dialog_sets_assignment_and_flag(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "lock-me"))
 
     async def _lock_dialog():
@@ -168,7 +164,7 @@ def test_lock_dialog_sets_assignment_and_flag(db_sessionmaker: Callable[[], Asyn
 
 def test_lock_dialog_conflict_with_foreign_owner(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, another_operator = run(_create_base_entities(db_sessionmaker))
+    bot, operator, another_operator, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "taken"))
 
     async def _prepare_and_lock_with_other():
@@ -187,7 +183,7 @@ def test_lock_dialog_conflict_with_foreign_owner(db_sessionmaker: Callable[[], A
 
 def test_unlock_dialog_requires_owner(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, another_operator = run(_create_base_entities(db_sessionmaker))
+    bot, operator, another_operator, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "unlockable"))
 
     async def _unlock_flow():
@@ -206,7 +202,7 @@ def test_unlock_dialog_requires_owner(db_sessionmaker: Callable[[], AsyncSession
 
 def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     locked_dialog = run(_create_dialog(service, db_sessionmaker, bot, "locked"))
     unlocked_dialog = run(_create_dialog(service, db_sessionmaker, bot, "unlocked"))
 
@@ -231,7 +227,7 @@ def test_list_filters_by_lock_state(db_sessionmaker: Callable[[], AsyncSessionWr
 
 def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     service = DialogsService()
-    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+    bot, operator, _, _channel = run(_create_base_entities(db_sessionmaker))
     dialog = run(_create_dialog(service, db_sessionmaker, bot, "expire"))
 
     async def _lock_and_expire_dialog():
@@ -257,3 +253,63 @@ def test_unlock_if_expired(db_sessionmaker: Callable[[], AsyncSessionWrapper]):
     assert unlocked_dialog.is_locked is False
     assert unlocked_dialog.assigned_admin_id is None
     assert unlocked_dialog.locked_until is None
+
+
+def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Callable[[], AsyncSessionWrapper], monkeypatch):
+    service = DialogsService()
+    bot, _operator, _, channel = run(_create_base_entities(db_sessionmaker))
+
+    sync_calls: list[dict] = []
+    sync_called: asyncio.Event | None = None
+
+    async def fake_sync(self, *, bot_id: int, dialog_id: int, text: str | None, dialog_created: bool) -> None:  # noqa: ANN001
+        sync_calls.append({
+            "bot_id": bot_id,
+            "dialog_id": dialog_id,
+            "text": text,
+            "dialog_created": dialog_created,
+        })
+        if sync_called is not None:
+            sync_called.set()
+
+    monkeypatch.setattr(
+        "app.modules.integrations.bitrix24.service.Bitrix24Service.sync_incoming_user_message",
+        fake_sync,
+    )
+
+    class BrokenAIService:
+        async def answer(self, **_kwargs):  # noqa: ANN003
+            raise RuntimeError("lm studio offline")
+
+    async def _exercise():
+        nonlocal sync_called
+        sync_called = asyncio.Event()
+
+        async with db_sessionmaker() as session:
+            incoming = NormalizedIncomingMessage(
+                bot_id=bot.id,
+                channel_id=channel.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-ai-down",
+                external_user_id="user-ai-down",
+                text="help",
+                payload={"source": "test"},
+            )
+
+            user_message, bot_message, _dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=incoming,
+                ai_service=BrokenAIService(),
+            )
+            assert sync_called is not None
+            await asyncio.wait_for(sync_called.wait(), timeout=1.0)
+            return user_message, bot_message
+
+    user_message, bot_message = run(_exercise())
+
+    assert user_message.sender == MessageSender.USER
+    assert bot_message is not None
+    assert bot_message.text == AI_FALLBACK_TEXT
+    assert len(sync_calls) == 1
+    assert sync_calls[0]["bot_id"] == bot.id
+    assert sync_calls[0]["text"] == "help"

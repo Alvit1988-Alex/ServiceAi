@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +98,12 @@ async def _resolve_dialog_for_event(session: AsyncSession, payload: BitrixEventP
     return result.scalars().first()
 
 
+
+@router.get("/placement", response_class=PlainTextResponse)
+async def bitrix_placement() -> PlainTextResponse:
+    return PlainTextResponse("ServiceAI connector configured. You can close this window.")
+
+
 @router.post("/connect", response_model=BitrixConnectResponse)
 async def connect_bitrix24(
     payload: BitrixConnectRequest,
@@ -176,6 +182,14 @@ async def bitrix_oauth_callback(
 
     session.add(integration)
     await session.commit()
+
+    try:
+        await bitrix_service.ensure_connector_registered(session=session, integration=integration)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Bitrix24 connector registration after OAuth failed",
+            extra={"bot_id": bot_id, "portal_url": portal_url},
+        )
 
     frontend_base = settings.frontend_base_url or "http://localhost:3000"
     return RedirectResponse(url=f"{frontend_base}/integrations?bot={bot_id}&success=1", status_code=302)
