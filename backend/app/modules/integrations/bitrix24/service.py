@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session_factory
+from app.modules.channels.models import ChannelType
 from app.modules.dialogs.models import Dialog
 from app.modules.integrations.bitrix24.models import BitrixDialogLink, BitrixIntegration
 
@@ -273,6 +274,22 @@ class Bitrix24Service:
         delay = min(2**attempt, 8)
         await asyncio.sleep(delay)
 
+    def resolve_bitrix_connector(self, channel_type: ChannelType) -> str | None:
+        connector_map = {
+            ChannelType.TELEGRAM: "telegrambot",
+            ChannelType.WEBCHAT: "livechat",
+            ChannelType.AVITO: "avito",
+            ChannelType.MAX: "max",
+            ChannelType.WHATSAPP_GREEN: settings.bitrix24_whatsapp_connector_name,
+            ChannelType.WHATSAPP_360: settings.bitrix24_whatsapp_connector_name,
+            ChannelType.WHATSAPP_CUSTOM: settings.bitrix24_whatsapp_connector_name,
+        }
+        connector = connector_map.get(channel_type)
+        if connector is None:
+            return None
+        connector = connector.strip()
+        return connector or None
+
     def parse_state(self, state: str) -> dict[str, Any]:
         return self._verify_state(state)
 
@@ -304,8 +321,15 @@ class Bitrix24Service:
                 "Укажите ID линии в настройках интеграции."
             )
 
+        connector = self.resolve_bitrix_connector(dialog.channel_type)
+        if not connector:
+            raise BitrixIntegrationError(
+                f"Канал '{dialog.channel_type.value}' не поддерживается для Bitrix24: "
+                "добавьте сопоставление с валидным CONNECTOR."
+            )
+
         message_payload = {
-            "CONNECTOR": self.connector_name,
+            "CONNECTOR": connector,
             "LINE": integration.openline_id,
             "MESSAGES": [
                 {
@@ -343,7 +367,7 @@ class Bitrix24Service:
             integration=integration,
             method_name="imconnector.send.status.delivery",
             params={
-                "CONNECTOR": self.connector_name,
+                "CONNECTOR": connector,
                 "LINE": integration.openline_id,
                 "MESSAGES": [{"im": {"chat_id": link.bitrix_chat_id or str(dialog.id)}}],
             },
