@@ -260,7 +260,7 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
     bot, _operator, _, channel = run(_create_base_entities(db_sessionmaker))
 
     sync_calls: list[dict] = []
-    sync_called = asyncio.Event()
+    sync_called: asyncio.Event | None = None
 
     async def fake_sync(self, *, bot_id: int, dialog_id: int, text: str | None, dialog_created: bool) -> None:  # noqa: ANN001
         sync_calls.append({
@@ -269,7 +269,8 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
             "text": text,
             "dialog_created": dialog_created,
         })
-        sync_called.set()
+        if sync_called is not None:
+            sync_called.set()
 
     monkeypatch.setattr(
         "app.modules.integrations.bitrix24.service.Bitrix24Service.sync_incoming_user_message",
@@ -281,6 +282,9 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
             raise RuntimeError("lm studio offline")
 
     async def _exercise():
+        nonlocal sync_called
+        sync_called = asyncio.Event()
+
         async with db_sessionmaker() as session:
             incoming = NormalizedIncomingMessage(
                 bot_id=bot.id,
@@ -297,6 +301,7 @@ def test_process_incoming_message_syncs_bitrix_when_ai_fails(db_sessionmaker: Ca
                 incoming_message=incoming,
                 ai_service=BrokenAIService(),
             )
+            assert sync_called is not None
             await asyncio.wait_for(sync_called.wait(), timeout=1.0)
             return user_message, bot_message
 
