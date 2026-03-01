@@ -227,7 +227,11 @@ class Bitrix24Service:
         for attempt in range(1, max_retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.post(endpoint, json=payload)
+                    response = await client.post(
+                        endpoint,
+                        data=payload,
+                        headers={"Accept": "application/json"},
+                    )
 
                 if response.status_code == 401 and attempt == 1:
                     active_integration = await self.refresh_access_token(session=session, integration=active_integration)
@@ -256,13 +260,27 @@ class Bitrix24Service:
                     continue
 
                 if data.get("error"):
+                    logger.warning(
+                        "Bitrix REST returned error",
+                        extra={
+                            "method": method_name,
+                            "status_code": response.status_code,
+                            "attempt": attempt,
+                            "bot_id": integration.bot_id,
+                        },
+                    )
                     raise BitrixIntegrationError(data.get("error_description") or "Ошибка Bitrix24 API")
 
                 return data
             except (httpx.TimeoutException, httpx.RequestError) as exc:
                 logger.warning(
                     "Bitrix REST call failed",
-                    extra={"method": method_name, "attempt": attempt, "bot_id": integration.bot_id},
+                    extra={
+                        "method": method_name,
+                        "status_code": None,
+                        "attempt": attempt,
+                        "bot_id": integration.bot_id,
+                    },
                 )
                 if attempt == max_retries:
                     raise BitrixIntegrationError("Ошибка соединения с Bitrix24") from exc
