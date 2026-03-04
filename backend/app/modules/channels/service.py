@@ -63,6 +63,7 @@ class ChannelsService:
             ChannelType.WEBCHAT,
             ChannelType.AVITO,
             ChannelType.MAX,
+            ChannelType.VK,
         ]
         channels: list[BotChannel] = []
 

@@ -4,6 +4,7 @@ import logging
 import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from app.modules.channels.service import ChannelsService
 from app.modules.channels.telegram_handler import normalize_telegram_update
 from app.modules.channels.avito_handler import normalize_avito_update
 from app.modules.channels.max_handler import normalize_max_webhook
+from app.modules.channels.vk_handler import normalize_vk_callback
 from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
@@ -75,6 +77,19 @@ async def _get_webchat_channel_for_bot(session: AsyncSession, bot_id: int) -> Bo
     if not channel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
+
+async def _get_vk_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
+    stmt = (
+        select(BotChannel)
+        .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.VK)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+    )
+    result = await session.execute(stmt)
+    channel = result.scalars().first()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    return channel
+
 
 
 async def _log_incoming_event(
@@ -368,6 +383,98 @@ async def telegram_webhook_alias(
         diagnostics_service=diagnostics_service,
     )
 
+
+
+
+@router.post("/webhooks/vk/{channel_id}", response_class=PlainTextResponse)
+async def vk_webhook(
+    bot_id: int,
+    channel_id: int,
+    payload: dict,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
+) -> PlainTextResponse:
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channel = channels_service.decrypt(channel)
+
+        expected_secret = channel.config.get("secret")
+        provided_secret = payload.get("secret") or _extract_provided_secret(request=request, payload=payload)
+        _validate_secret(expected_secret, provided_secret, "Invalid VK webhook secret")
+
+        event_type = str(payload.get("type") or "")
+        if event_type == "confirmation":
+            confirmation = channel.config.get("confirmation_token") or channel.config.get("confirmation") or ""
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            await _log_incoming_event(
+                diagnostics_service=diagnostics_service,
+                bot_id=bot_id,
+                channel_type=ChannelType.VK,
+                status="ok",
+                latency_ms=latency_ms,
+            )
+            return PlainTextResponse(content=str(confirmation))
+
+        if event_type == "message_new":
+            normalized = normalize_vk_callback(bot_id=bot_id, channel_id=channel_id, payload=payload)
+            await _process_and_broadcast(
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+                session=session,
+            )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.VK,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=str(exc),
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.VK,
+        status="ok",
+        latency_ms=latency_ms,
+    )
+    return PlainTextResponse(content="ok")
+
+
+@webhooks_router.post("/webhooks/vk/{bot_id}", response_class=PlainTextResponse)
+async def vk_webhook_alias(
+    bot_id: int,
+    payload: dict,
+    request: Request,
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
+) -> PlainTextResponse:
+    async with async_session_factory() as session:
+        channel = await _get_vk_channel_for_bot(session=session, bot_id=bot_id)
+        return await vk_webhook(
+            bot_id=bot_id,
+            channel_id=channel.id,
+            payload=payload,
+            request=request,
+            session=session,
+            channels_service=channels_service,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            diagnostics_service=diagnostics_service,
+        )
 
 def _extract_provided_secret(request: Request, payload: dict, header_name: str = "X-Webhook-Secret") -> str | None:
     return request.headers.get(header_name) or payload.get("secret") or payload.get("token")

@@ -30,6 +30,7 @@ const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.AVITO]: "Avito",
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
+  [ChannelType.VK]: "VK",
 };
 
 const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
@@ -70,6 +71,11 @@ const CHANNEL_FIELDS: Partial<Record<ChannelType, ChannelField[]>> = {
     { key: "secret", label: "Webhook secret" },
   ],
   [ChannelType.WEBCHAT]: [],
+  [ChannelType.VK]: [
+    { key: "access_token", label: "Access token" },
+    { key: "secret", label: "Secret key" },
+    { key: "confirmation_token", label: "Confirmation code" },
+  ],
 };
 
 const THEME_LABELS: Record<"light" | "dark" | "neutral", string> = {

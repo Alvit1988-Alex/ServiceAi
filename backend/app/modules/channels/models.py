@@ -23,6 +23,7 @@ class ChannelType(str, Enum):
     AVITO = "avito"
     MAX = "max"
     WEBCHAT = "webchat"
+    VK = "vk"
 
 
 def channel_type_enum() -> SQLEnum:
