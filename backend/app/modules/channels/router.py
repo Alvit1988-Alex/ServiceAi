@@ -3,7 +3,7 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +51,10 @@ def _ensure_channel_available(channel) -> None:
 def _validate_secret(expected: str | None, provided: str | None, detail: str) -> None:
     if expected and expected != provided:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def get_channels_service() -> ChannelsService:
+    return ChannelsService()
 
 
 async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
@@ -390,10 +394,10 @@ async def telegram_webhook_alias(
 async def vk_webhook(
     bot_id: int,
     channel_id: int,
-    payload: dict,
     request: Request,
+    payload: dict = Body(...),
     session: AsyncSession = Depends(get_db_session),
-    channels_service: ChannelsService = Depends(ChannelsService),
+    channels_service: ChannelsService = Depends(get_channels_service),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
@@ -437,9 +441,9 @@ async def vk_webhook(
             channel_type=ChannelType.VK,
             status="fail",
             latency_ms=latency_ms,
-            error_message=str(exc),
+            error_message=type(exc).__name__,
         )
-        raise
+        return PlainTextResponse(content="ok")
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     await _log_incoming_event(
@@ -455,9 +459,9 @@ async def vk_webhook(
 @webhooks_router.post("/webhooks/vk/{bot_id}", response_class=PlainTextResponse)
 async def vk_webhook_alias(
     bot_id: int,
-    payload: dict,
     request: Request,
-    channels_service: ChannelsService = Depends(ChannelsService),
+    payload: dict = Body(...),
+    channels_service: ChannelsService = Depends(get_channels_service),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
