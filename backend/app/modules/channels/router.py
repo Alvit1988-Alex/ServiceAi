@@ -53,10 +53,6 @@ def _validate_secret(expected: str | None, provided: str | None, detail: str) ->
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-def get_channels_service() -> ChannelsService:
-    return ChannelsService()
-
-
 async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
     stmt = (
         select(BotChannel)
@@ -397,7 +393,7 @@ async def vk_webhook(
     request: Request,
     payload: dict = Body(...),
     session: AsyncSession = Depends(get_db_session),
-    channels_service: ChannelsService = Depends(get_channels_service),
+    channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
@@ -461,7 +457,7 @@ async def vk_webhook_alias(
     bot_id: int,
     request: Request,
     payload: dict = Body(...),
-    channels_service: ChannelsService = Depends(get_channels_service),
+    channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
