@@ -819,6 +819,7 @@ class WebchatSender(BaseChannelSender):
 
 
 from app.modules.channels.avito_sender import AvitoSender
+from app.modules.channels.vk_sender import VkSender
 
 
 register_sender(ChannelType.TELEGRAM, TelegramSender)
@@ -828,3 +829,4 @@ register_sender(ChannelType.WHATSAPP_CUSTOM, WhatsappCustomSender)
 register_sender(ChannelType.AVITO, AvitoSender)
 register_sender(ChannelType.MAX, MaxSender)
 register_sender(ChannelType.WEBCHAT, WebchatSender)
+register_sender(ChannelType.VK, VkSender)
