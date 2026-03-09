@@ -5,7 +5,7 @@ from __future__ import annotations
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "0008_backfill_vk_channels_for_existing_bots"
+revision = "0008_backfill_vk"
 down_revision = "0007_add_vk_channel_type"
 branch_labels = None
 depends_on = None
