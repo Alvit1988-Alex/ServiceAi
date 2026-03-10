@@ -174,6 +174,9 @@ class ChannelsService:
         if channel_type == ChannelType.TELEGRAM and not prepared.get("secret_token"):
             prepared["secret_token"] = secrets.token_hex(16)
 
+        if channel_type == ChannelType.VK and not prepared.get("secret"):
+            prepared["secret"] = secrets.token_hex(16)
+
         if channel_type == ChannelType.AVITO:
             prepared.setdefault("client_id", "")
             prepared.setdefault("client_secret", "")
