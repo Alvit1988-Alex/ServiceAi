@@ -13,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE channel_type ADD VALUE IF NOT EXISTS 'ok'")
+    context = op.get_context()
+    with context.autocommit_block():
+        op.execute("ALTER TYPE channel_type ADD VALUE IF NOT EXISTS 'ok'")
 
 
 def downgrade() -> None:
