@@ -56,6 +56,66 @@
   margin-top: 0.15rem;
 }
 
+.channelToggleWrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.channelToggleLabel {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.channelToggle {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+}
+
+.channelToggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.channelToggleSlider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.channelToggleSlider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.channelToggle input:checked + .channelToggleSlider {
+  background: var(--color-primary);
+}
+
+.channelToggle input:checked + .channelToggleSlider::before {
+  transform: translateX(18px);
+}
+
+.channelToggle input:disabled + .channelToggleSlider {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .switch {
   display: inline-flex;
   align-items: center;
