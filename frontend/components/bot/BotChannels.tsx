@@ -144,6 +144,7 @@ function prepareConfig(config: ChannelConfigState): Record<string, unknown> {
 }
 
 export default function BotChannels({ botId }: BotChannelsProps) {
+  const vkWebhookUrl = `https://dostup.tgkod.ru/api/webhooks/vk/${botId}`;
   const [channels, setChannels] = useState<BotChannel[]>([]);
   const [forms, setForms] = useState<Record<number, ChannelFormState>>({});
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
@@ -1055,7 +1056,30 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
             {channel.channel_type === ChannelType.WEBCHAT
               ? renderWebchatSettings(channel)
-              : renderFields(channel)}
+              : (
+                <>
+                  {channel.channel_type === ChannelType.VK && (
+                    <div className={styles.vkWebhookBlock}>
+                      <div className={styles.vkWebhookTitle}>
+                        Скопируйте это в строку «Адрес» в настройках сервера VK
+                      </div>
+                      <div className={styles.vkWebhookRow}>
+                        <input className={styles.vkWebhookInput} value={vkWebhookUrl} readOnly />
+                        <button
+                          type="button"
+                          className={styles.vkWebhookCopyButton}
+                          onClick={() => void navigator.clipboard.writeText(vkWebhookUrl)}
+                          aria-label="Скопировать webhook URL"
+                          title="Скопировать"
+                        >
+                          ⧉
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {renderFields(channel)}
+                </>
+              )}
 
             {renderWebhookStatus(channel)}
 
