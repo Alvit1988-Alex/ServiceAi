@@ -68,7 +68,12 @@ class OkSender(BaseChannelSender):
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.post(url, params=params, json=json_body)
+                response = await client.post(
+                    url,
+                    params=params,
+                    json=json_body,
+                    headers={"Content-Type": "application/json;charset=utf-8"},
+                )
 
             if response.status_code != 200:
                 logger.error(

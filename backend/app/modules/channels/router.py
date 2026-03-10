@@ -283,6 +283,20 @@ def _validate_vk_message_payload(payload: dict) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid VK payload")
 
 
+def _validate_ok_message_payload(payload: dict) -> None:
+    recipient = payload.get("recipient")
+    if not isinstance(recipient, dict) or recipient.get("chat_id") in {None, ""}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OK payload")
+
+    sender = payload.get("sender")
+    if not isinstance(sender, dict) or sender.get("user_id") in {None, ""}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OK payload")
+
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OK payload")
+
+
 async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
     dialog_payload = DialogOut.model_validate(dialog).model_dump()
     admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
@@ -626,6 +640,7 @@ async def ok_webhook(
 
         event_type = str(payload.get("webhookType") or "")
         if event_type == "MESSAGE_CREATED":
+            _validate_ok_message_payload(payload)
             normalized = normalize_ok_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
             background_tasks.add_task(
                 _process_ok_in_background,
