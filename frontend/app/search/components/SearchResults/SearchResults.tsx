@@ -30,6 +30,7 @@ const CHANNEL_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.AVITO]: "Avito",
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
+  [ChannelType.VK]: "VK",
 };
 
 function getChannelLabel(channelType: ChannelType): string {
