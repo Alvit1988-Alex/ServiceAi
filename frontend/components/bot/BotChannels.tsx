@@ -149,6 +149,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
+  const [togglingChannelId, setTogglingChannelId] = useState<number | null>(null);
+  const [channelActivation, setChannelActivation] = useState<Record<number, boolean>>({});
   const [channelErrors, setChannelErrors] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
@@ -240,7 +242,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         const nextForms = Object.fromEntries(
           items.map((channel) => [channel.id, { config: buildConfigState(channel) }]),
         );
+        const nextActivation = Object.fromEntries(
+          items.map((channel) => [channel.id, channel.is_active]),
+        );
         setForms(nextForms);
+        setChannelActivation(nextActivation);
         setAllowedItemInputs({});
 
         if (accountResult.status === "fulfilled") {
@@ -345,12 +351,31 @@ export default function BotChannels({ botId }: BotChannelsProps) {
 
   const syncChannelState = (channelId: number, updatedChannel: BotChannel) => {
     setChannels((prev) => prev.map((item) => (item.id === channelId ? updatedChannel : item)));
+    setChannelActivation((prev) => ({ ...prev, [channelId]: updatedChannel.is_active }));
     setForms((prev) => ({
       ...prev,
       [channelId]: {
         config: buildConfigState(updatedChannel),
       },
     }));
+  };
+
+  const handleVkActivationToggle = async (channel: BotChannel, value: boolean) => {
+    const previousValue = channelActivation[channel.id] ?? channel.is_active;
+    setChannelActivation((prev) => ({ ...prev, [channel.id]: value }));
+    setTogglingChannelId(channel.id);
+    setChannelErrors((prev) => ({ ...prev, [channel.id]: "" }));
+
+    try {
+      const updatedChannel = await updateChannel(botId, channel.id, { is_active: value });
+      applyChannelUpdate(channel.id, updatedChannel);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось обновить канал";
+      setChannelErrors((prev) => ({ ...prev, [channel.id]: message }));
+      setChannelActivation((prev) => ({ ...prev, [channel.id]: previousValue }));
+    } finally {
+      setTogglingChannelId(null);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>, channelId: number) => {
@@ -1016,6 +1041,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         const instruction = CHANNEL_INSTRUCTIONS[channel.channel_type];
         const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
         const channelError = channelErrors[channel.id];
+        const isActive = channelActivation[channel.id] ?? channel.is_active;
+        const showVkToggle = channel.channel_type === ChannelType.VK;
         return (
           <form
             key={channel.id}
@@ -1027,6 +1054,20 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 <div className={styles.badge}>{channelLabel}</div>
                 <div className={styles.channelMeta}>ID: {channel.id}</div>
               </div>
+              {showVkToggle && (
+                <div className={styles.channelToggleWrapper}>
+                  <span className={styles.channelToggleLabel}>Активировать канал</span>
+                  <label className={styles.channelToggle}>
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      disabled={togglingChannelId === channel.id}
+                      onChange={(event) => handleVkActivationToggle(channel, event.target.checked)}
+                    />
+                    <span className={styles.channelToggleSlider} />
+                  </label>
+                </div>
+              )}
             </div>
 
             {channel.channel_type === ChannelType.WEBCHAT
