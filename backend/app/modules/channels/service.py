@@ -26,6 +26,8 @@ class ChannelsService:
 
     async def create(self, session: AsyncSession, bot_id: int, obj_in: BotChannelCreate) -> BotChannel:
         prepared_config = self._prepare_config(obj_in.channel_type, obj_in.config)
+        if obj_in.channel_type == ChannelType.VK:
+            prepared_config = self._apply_vk_webhook_status(prepared_config)
         self._validate_channel_activation(
             channel_type=obj_in.channel_type,
             is_active=obj_in.is_active,
@@ -55,7 +57,6 @@ class ChannelsService:
         )
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
-        await self._persist_vk_webhook_status(session=session, db_obj=db_obj, decrypted=decrypted)
 
         return decrypted
 
@@ -134,6 +135,11 @@ class ChannelsService:
             is_active=db_obj.is_active,
             config=decrypt_config(db_obj.config),
         )
+
+        if db_obj.channel_type == ChannelType.VK:
+            vk_config = self._apply_vk_webhook_status(decrypt_config(db_obj.config))
+            db_obj.config = encrypt_config(vk_config)
+
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)
@@ -146,7 +152,6 @@ class ChannelsService:
         )
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
-        await self._persist_vk_webhook_status(session=session, db_obj=db_obj, decrypted=decrypted)
 
         return decrypted
 
@@ -206,6 +211,17 @@ class ChannelsService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=error or "VK channel config is incomplete",
             )
+
+    @classmethod
+    def _apply_vk_webhook_status(cls, config: dict[str, Any] | None) -> dict[str, Any]:
+        status_value, error = cls._vk_config_status(config)
+        updated_config = dict(config or {})
+        updated_config["webhook_status"] = status_value
+        if error:
+            updated_config["webhook_error"] = error
+        else:
+            updated_config.pop("webhook_error", None)
+        return updated_config
 
     @staticmethod
     async def _validate_telegram_token(token: str) -> str | None:
@@ -340,31 +356,6 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         decrypted.config = updated_config
-
-    async def _persist_vk_webhook_status(
-        self,
-        *,
-        session: AsyncSession,
-        db_obj: BotChannel,
-        decrypted: BotChannel,
-    ) -> None:
-        if decrypted.channel_type != ChannelType.VK:
-            return
-
-        status_value, error = self._vk_config_status(decrypted.config)
-        updated_config = dict(decrypted.config or {})
-        updated_config["webhook_status"] = status_value
-        if error:
-            updated_config["webhook_error"] = error
-        else:
-            updated_config.pop("webhook_error", None)
-
-        decrypted.config = updated_config
-        db_obj.config = encrypt_config(updated_config)
-        session.add(db_obj)
-        await session.commit()
-        decrypted.config = updated_config
-
 
 def _get_public_api_base_url() -> str | None:
     base_url = settings.public_base_url
