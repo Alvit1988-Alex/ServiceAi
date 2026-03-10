@@ -62,6 +62,7 @@ export enum ChannelType {
   MAX = "max",
   WEBCHAT = "webchat",
   VK = "vk",
+  OK = "ok",
 }
 
 export const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
@@ -70,6 +71,7 @@ export const VISIBLE_CHANNEL_TYPES: ChannelType[] = [
   ChannelType.AVITO,
   ChannelType.MAX,
   ChannelType.VK,
+  ChannelType.OK,
 ];
 
 export type WebhookStatus = "ok" | "pending" | "error";

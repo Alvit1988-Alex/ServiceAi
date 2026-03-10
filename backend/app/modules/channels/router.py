@@ -26,6 +26,7 @@ from app.modules.channels.telegram_handler import normalize_telegram_update
 from app.modules.channels.avito_handler import normalize_avito_update
 from app.modules.channels.max_handler import normalize_max_webhook
 from app.modules.channels.vk_handler import normalize_vk_callback
+from app.modules.channels.ok_handler import normalize_ok_webhook
 from app.modules.channels.webchat_handler import normalize_webchat_message
 from app.modules.channels.whatsapp_360_handler import normalize_whatsapp_360_webhook
 from app.modules.channels.whatsapp_custom_handler import normalize_whatsapp_custom_webhook
@@ -97,6 +98,18 @@ async def _get_vk_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChan
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
 
+
+async def _get_ok_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
+    stmt = (
+        select(BotChannel)
+        .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.OK)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+    )
+    result = await session.execute(stmt)
+    channel = result.scalars().first()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    return channel
 
 
 async def _log_incoming_event(
@@ -210,6 +223,44 @@ async def _process_vk_in_background(
             diagnostics_service=diagnostics_service,
             bot_id=normalized.bot_id,
             channel_type=ChannelType.VK,
+            status="fail" if processing_error else "ok",
+            latency_ms=latency_ms,
+            error_message=str(processing_error) if processing_error else None,
+            operation="webhook_process",
+        )
+    except Exception:
+        logger.exception("Diagnostics logging failed")
+
+
+async def _process_ok_in_background(
+    *,
+    normalized: NormalizedIncomingMessage,
+    dialogs_service: DialogsService,
+    ai_service: AIService,
+) -> None:
+    start = time.perf_counter()
+    processing_error: Exception | None = None
+    async with async_session_factory() as bg_session:
+        try:
+            await _process_and_broadcast(
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+                session=bg_session,
+            )
+            await bg_session.commit()
+        except Exception as exc:
+            await bg_session.rollback()
+            processing_error = exc
+            logger.exception("OK webhook background processing failed")
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    try:
+        diagnostics_service = DiagnosticsService()
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=normalized.bot_id,
+            channel_type=ChannelType.OK,
             status="fail" if processing_error else "ok",
             latency_ms=latency_ms,
             error_message=str(processing_error) if processing_error else None,
@@ -547,6 +598,92 @@ async def vk_webhook_alias(
             channel_id=channel.id,
             payload=payload,
             request=request,
+            background_tasks=background_tasks,
+            session=session,
+            channels_service=channels_service,
+            dialogs_service=dialogs_service,
+            ai_service=ai_service,
+            diagnostics_service=diagnostics_service,
+        )
+
+@router.post("/webhooks/ok/{channel_id}", response_class=PlainTextResponse)
+async def ok_webhook(
+    bot_id: int,
+    channel_id: int,
+    background_tasks: BackgroundTasks,
+    payload: dict = Body(...),
+    session: AsyncSession = Depends(get_db_session),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
+) -> PlainTextResponse:
+    start = time.perf_counter()
+    try:
+        channel = await channels_service.get(session=session, bot_id=bot_id, channel_id=channel_id)
+        _ensure_channel_available(channel)
+        channels_service.decrypt(channel)
+
+        event_type = str(payload.get("webhookType") or "")
+        if event_type == "MESSAGE_CREATED":
+            normalized = normalize_ok_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
+            background_tasks.add_task(
+                _process_ok_in_background,
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+            )
+    except HTTPException as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.OK,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=type(exc).__name__,
+        )
+        raise
+    except Exception:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.OK,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message="Exception",
+        )
+        logger.exception("OK webhook request processing failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OK webhook processing failed")
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    await _log_incoming_event(
+        diagnostics_service=diagnostics_service,
+        bot_id=bot_id,
+        channel_type=ChannelType.OK,
+        status="ok",
+        latency_ms=latency_ms,
+    )
+    return PlainTextResponse(content="ok")
+
+
+@webhooks_router.post("/webhooks/ok/{bot_id}", response_class=PlainTextResponse)
+async def ok_webhook_alias(
+    bot_id: int,
+    background_tasks: BackgroundTasks,
+    payload: dict = Body(...),
+    channels_service: ChannelsService = Depends(ChannelsService),
+    dialogs_service: DialogsService = Depends(DialogsService),
+    ai_service: AIService = Depends(get_ai_service),
+    diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
+) -> PlainTextResponse:
+    async with async_session_factory() as session:
+        channel = await _get_ok_channel_for_bot(session=session, bot_id=bot_id)
+        return await ok_webhook(
+            bot_id=bot_id,
+            channel_id=channel.id,
+            payload=payload,
             background_tasks=background_tasks,
             session=session,
             channels_service=channels_service,

@@ -71,6 +71,7 @@ class ChannelsService:
             ChannelType.AVITO,
             ChannelType.MAX,
             ChannelType.VK,
+            ChannelType.OK,
         ]
         channels: list[BotChannel] = []
 
@@ -80,7 +81,7 @@ class ChannelsService:
                 bot_id=bot_id,
                 channel_type=channel_type,
                 config=encrypt_config(prepared_config),
-                is_active=False if channel_type == ChannelType.VK else True,
+                is_active=False if channel_type in {ChannelType.VK, ChannelType.OK} else True,
             )
             session.add(channel)
             channels.append(channel)
@@ -205,14 +206,21 @@ class ChannelsService:
         return "ok", None
 
     def _validate_channel_activation(self, *, channel_type: ChannelType, is_active: bool, config: dict[str, Any]) -> None:
-        if channel_type != ChannelType.VK or not is_active:
+        if not is_active:
             return
 
-        status_value, error = self._vk_config_status(config)
-        if status_value != "ok":
+        if channel_type == ChannelType.VK:
+            status_value, error = self._vk_config_status(config)
+            if status_value != "ok":
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=error or "VK channel config is incomplete",
+                )
+
+        if channel_type == ChannelType.OK and not (config or {}).get("access_token"):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=error or "VK channel config is incomplete",
+                detail="Missing required OK config: access_token",
             )
 
     @classmethod

@@ -31,6 +31,7 @@ const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.MAX]: "Max",
   [ChannelType.WEBCHAT]: "Webchat",
   [ChannelType.VK]: "VK",
+  [ChannelType.OK]: "OK",
 };
 
 const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
@@ -75,6 +76,9 @@ const CHANNEL_FIELDS: Partial<Record<ChannelType, ChannelField[]>> = {
     { key: "access_token", label: "Access token" },
     { key: "secret", label: "Secret key" },
     { key: "confirmation_token", label: "Confirmation code" },
+  ],
+  [ChannelType.OK]: [
+    { key: "access_token", label: "Access token" },
   ],
 };
 
@@ -145,6 +149,7 @@ function prepareConfig(config: ChannelConfigState): Record<string, unknown> {
 
 export default function BotChannels({ botId }: BotChannelsProps) {
   const vkWebhookUrl = `https://dostup.tgkod.ru/api/webhooks/vk/${botId}`;
+  const okWebhookUrl = `https://dostup.tgkod.ru/api/webhooks/ok/${botId}`;
   const [channels, setChannels] = useState<BotChannel[]>([]);
   const [forms, setForms] = useState<Record<number, ChannelFormState>>({});
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
@@ -1069,6 +1074,25 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                           type="button"
                           className={styles.vkWebhookCopyButton}
                           onClick={() => void navigator.clipboard.writeText(vkWebhookUrl)}
+                          aria-label="Скопировать webhook URL"
+                          title="Скопировать"
+                        >
+                          ⧉
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {channel.channel_type === ChannelType.OK && (
+                    <div className={styles.vkWebhookBlock}>
+                      <div className={styles.vkWebhookTitle}>
+                        Webhook URL для Odnoklassniki
+                      </div>
+                      <div className={styles.vkWebhookRow}>
+                        <input className={styles.vkWebhookInput} value={okWebhookUrl} readOnly />
+                        <button
+                          type="button"
+                          className={styles.vkWebhookCopyButton}
+                          onClick={() => void navigator.clipboard.writeText(okWebhookUrl)}
                           aria-label="Скопировать webhook URL"
                           title="Скопировать"
                         >
