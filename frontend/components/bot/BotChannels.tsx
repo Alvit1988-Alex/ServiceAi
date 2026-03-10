@@ -149,7 +149,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [allowedItemInputs, setAllowedItemInputs] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingChannelId, setSavingChannelId] = useState<number | null>(null);
-  const [togglingChannelId, setTogglingChannelId] = useState<number | null>(null);
   const [channelActivation, setChannelActivation] = useState<Record<number, boolean>>({});
   const [channelErrors, setChannelErrors] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -360,24 +359,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     }));
   };
 
-  const handleVkActivationToggle = async (channel: BotChannel, value: boolean) => {
-    const previousValue = channelActivation[channel.id] ?? channel.is_active;
-    setChannelActivation((prev) => ({ ...prev, [channel.id]: value }));
-    setTogglingChannelId(channel.id);
-    setChannelErrors((prev) => ({ ...prev, [channel.id]: "" }));
-
-    try {
-      const updatedChannel = await updateChannel(botId, channel.id, { is_active: value });
-      applyChannelUpdate(channel.id, updatedChannel);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось обновить канал";
-      setChannelErrors((prev) => ({ ...prev, [channel.id]: message }));
-      setChannelActivation((prev) => ({ ...prev, [channel.id]: previousValue }));
-    } finally {
-      setTogglingChannelId(null);
-    }
-  };
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>, channelId: number) => {
     event.preventDefault();
     const form = forms[channelId];
@@ -406,7 +387,8 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 webchat_button_color: wcButtonColor,
                 webchat_border_width: wcBorderWidth,
               }
-            : prepareConfig(form.config),
+            : preparedConfig,
+        is_active: channelActivation[channelId],
       };
       const updatedChannel = await updateChannel(botId, channelId, payload);
       applyChannelUpdate(channelId, updatedChannel);
@@ -1042,7 +1024,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
         const channelError = channelErrors[channel.id];
         const isActive = channelActivation[channel.id] ?? channel.is_active;
-        const showVkToggle = channel.channel_type === ChannelType.VK;
         return (
           <form
             key={channel.id}
@@ -1054,20 +1035,22 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 <div className={styles.badge}>{channelLabel}</div>
                 <div className={styles.channelMeta}>ID: {channel.id}</div>
               </div>
-              {showVkToggle && (
-                <div className={styles.channelToggleWrapper}>
-                  <span className={styles.channelToggleLabel}>Активировать канал</span>
-                  <label className={styles.channelToggle}>
-                    <input
-                      type="checkbox"
-                      checked={isActive}
-                      disabled={togglingChannelId === channel.id}
-                      onChange={(event) => handleVkActivationToggle(channel, event.target.checked)}
-                    />
-                    <span className={styles.channelToggleSlider} />
-                  </label>
-                </div>
-              )}
+              <div className={styles.channelToggleWrapper}>
+                <span className={styles.channelToggleLabel}>Активировать канал</span>
+                <label className={styles.channelToggle}>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(event) =>
+                      setChannelActivation((prev) => ({
+                        ...prev,
+                        [channel.id]: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span className={styles.channelToggleSlider} />
+                </label>
+              </div>
             </div>
 
             {channel.channel_type === ChannelType.WEBCHAT
