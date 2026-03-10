@@ -1,4 +1,5 @@
 """Channels router."""
+import hmac
 import json
 import logging
 import time
@@ -49,8 +50,14 @@ def _ensure_channel_available(channel) -> None:
 
 
 def _validate_secret(expected: str | None, provided: str | None, detail: str) -> None:
-    if expected and expected != provided:
+    if expected and (provided is None or not hmac.compare_digest(str(expected), str(provided))):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def _validate_required_secret(expected: str | None, provided: str | None, detail: str) -> None:
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="VK webhook secret not configured")
+    _validate_secret(expected, provided, detail)
 
 
 async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
@@ -172,6 +179,54 @@ async def _process_telegram_in_background(
         )
     except Exception:
         logger.exception("Diagnostics logging failed")
+
+
+async def _process_vk_in_background(
+    *,
+    normalized: NormalizedIncomingMessage,
+    dialogs_service: DialogsService,
+    ai_service: AIService,
+) -> None:
+    start = time.perf_counter()
+    processing_error: Exception | None = None
+    async with async_session_factory() as bg_session:
+        try:
+            await _process_and_broadcast(
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+                session=bg_session,
+            )
+            await bg_session.commit()
+        except Exception as exc:
+            await bg_session.rollback()
+            processing_error = exc
+            logger.exception("VK webhook background processing failed")
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    try:
+        diagnostics_service = DiagnosticsService()
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=normalized.bot_id,
+            channel_type=ChannelType.VK,
+            status="fail" if processing_error else "ok",
+            latency_ms=latency_ms,
+            error_message=str(processing_error) if processing_error else None,
+            operation="webhook_process",
+        )
+    except Exception:
+        logger.exception("Diagnostics logging failed")
+
+
+def _validate_vk_message_payload(payload: dict) -> None:
+    event_object = payload.get("object") or {}
+    message = event_object.get("message") or {}
+    if not isinstance(message, dict):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid VK payload")
+
+    if message.get("peer_id") in {None, ""} or message.get("from_id") in {None, ""}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid VK payload")
 
 
 async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
@@ -391,6 +446,7 @@ async def vk_webhook(
     bot_id: int,
     channel_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     payload: dict = Body(...),
     session: AsyncSession = Depends(get_db_session),
     channels_service: ChannelsService = Depends(ChannelsService),
@@ -406,11 +462,16 @@ async def vk_webhook(
 
         expected_secret = channel.config.get("secret")
         provided_secret = payload.get("secret") or _extract_provided_secret(request=request, payload=payload)
-        _validate_secret(expected_secret, provided_secret, "Invalid VK webhook secret")
+        _validate_required_secret(expected_secret, provided_secret, "Invalid VK webhook secret")
 
         event_type = str(payload.get("type") or "")
         if event_type == "confirmation":
             confirmation = channel.config.get("confirmation_token") or channel.config.get("confirmation") or ""
+            if not confirmation:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="VK confirmation token not configured",
+                )
             latency_ms = int((time.perf_counter() - start) * 1000)
             await _log_incoming_event(
                 diagnostics_service=diagnostics_service,
@@ -422,13 +483,25 @@ async def vk_webhook(
             return PlainTextResponse(content=str(confirmation))
 
         if event_type == "message_new":
+            _validate_vk_message_payload(payload)
             normalized = normalize_vk_callback(bot_id=bot_id, channel_id=channel_id, payload=payload)
-            await _process_and_broadcast(
+            background_tasks.add_task(
+                _process_vk_in_background,
                 normalized=normalized,
                 dialogs_service=dialogs_service,
                 ai_service=ai_service,
-                session=session,
             )
+    except HTTPException as exc:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await _log_incoming_event(
+            diagnostics_service=diagnostics_service,
+            bot_id=bot_id,
+            channel_type=ChannelType.VK,
+            status="fail",
+            latency_ms=latency_ms,
+            error_message=type(exc).__name__,
+        )
+        raise
     except Exception as exc:
         latency_ms = int((time.perf_counter() - start) * 1000)
         await _log_incoming_event(
@@ -439,7 +512,8 @@ async def vk_webhook(
             latency_ms=latency_ms,
             error_message=type(exc).__name__,
         )
-        return PlainTextResponse(content="ok")
+        logger.exception("VK webhook request processing failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="VK webhook processing failed")
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     await _log_incoming_event(
@@ -456,6 +530,7 @@ async def vk_webhook(
 async def vk_webhook_alias(
     bot_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     payload: dict = Body(...),
     channels_service: ChannelsService = Depends(ChannelsService),
     dialogs_service: DialogsService = Depends(DialogsService),
@@ -469,6 +544,7 @@ async def vk_webhook_alias(
             channel_id=channel.id,
             payload=payload,
             request=request,
+            background_tasks=background_tasks,
             session=session,
             channels_service=channels_service,
             dialogs_service=dialogs_service,
