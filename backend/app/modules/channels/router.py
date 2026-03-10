@@ -641,6 +641,19 @@ async def ok_webhook(
         event_type = str(payload.get("webhookType") or "")
         if event_type == "MESSAGE_CREATED":
             _validate_ok_message_payload(payload)
+            message = payload.get("message") or {}
+            text = message.get("text")
+            if not isinstance(text, str) or not text.strip():
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                await _log_incoming_event(
+                    diagnostics_service=diagnostics_service,
+                    bot_id=bot_id,
+                    channel_type=ChannelType.OK,
+                    status="ok",
+                    latency_ms=latency_ms,
+                )
+                return PlainTextResponse(content="ok")
+
             normalized = normalize_ok_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
             background_tasks.add_task(
                 _process_ok_in_background,
