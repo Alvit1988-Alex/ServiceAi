@@ -220,8 +220,11 @@ async def _process_vk_in_background(
 
 
 def _validate_vk_message_payload(payload: dict) -> None:
-    event_object = payload.get("object") or {}
-    message = event_object.get("message") or {}
+    event_object = payload.get("object")
+    if not isinstance(event_object, dict):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid VK payload")
+
+    message = event_object.get("message")
     if not isinstance(message, dict):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid VK payload")
 
