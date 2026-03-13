@@ -383,7 +383,11 @@ class ChannelsService:
         if not access_token:
             return
 
-        webhook_url = f"{settings.PUBLIC_BASE_URL}/api/webhooks/ok/{channel.id}"
+        base_url = _get_public_api_base_url()
+        if not base_url:
+            return
+
+        webhook_url = f"{base_url}/api/webhooks/ok/{channel.id}"
 
         url = f"https://api.ok.ru/graph/me/subscribe?access_token={access_token}"
 
