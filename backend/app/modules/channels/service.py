@@ -58,6 +58,9 @@ class ChannelsService:
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
 
+        if decrypted.channel_type == ChannelType.OK:
+            await self._subscribe_ok_webhook(decrypted)
+
         return decrypted
 
     async def create_default_channels(
@@ -153,6 +156,9 @@ class ChannelsService:
         )
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
+
+        if decrypted.channel_type == ChannelType.OK and decrypted.is_active:
+            await self._subscribe_ok_webhook(decrypted)
 
         return decrypted
 
@@ -367,6 +373,33 @@ class ChannelsService:
         session.add(db_obj)
         await session.commit()
         decrypted.config = updated_config
+
+    async def _subscribe_ok_webhook(self, channel: BotChannel) -> None:
+        config = channel.config
+        if isinstance(config, bytes):
+            config = decrypt_config(config)
+
+        access_token = config.get("access_token")
+        if not access_token:
+            return
+
+        webhook_url = f"{settings.PUBLIC_BASE_URL}/api/webhooks/ok/{channel.id}"
+
+        url = f"https://api.ok.ru/graph/me/subscribe?access_token={access_token}"
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    url,
+                    json={"url": webhook_url},
+                    headers={"Content-Type": "application/json;charset=utf-8"},
+                )
+
+            if resp.status_code != 200:
+                logger.warning("OK webhook subscribe failed: %s", resp.text)
+
+        except Exception:
+            logger.exception("Failed to subscribe OK webhook")
 
 def _get_public_api_base_url() -> str | None:
     base_url = settings.public_base_url
