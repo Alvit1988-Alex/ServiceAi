@@ -23,6 +23,7 @@ class UsersService:
             password_hash=hash_password(obj_in.password),
             full_name=obj_in.full_name,
             telegram_id=obj_in.telegram_id,
+            yandex_id=obj_in.yandex_id,
             username=obj_in.username,
             first_name=obj_in.first_name,
             last_name=obj_in.last_name,

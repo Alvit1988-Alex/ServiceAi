@@ -104,6 +104,23 @@ class Settings(BaseSettings):
         description="Publicly accessible frontend URL used only for post-OAuth redirects (e.g. /integrations)",
     )
 
+    yandex_oauth_client_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("YANDEX_OAUTH_CLIENT_ID", "yandex_oauth_client_id"),
+    )
+    yandex_oauth_client_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("YANDEX_OAUTH_CLIENT_SECRET", "yandex_oauth_client_secret"),
+    )
+    yandex_oauth_redirect_uri: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("YANDEX_OAUTH_REDIRECT_URI", "yandex_oauth_redirect_uri"),
+    )
+    yandex_oauth_state_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("YANDEX_OAUTH_STATE_SECRET", "yandex_oauth_state_secret"),
+    )
+
     # Internal security
     channel_config_secret_key: str = Field(
         ...,

@@ -35,6 +35,14 @@ class LoginResponse(Token):
     pass
 
 
+class YandexAuthStartResponse(BaseModel):
+    auth_url: str
+
+
+class YandexCompleteRequest(BaseModel):
+    completion_token: str
+
+
 class PendingLoginResponse(BaseModel):
     token: str
     status: PendingLoginStatus
