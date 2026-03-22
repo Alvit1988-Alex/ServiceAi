@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { startYandexLogin } from "../api/authApi";
@@ -45,7 +45,7 @@ function resolveOauthErrorMessage(message: string | null): string | null {
   return OAUTH_ERROR_MESSAGES[message] ?? OAUTH_DETAIL_MESSAGES[message] ?? message;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -138,5 +138,29 @@ export default function LoginPage() {
         </div>
       </div>
     </LayoutShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <LayoutShell title="Вход" description="Авторизация в ServiceAI">
+          <div className={styles.screen}>
+            <div className={styles.panel}>
+              <div className={styles.loginGrid}>
+                <div className={styles.buttonCell}>
+                  <Button type="button" className={styles.btn} disabled>
+                    Войти через Яндекс
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </LayoutShell>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }
