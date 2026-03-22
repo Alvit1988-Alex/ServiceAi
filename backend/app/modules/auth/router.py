@@ -9,6 +9,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,10 @@ from app.modules.auth.schemas import (
     Token,
     TelegramConfirmRequest,
     TelegramWebhookResponse,
+    YandexAuthStartResponse,
+    YandexCompleteRequest,
 )
+from app.modules.auth.yandex_oauth import YandexOAuthError, YandexOAuthService
 from app.security import hashing
 from app.security.auth import get_current_user
 from app.security.jwt import (
@@ -100,6 +104,86 @@ def _ensure_password_enabled() -> None:
             status_code=status.HTTP_410_GONE,
             detail="Password login is disabled",
         )
+
+
+def _map_yandex_error_to_http(error_code: str) -> HTTPException:
+    status_code = status.HTTP_400_BAD_REQUEST
+    detail = "Yandex login failed"
+    if error_code == "oauth_unavailable":
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        detail = "Yandex OAuth is not configured"
+    elif error_code in {"provider_unavailable", "token_exchange_failed", "profile_fetch_failed"}:
+        status_code = status.HTTP_502_BAD_GATEWAY
+        detail = "Yandex OAuth provider error"
+    elif error_code in {"expired_state", "completion_token_expired", "completion_token_consumed"}:
+        status_code = status.HTTP_410_GONE
+        detail = "Yandex login session expired"
+    elif error_code == "email_required":
+        detail = "Yandex account email is required"
+    elif error_code == "account_conflict":
+        detail = "Yandex account is already linked to another user"
+    elif error_code == "user_unavailable":
+        status_code = status.HTTP_401_UNAUTHORIZED
+        detail = "User is unavailable"
+    elif error_code not in {"invalid_state", "invalid_completion_token"}:
+        detail = error_code
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+@router.get("/yandex/start", response_model=YandexAuthStartResponse)
+async def start_yandex_login(
+    session: AsyncSession = Depends(get_db_session),
+) -> YandexAuthStartResponse:
+    service = YandexOAuthService()
+    try:
+        auth_url = await service.create_login_session(session=session)
+    except YandexOAuthError as exc:
+        raise _map_yandex_error_to_http(exc.code) from exc
+    return YandexAuthStartResponse(auth_url=auth_url)
+
+
+@router.get("/yandex/callback")
+async def yandex_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    service = YandexOAuthService()
+
+    try:
+        service.ensure_configured()
+    except YandexOAuthError as exc:
+        raise _map_yandex_error_to_http(exc.code) from exc
+
+    if error:
+        return RedirectResponse(service.build_error_redirect_url("access_denied"), status_code=status.HTTP_302_FOUND)
+    if not code or not state:
+        return RedirectResponse(service.build_error_redirect_url("invalid_request"), status_code=status.HTTP_302_FOUND)
+
+    try:
+        completion_token = await service.handle_callback(session=session, code=code, state=state)
+        redirect_url = service.build_success_redirect_url(completion_token)
+    except YandexOAuthError as exc:
+        redirect_url = service.build_error_redirect_url(exc.code)
+
+    return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/yandex/complete", response_model=Token)
+async def complete_yandex_login(
+    payload: YandexCompleteRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> Token:
+    service = YandexOAuthService()
+    try:
+        user = await service.consume_completion_token(session=session, completion_token=payload.completion_token)
+    except YandexOAuthError as exc:
+        raise _map_yandex_error_to_http(exc.code) from exc
+
+    access_token = create_access_token(subject=user.id)
+    refresh_token = create_refresh_token(subject=user.id)
+    return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -595,7 +679,7 @@ async def telegram_webhook(
     )
 
     try:
-        pending = await _confirm_pending(session=session, payload=confirm_payload)
+        await _confirm_pending(session=session, payload=confirm_payload)
     except HTTPException:
         expired_text = (
             "Ссылка для входа устарела. Вернитесь на сайт и нажмите “Войти через Telegram” ещё раз."

@@ -1,169 +1,47 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { startYandexLogin } from "../api/authApi";
 import { Button } from "../components/Button/Button";
 import LayoutShell from "../components/layout/LayoutShell";
 import styles from "./login.module.css";
 import { useAuthStore } from "@/store/auth.store";
-import QRCode from "qrcode";
 
-function buildTelegramLinks(deeplink: string | null) {
-  if (!deeplink) {
-    return { webLink: null, appLink: null };
-  }
-
-  try {
-    const url = new URL(deeplink);
-    const normalizedHost = url.hostname === "telegram.me" ? "t.me" : url.hostname;
-    let botUsername = "";
-    let startParam: string | null = null;
-
-    if (normalizedHost === "web.telegram.org") {
-      const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-
-      if (rawHash.startsWith("?")) {
-        const hashParams = new URLSearchParams(rawHash.slice(1));
-        const tgaddr = hashParams.get("tgaddr");
-
-        if (tgaddr) {
-          try {
-            let tgUrl: URL;
-            try {
-              tgUrl = new URL(tgaddr);
-            } catch {
-              tgUrl = new URL(decodeURIComponent(tgaddr));
-            }
-            const domain = tgUrl.searchParams.get("domain");
-            const start = tgUrl.searchParams.get("start");
-
-            if (domain && start) {
-              botUsername = domain;
-              startParam = start;
-            }
-          } catch {
-            // Ничего не делать.
-          }
-        }
-      }
-
-      if (!botUsername || !startParam) {
-        const [hashPath, hashQueryPart = ""] = rawHash.split("?");
-        const normalizedHashPath = hashPath.replace(/^\/+/u, "");
-
-        if (normalizedHashPath.startsWith("@")) {
-          botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
-        }
-
-        startParam = new URLSearchParams(hashQueryPart).get("start");
-      }
-    } else {
-      botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
-      startParam = url.searchParams.get("start");
-    }
-
-    if (!botUsername || !startParam) {
-      return { webLink: deeplink, appLink: null };
-    }
-
-    const appLink = `tg://resolve?domain=${botUsername}&start=${startParam}`;
-    const normalizedWebLink = `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(appLink)}`;
-
-    return { webLink: normalizedWebLink, appLink };
-  } catch {
-    return { webLink: deeplink, appLink: null };
-  }
-}
-
-const hasValidBotStart = (link: string | null) => {
-  if (!link) {
-    return false;
-  }
-
-  try {
-    const url = new URL(link);
-
-    if (url.protocol === "tg:") {
-      const domain = url.searchParams.get("domain");
-      const start = url.searchParams.get("start");
-
-      return Boolean(domain && start);
-    }
-
-    if (url.hostname === "web.telegram.org") {
-      const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-
-      if (rawHash.startsWith("?")) {
-        const hashParams = new URLSearchParams(rawHash.slice(1));
-        const tgaddr = hashParams.get("tgaddr");
-
-        if (tgaddr) {
-          try {
-            let tgUrl: URL;
-            try {
-              tgUrl = new URL(tgaddr);
-            } catch {
-              tgUrl = new URL(decodeURIComponent(tgaddr));
-            }
-            const domain = tgUrl.searchParams.get("domain");
-            const start = tgUrl.searchParams.get("start");
-
-            return Boolean(domain && start);
-          } catch {
-            return false;
-          }
-        }
-
-        return false;
-      }
-
-      const [hashPath, hashQueryPart = ""] = rawHash.split("?");
-      const normalizedHashPath = hashPath.replace(/^\/+/u, "");
-
-      if (!normalizedHashPath.startsWith("@")) {
-        return false;
-      }
-
-      const botUsername = normalizedHashPath.slice(1).split("/")[0] ?? "";
-      const startParam = new URLSearchParams(hashQueryPart).get("start");
-
-      return Boolean(botUsername && startParam);
-    }
-
-    const botUsername = url.pathname.replace(/^\/+/u, "").split("/")[0] ?? "";
-    const startParam = url.searchParams.get("start");
-
-    return Boolean(botUsername && startParam);
-  } catch {
-    return false;
-  }
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Вход через Яндекс был отменен.",
+  account_conflict: "Этот Яндекс-аккаунт уже привязан к другому пользователю.",
+  completion_token_consumed: "Ссылка для завершения входа уже использована.",
+  completion_token_expired: "Время завершения входа истекло. Попробуйте снова.",
+  email_required: "Яндекс не передал email. Используйте аккаунт с подтвержденной почтой.",
+  expired_state: "Время ожидания входа истекло. Попробуйте снова.",
+  invalid_completion_token: "Не удалось завершить вход. Попробуйте снова.",
+  invalid_request: "Не удалось обработать ответ Яндекса. Попробуйте снова.",
+  invalid_state: "Не удалось подтвердить запрос входа. Попробуйте снова.",
+  oauth_unavailable: "Вход через Яндекс сейчас недоступен.",
+  profile_fetch_failed: "Не удалось получить профиль Яндекса. Попробуйте снова.",
+  provider_unavailable: "Сервис Яндекса временно недоступен. Попробуйте позже.",
+  token_exchange_failed: "Не удалось подтвердить вход через Яндекс. Попробуйте снова.",
+  user_unavailable: "Пользователь недоступен для входа.",
 };
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
-    startTelegramLogin,
-    pendingDeeplink,
-    pendingExpiresAt,
+    completeYandexLogin,
     loading,
     error,
     isAuthenticated,
     isInitialized,
     initFromStorage,
-    stopTelegramLoginPolling,
   } = useAuthStore();
 
   const [localError, setLocalError] = useState<string | null>(null);
-  const [qrImage, setQrImage] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-
-  const autoEnsureRef = useRef(false);
-
-  const { webLink, appLink } = useMemo(() => buildTelegramLinks(pendingDeeplink), [pendingDeeplink]);
-  const qrLink = appLink;
-  const isTelegramWebLinkReady = Boolean(webLink && hasValidBotStart(webLink));
-  const isTelegramAppLinkReady = Boolean(appLink && hasValidBotStart(appLink));
+  const processedTokenRef = useRef<string | null>(null);
+  const oauthToken = searchParams.get("oauth_token");
+  const oauthError = searchParams.get("oauth_error");
 
   useEffect(() => {
     void initFromStorage();
@@ -176,208 +54,64 @@ export default function LoginPage() {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 768px)");
-    const updateIsMobile = (event?: MediaQueryListEvent) => {
-      setIsMobile(event?.matches ?? mediaQuery.matches);
-    };
-
-    updateIsMobile();
-    mediaQuery.addEventListener("change", updateIsMobile);
-
-    return () => {
-      mediaQuery.removeEventListener("change", updateIsMobile);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const generateQr = async () => {
-      if (isMobile) {
-        setQrImage(null);
-        return;
-      }
-
-      if (!qrLink) {
-        setQrImage(null);
-        return;
-      }
-
-      try {
-        const url = await QRCode.toDataURL(qrLink);
-        if (cancelled) {
-          return;
-        }
-        setQrImage(url);
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setQrImage(null);
-      }
-    };
-
-    void generateQr();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMobile, qrLink]);
-
-  useEffect(() => {
-    return () => {
-      stopTelegramLoginPolling();
-    };
-  }, [stopTelegramLoginPolling]);
-
-  const isPendingValid =
-    pendingDeeplink && pendingExpiresAt && new Date(pendingExpiresAt) > new Date();
-
-  const ensurePendingLogin = useCallback(async () => {
-    setLocalError(null);
-    try {
-      if (isPendingValid) {
-        return pendingDeeplink;
-      }
-      const pending = await startTelegramLogin();
-      return pending.telegram_deeplink;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось подготовить вход";
-      setLocalError(message);
-      return null;
-    }
-  }, [isPendingValid, pendingDeeplink, startTelegramLogin]);
-
-  useEffect(() => {
-    if (!isInitialized || loading) {
+    if (!oauthError) {
       return;
     }
 
-    if (isPendingValid) {
+    setLocalError(OAUTH_ERROR_MESSAGES[oauthError] ?? "Не удалось выполнить вход через Яндекс.");
+    router.replace("/login");
+  }, [oauthError, router]);
+
+  useEffect(() => {
+    if (!isInitialized || !oauthToken || processedTokenRef.current === oauthToken) {
       return;
     }
 
-    if (autoEnsureRef.current) {
-      return;
-    }
-
-    autoEnsureRef.current = true;
-    void ensurePendingLogin().finally(() => {
-      autoEnsureRef.current = false;
-    });
-  }, [ensurePendingLogin, isInitialized, isPendingValid, loading]);
-
-  const handleTelegramLoginClick = useCallback(() => {
+    processedTokenRef.current = oauthToken;
     setLocalError(null);
 
     void (async () => {
       try {
-        if (isMobile) {
-          if (isTelegramAppLinkReady && appLink) {
-            window.location.href = appLink;
-            return;
-          }
-
-          const deeplink = await ensurePendingLogin();
-          if (!deeplink) {
-            return;
-          }
-
-          const resolvedLinks = buildTelegramLinks(deeplink);
-          if (!resolvedLinks.appLink) {
-            setLocalError("Не удалось открыть приложение Telegram");
-            return;
-          }
-
-          window.location.href = resolvedLinks.appLink;
-          return;
-        }
-
-        if (isTelegramWebLinkReady && webLink) {
-          const openedWindow = window.open(webLink, "_blank", "noopener,noreferrer");
-          if (!openedWindow) {
-            setLocalError("Разрешите всплывающие окна для входа через Telegram");
-          }
-          return;
-        }
-
-        const deeplink = await ensurePendingLogin();
-        if (!deeplink) {
-          return;
-        }
-
-        const resolvedLinks = buildTelegramLinks(deeplink);
-        if (!resolvedLinks.webLink) {
-          return;
-        }
-
-        const openedWindow = window.open(resolvedLinks.webLink, "_blank", "noopener,noreferrer");
-        if (!openedWindow) {
-          setLocalError("Разрешите всплывающие окна для входа через Telegram");
-        }
-      } catch {
-        // Ничего не делать.
-        // localError уже может быть выставлен внутри ensurePendingLogin().
+        await completeYandexLogin(oauthToken);
+        router.replace("/bots");
+      } catch (err) {
+        setLocalError(err instanceof Error ? err.message : "Не удалось завершить вход через Яндекс.");
+        router.replace("/login");
       }
     })();
-  }, [appLink, ensurePendingLogin, isMobile, isTelegramAppLinkReady, isTelegramWebLinkReady, webLink]);
+  }, [completeYandexLogin, isInitialized, oauthToken, router]);
+
+  const buttonLabel = useMemo(() => {
+    if (loading && oauthToken) {
+      return "Завершаем вход...";
+    }
+    if (loading) {
+      return "Переходим в Яндекс...";
+    }
+    return "Войти через Яндекс";
+  }, [loading, oauthToken]);
+
+  const handleLogin = useCallback(() => {
+    setLocalError(null);
+
+    void (async () => {
+      try {
+        const { auth_url } = await startYandexLogin();
+        window.location.href = auth_url;
+      } catch (err) {
+        setLocalError(err instanceof Error ? err.message : "Не удалось начать вход через Яндекс.");
+      }
+    })();
+  }, []);
 
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
       <div className={styles.screen}>
         <div className={styles.panel}>
           <div className={styles.loginGrid}>
-            <div className={`${styles.tgButtonCell} ${styles.appear1}`}>
-              <Button
-                type="button"
-                className={styles.btn}
-                onClick={handleTelegramLoginClick}
-                disabled={loading}
-              >
-                {loading
-                  ? "Готовим ссылку..."
-                  : isMobile
-                    ? "Войти через Telegram"
-                    : isTelegramWebLinkReady
-                      ? "Войти через Telegram"
-                      : "Подготовить вход через Telegram"}
-              </Button>
-            </div>
-
-            {!isMobile && (
-              <div className={`${styles.tgQrCell} ${styles.appear2}`}>
-                <div className={styles.qrCard}>
-                  {qrImage ? (
-                    <img src={qrImage} alt="Telegram QR" className={styles.qrImage} />
-                  ) : loading ? (
-                    <p className={styles.qrPlaceholder}>Готовим QR...</p>
-                  ) : !isTelegramAppLinkReady ? (
-                    <p className={styles.qrPlaceholder}>
-                      Нажмите «Подготовить вход через Telegram», чтобы получить QR
-                    </p>
-                  ) : (
-                    <p className={styles.qrPlaceholder}>Готовим QR...</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!isMobile && (
-              <div className={`${styles.maxQrCell} ${styles.appear1}`}>
-                <div className={styles.qrCard}>
-                  <p className={styles.qrPlaceholder}>QR скоро будет доступен</p>
-                </div>
-              </div>
-            )}
-
-            <div className={`${styles.maxButtonCell} ${styles.appear2}`}>
-              <Button
-                type="button"
-                className={styles.btn}
-                variant="secondary"
-                onClick={() => setLocalError("Вход через Max скоро будет доступен")}
-              >
-                Войти через Max
+            <div className={styles.buttonCell}>
+              <Button type="button" className={styles.btn} onClick={handleLogin} disabled={loading}>
+                {buttonLabel}
               </Button>
             </div>
           </div>
