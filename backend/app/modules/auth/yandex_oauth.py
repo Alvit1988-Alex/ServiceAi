@@ -328,8 +328,6 @@ class YandexOAuthService:
             raise YandexOAuthError("invalid_completion_token")
         if login_session.provider != self.provider:
             raise YandexOAuthError("invalid_completion_token")
-        if login_session.status != OAuthLoginSessionStatus.COMPLETED.value or not login_session.user_id:
-            raise YandexOAuthError("invalid_completion_token")
         if login_session.consumed_at is not None:
             raise YandexOAuthError("completion_token_consumed")
         if login_session.expires_at <= self._now():
@@ -337,6 +335,8 @@ class YandexOAuthService:
             session.add(login_session)
             await session.commit()
             raise YandexOAuthError("completion_token_expired")
+        if login_session.status != OAuthLoginSessionStatus.COMPLETED.value or not login_session.user_id:
+            raise YandexOAuthError("invalid_completion_token")
 
         user = await self._get_user_by_id(session=session, user_id=login_session.user_id)
         if not user or not user.is_active:
