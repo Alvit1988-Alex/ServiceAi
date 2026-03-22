@@ -30,6 +30,7 @@ const OAUTH_DETAIL_MESSAGES: Record<string, string> = {
   "Yandex account email is required": "Яндекс не передал email. Используйте аккаунт с подтвержденной почтой.",
   "Yandex account is already linked to another user": "Этот Яндекс-аккаунт уже привязан к другому пользователю.",
   "Yandex login failed": "Не удалось выполнить вход через Яндекс.",
+  "Yandex login link already used": "Ссылка для завершения входа уже использована.",
   "Yandex login session expired": "Время завершения входа истекло. Попробуйте снова.",
   "Yandex OAuth is not configured": "Вход через Яндекс сейчас недоступен.",
   "Yandex OAuth provider error": "Сервис Яндекса временно недоступен. Попробуйте позже.",

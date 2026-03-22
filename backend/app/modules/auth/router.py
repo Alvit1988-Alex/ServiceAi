@@ -115,9 +115,12 @@ def _map_yandex_error_to_http(error_code: str) -> HTTPException:
     elif error_code in {"provider_unavailable", "token_exchange_failed", "profile_fetch_failed"}:
         status_code = status.HTTP_502_BAD_GATEWAY
         detail = "Yandex OAuth provider error"
-    elif error_code in {"expired_state", "completion_token_expired", "completion_token_consumed"}:
+    elif error_code in {"expired_state", "completion_token_expired"}:
         status_code = status.HTTP_410_GONE
         detail = "Yandex login session expired"
+    elif error_code == "completion_token_consumed":
+        status_code = status.HTTP_410_GONE
+        detail = "Yandex login link already used"
     elif error_code == "email_required":
         detail = "Yandex account email is required"
     elif error_code == "account_conflict":
