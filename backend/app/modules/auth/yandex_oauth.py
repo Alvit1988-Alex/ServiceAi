@@ -24,7 +24,7 @@ from app.modules.auth.models import OAuthLoginSession, OAuthLoginSessionStatus
 YANDEX_AUTH_URL = "https://oauth.yandex.com/authorize"
 YANDEX_TOKEN_URL = "https://oauth.yandex.com/token"
 YANDEX_USERINFO_URL = "https://login.yandex.ru/info"
-YANDEX_OAUTH_SCOPE = "login:email login:info"
+YANDEX_OAUTH_SCOPE = "login:email"
 STATE_TTL = timedelta(minutes=5)
 COMPLETION_TTL = timedelta(minutes=2)
 
@@ -220,19 +220,13 @@ class YandexOAuthService:
         if not isinstance(email, str) or not email:
             raise YandexOAuthError("email_required")
 
-        first_name = data.get("first_name") if isinstance(data.get("first_name"), str) else None
-        last_name = data.get("last_name") if isinstance(data.get("last_name"), str) else None
-        display_name = data.get("display_name") if isinstance(data.get("display_name"), str) else None
-        login = data.get("login") if isinstance(data.get("login"), str) else None
-        full_name = " ".join(part for part in (first_name, last_name) if part) or display_name or None
-
         return YandexProfile(
             yandex_id=yandex_id,
             email=email.lower(),
-            full_name=full_name,
-            first_name=first_name,
-            last_name=last_name,
-            username=login,
+            full_name=None,
+            first_name=None,
+            last_name=None,
+            username=None,
         )
 
     async def _get_user_by_yandex_id(self, session: AsyncSession, yandex_id: str) -> User | None:
