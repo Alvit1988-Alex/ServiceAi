@@ -21,8 +21,8 @@ from app.modules.accounts.schemas import UserCreate
 from app.modules.accounts.service import UsersService
 from app.modules.auth.models import OAuthLoginSession, OAuthLoginSessionStatus
 
-YANDEX_AUTH_URL = "https://oauth.yandex.ru/authorize"
-YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token"
+YANDEX_AUTH_URL = "https://oauth.yandex.com/authorize"
+YANDEX_TOKEN_URL = "https://oauth.yandex.com/token"
 YANDEX_USERINFO_URL = "https://login.yandex.ru/info"
 YANDEX_OAUTH_SCOPE = "login:email login:info"
 STATE_TTL = timedelta(minutes=5)
@@ -247,19 +247,27 @@ class YandexOAuthService:
         result = await session.execute(select(User).where(User.id == user_id))
         return result.scalars().first()
 
+    @staticmethod
+    def _ensure_user_available(user: User) -> None:
+        if not user.is_active:
+            raise YandexOAuthError("user_unavailable")
+
     async def _find_or_create_user(self, session: AsyncSession, profile: YandexProfile) -> User:
         user = await self._get_user_by_yandex_id(session=session, yandex_id=profile.yandex_id)
         if user:
+            self._ensure_user_available(user)
             return user
 
         user = await self._get_user_by_email(session=session, email=profile.email)
         if user:
+            self._ensure_user_available(user)
             if user.yandex_id and user.yandex_id != profile.yandex_id:
                 raise YandexOAuthError("account_conflict")
-            user.yandex_id = profile.yandex_id
-            session.add(user)
-            await session.commit()
-            await session.refresh(user)
+            if not user.yandex_id:
+                user.yandex_id = profile.yandex_id
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
             return user
 
         service = UsersService()

@@ -1,6 +1,33 @@
 import { API_BASE_URL } from "./config";
 import { AuthTokens, User, YandexAuthStartResponse } from "./types";
 
+async function parseAuthError(response: Response, fallbackMessage: string): Promise<never> {
+  let detail: string | undefined;
+
+  try {
+    const payload = await response.clone().json();
+    if (payload && typeof payload === "object" && "detail" in payload) {
+      const rawDetail = (payload as { detail?: unknown }).detail;
+      if (typeof rawDetail === "string") {
+        detail = rawDetail;
+      } else if (rawDetail != null) {
+        detail = String(rawDetail);
+      }
+    } else if (payload != null) {
+      detail = JSON.stringify(payload);
+    }
+  } catch {
+    try {
+      const text = await response.text();
+      detail = text || undefined;
+    } catch {
+      detail = undefined;
+    }
+  }
+
+  throw new Error(detail || fallbackMessage || String(response.status));
+}
+
 export async function login(email: string, password: string): Promise<AuthTokens> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
@@ -51,7 +78,7 @@ export async function startYandexLogin(): Promise<YandexAuthStartResponse> {
   const response = await fetch(`${API_BASE_URL}/auth/yandex/start`);
 
   if (!response.ok) {
-    throw new Error("Не удалось начать вход через Яндекс");
+    await parseAuthError(response, "Не удалось начать вход через Яндекс");
   }
 
   return (await response.json()) as YandexAuthStartResponse;
@@ -67,7 +94,7 @@ export async function completeYandexLogin(completionToken: string): Promise<Auth
   });
 
   if (!response.ok) {
-    throw new Error("Не удалось завершить вход через Яндекс");
+    await parseAuthError(response, "Не удалось завершить вход через Яндекс");
   }
 
   return (await response.json()) as AuthTokens;

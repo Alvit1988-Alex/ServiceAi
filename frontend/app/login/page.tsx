@@ -26,6 +26,24 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   user_unavailable: "Пользователь недоступен для входа.",
 };
 
+const OAUTH_DETAIL_MESSAGES: Record<string, string> = {
+  "Yandex account email is required": "Яндекс не передал email. Используйте аккаунт с подтвержденной почтой.",
+  "Yandex account is already linked to another user": "Этот Яндекс-аккаунт уже привязан к другому пользователю.",
+  "Yandex login failed": "Не удалось выполнить вход через Яндекс.",
+  "Yandex login session expired": "Время завершения входа истекло. Попробуйте снова.",
+  "Yandex OAuth is not configured": "Вход через Яндекс сейчас недоступен.",
+  "Yandex OAuth provider error": "Сервис Яндекса временно недоступен. Попробуйте позже.",
+  "User is unavailable": "Пользователь недоступен для входа.",
+};
+
+function resolveOauthErrorMessage(message: string | null): string | null {
+  if (!message) {
+    return null;
+  }
+
+  return OAUTH_ERROR_MESSAGES[message] ?? OAUTH_DETAIL_MESSAGES[message] ?? message;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -58,7 +76,7 @@ export default function LoginPage() {
       return;
     }
 
-    setLocalError(OAUTH_ERROR_MESSAGES[oauthError] ?? "Не удалось выполнить вход через Яндекс.");
+    setLocalError(resolveOauthErrorMessage(oauthError) ?? "Не удалось выполнить вход через Яндекс.");
     router.replace("/login");
   }, [oauthError, router]);
 
@@ -75,7 +93,7 @@ export default function LoginPage() {
         await completeYandexLogin(oauthToken);
         router.replace("/bots");
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : "Не удалось завершить вход через Яндекс.");
+        setLocalError(resolveOauthErrorMessage(err instanceof Error ? err.message : null) ?? "Не удалось завершить вход через Яндекс.");
         router.replace("/login");
       }
     })();
@@ -99,7 +117,7 @@ export default function LoginPage() {
         const { auth_url } = await startYandexLogin();
         window.location.href = auth_url;
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : "Не удалось начать вход через Яндекс.");
+        setLocalError(resolveOauthErrorMessage(err instanceof Error ? err.message : null) ?? "Не удалось начать вход через Яндекс.");
       }
     })();
   }, []);
