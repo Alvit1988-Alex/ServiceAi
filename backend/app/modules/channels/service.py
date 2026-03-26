@@ -122,15 +122,20 @@ class ChannelsService:
             config_update = data.get("config")
             next_config = config_update if config_update is not None else previous_config
             token = (next_config or {}).get("token")
+            token_changed = config_update is not None and token != previous_config.get("token")
             should_validate = bool(token) and (
                 (data.get("is_active") is True and not previous_active)
-                or (config_update is not None and token != previous_config.get("token"))
+                or token_changed
             )
             if should_validate:
                 try:
                     bot_username = await self._validate_telegram_token(token)
                 except TelegramTokenValidationUnavailableError as exc:
                     logger.warning("Telegram token validation skipped due to temporary Telegram API issue", exc_info=exc)
+                    if token_changed:
+                        next_config = dict(next_config or {})
+                        next_config.pop("bot_username", None)
+                        data["config"] = next_config
                 else:
                     if bot_username:
                         next_config = dict(next_config or {})
