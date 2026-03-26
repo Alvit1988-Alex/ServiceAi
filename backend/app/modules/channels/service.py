@@ -21,6 +21,10 @@ from app.utils.encryption import decrypt_config, encrypt_config
 logger = logging.getLogger(__name__)
 
 
+class TelegramTokenValidationUnavailableError(Exception):
+    """Raised when Telegram token validation cannot be completed due to transport/API availability issues."""
+
+
 class ChannelsService:
     model = BotChannel
 
@@ -36,9 +40,13 @@ class ChannelsService:
         if obj_in.channel_type == ChannelType.TELEGRAM:
             token = prepared_config.get("token")
             if token:
-                bot_username = await self._validate_telegram_token(token)
-                if bot_username:
-                    prepared_config["bot_username"] = bot_username
+                try:
+                    bot_username = await self._validate_telegram_token(token)
+                except TelegramTokenValidationUnavailableError as exc:
+                    logger.warning("Telegram token validation skipped due to temporary Telegram API issue", exc_info=exc)
+                else:
+                    if bot_username:
+                        prepared_config["bot_username"] = bot_username
         db_obj = BotChannel(
             bot_id=bot_id,
             channel_type=obj_in.channel_type,
@@ -114,16 +122,25 @@ class ChannelsService:
             config_update = data.get("config")
             next_config = config_update if config_update is not None else previous_config
             token = (next_config or {}).get("token")
+            token_changed = config_update is not None and token != previous_config.get("token")
             should_validate = bool(token) and (
                 (data.get("is_active") is True and not previous_active)
-                or (config_update is not None and token != previous_config.get("token"))
+                or token_changed
             )
             if should_validate:
-                bot_username = await self._validate_telegram_token(token)
-                if bot_username:
-                    next_config = dict(next_config or {})
-                    next_config["bot_username"] = bot_username
-                    data["config"] = next_config
+                try:
+                    bot_username = await self._validate_telegram_token(token)
+                except TelegramTokenValidationUnavailableError as exc:
+                    logger.warning("Telegram token validation skipped due to temporary Telegram API issue", exc_info=exc)
+                    if token_changed:
+                        next_config = dict(next_config or {})
+                        next_config.pop("bot_username", None)
+                        data["config"] = next_config
+                else:
+                    if bot_username:
+                        next_config = dict(next_config or {})
+                        next_config["bot_username"] = bot_username
+                        data["config"] = next_config
         if "config" in data:
             prepared_config = self._prepare_config(db_obj.channel_type, data["config"])
             data["config"] = encrypt_config(prepared_config)
@@ -241,30 +258,54 @@ class ChannelsService:
         return updated_config
 
     @staticmethod
-    async def _validate_telegram_token(token: str) -> str | None:
+    def _is_invalid_telegram_token_payload(payload: dict[str, Any]) -> bool:
+        error_code = payload.get("error_code")
+        if error_code in {401, 403}:
+            return True
+
+        description = str(payload.get("description") or "").lower()
+        return "unauthorized" in description or "invalid token" in description
+
+    @classmethod
+    async def _validate_telegram_token(cls, token: str) -> str | None:
         url = f"https://api.telegram.org/bot{token}/getMe"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(url)
-            if response.status_code in {401, 403}:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Неверный токен Telegram",
-                )
+        except httpx.RequestError as exc:
+            raise TelegramTokenValidationUnavailableError("Telegram API request failed") from exc
+
+        if response.status_code in {401, 403}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Неверный токен Telegram",
+            )
+        if response.status_code == 429 or response.status_code >= 500:
+            raise TelegramTokenValidationUnavailableError(
+                f"Telegram API temporary error: {response.status_code}"
+            )
+
+        try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Не удалось проверить токен Telegram",
             ) from exc
-        except httpx.RequestError as exc:
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Не удалось проверить токен Telegram",
             ) from exc
-
-        payload = response.json()
         if not payload.get("ok"):
+            if cls._is_invalid_telegram_token_payload(payload):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Неверный токен Telegram",
+                )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Не удалось проверить токен Telegram",
