@@ -275,7 +275,7 @@ class ChannelsService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Неверный токен Telegram",
             )
-        if response.status_code >= 500:
+        if response.status_code == 429 or response.status_code >= 500:
             raise TelegramTokenValidationUnavailableError(
                 f"Telegram API temporary error: {response.status_code}"
             )
@@ -288,7 +288,13 @@ class ChannelsService:
                 detail="Не удалось проверить токен Telegram",
             ) from exc
 
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Не удалось проверить токен Telegram",
+            ) from exc
         if not payload.get("ok"):
             if cls._is_invalid_telegram_token_payload(payload):
                 raise HTTPException(
