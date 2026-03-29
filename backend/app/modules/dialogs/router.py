@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_accessible_bot, get_db_session, require_bot_access
+from app.dependencies import get_bot_for_dialogs, get_db_session, require_bot_access
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
 from app.modules.bots.models import Bot
@@ -87,7 +87,7 @@ async def _unlock_expired_dialogs(
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])
 async def list_dialogs(
     bot_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     status: DialogStatus | None = None,
     channel_type: ChannelType | None = None,
     assigned_admin_id: int | None = None,
@@ -137,7 +137,7 @@ async def list_dialogs(
 @router.get("/bots/{bot_id}/search", response_model=ListResponse[DialogShort])
 async def search_dialogs(
     bot_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     query: str | None = None,
     status: DialogStatus | None = None,
     assigned_admin_id: int | None = None,
@@ -185,7 +185,7 @@ async def search_dialogs(
 async def get_dialog(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -204,7 +204,7 @@ async def get_dialog(
 async def close_dialog(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -236,7 +236,7 @@ async def close_dialog(
 async def lock_dialog(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -269,7 +269,7 @@ async def lock_dialog(
 async def unlock_dialog(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -302,7 +302,7 @@ async def unlock_dialog(
 async def switch_dialog_to_auto(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -344,7 +344,7 @@ async def switch_dialog_to_auto(
 async def delete_dialog(
     bot_id: int,
     dialog_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
@@ -525,7 +525,7 @@ async def create_bot_dialog_message(
     bot_id: int,
     dialog_id: int,
     data: OperatorMessageIn,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),

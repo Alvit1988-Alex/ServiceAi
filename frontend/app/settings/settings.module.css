@@ -138,3 +138,8 @@
   color: var(--color-text);
   border-color: var(--color-border-subtle);
 }
+
+.adminHeader { display:flex; align-items:center; justify-content:space-between; }
+.plusBtn { width:30px; height:30px; border-radius:999px; border:1px solid var(--color-border); background:#fff; cursor:pointer; }
+.addRow { display:grid; gap:8px; grid-template-columns: 1fr 140px auto; }
+.adminRow { display:flex; justify-content:space-between; align-items:center; gap:8px; }

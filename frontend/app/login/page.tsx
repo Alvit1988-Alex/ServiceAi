@@ -11,38 +11,11 @@ import { useAuthStore } from "@/store/auth.store";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   access_denied: "Вход через Яндекс был отменен.",
-  account_conflict: "Этот Яндекс-аккаунт уже привязан к другому пользователю.",
-  completion_token_consumed: "Ссылка для завершения входа уже использована.",
-  completion_token_expired: "Время завершения входа истекло. Попробуйте снова.",
-  email_required: "Яндекс не передал email. Используйте аккаунт с подтвержденной почтой.",
-  expired_state: "Время ожидания входа истекло. Попробуйте снова.",
-  invalid_completion_token: "Не удалось завершить вход. Попробуйте снова.",
-  invalid_request: "Не удалось обработать ответ Яндекса. Попробуйте снова.",
-  invalid_state: "Не удалось подтвердить запрос входа. Попробуйте снова.",
-  oauth_unavailable: "Вход через Яндекс сейчас недоступен.",
-  profile_fetch_failed: "Не удалось получить профиль Яндекса. Попробуйте снова.",
-  provider_unavailable: "Сервис Яндекса временно недоступен. Попробуйте позже.",
-  token_exchange_failed: "Не удалось подтвердить вход через Яндекс. Попробуйте снова.",
-  user_unavailable: "Пользователь недоступен для входа.",
-};
-
-const OAUTH_DETAIL_MESSAGES: Record<string, string> = {
-  "Yandex account email is required": "Яндекс не передал email. Используйте аккаунт с подтвержденной почтой.",
-  "Yandex account is already linked to another user": "Этот Яндекс-аккаунт уже привязан к другому пользователю.",
-  "Yandex login failed": "Не удалось выполнить вход через Яндекс.",
-  "Yandex login link already used": "Ссылка для завершения входа уже использована.",
-  "Yandex login session expired": "Время завершения входа истекло. Попробуйте снова.",
-  "Yandex OAuth is not configured": "Вход через Яндекс сейчас недоступен.",
-  "Yandex OAuth provider error": "Сервис Яндекса временно недоступен. Попробуйте позже.",
-  "User is unavailable": "Пользователь недоступен для входа.",
 };
 
 function resolveOauthErrorMessage(message: string | null): string | null {
-  if (!message) {
-    return null;
-  }
-
-  return OAUTH_ERROR_MESSAGES[message] ?? OAUTH_DETAIL_MESSAGES[message] ?? message;
+  if (!message) return null;
+  return OAUTH_ERROR_MESSAGES[message] ?? message;
 }
 
 function LoginPageContent() {
@@ -50,14 +23,18 @@ function LoginPageContent() {
   const searchParams = useSearchParams();
   const {
     completeYandexLogin,
+    completeProfile,
     loading,
     error,
     isAuthenticated,
     isInitialized,
     initFromStorage,
+    profileCompletionRequired,
   } = useAuthStore();
 
   const [localError, setLocalError] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const processedTokenRef = useRef<string | null>(null);
   const oauthToken = searchParams.get("oauth_token");
   const oauthError = searchParams.get("oauth_error");
@@ -67,24 +44,19 @@ function LoginPageContent() {
   }, [initFromStorage]);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !profileCompletionRequired) {
       router.replace("/bots");
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, profileCompletionRequired, router]);
 
   useEffect(() => {
-    if (!oauthError) {
-      return;
-    }
-
+    if (!oauthError) return;
     setLocalError(resolveOauthErrorMessage(oauthError) ?? "Не удалось выполнить вход через Яндекс.");
     router.replace("/login");
   }, [oauthError, router]);
 
   useEffect(() => {
-    if (!isInitialized || !oauthToken || processedTokenRef.current === oauthToken) {
-      return;
-    }
+    if (!isInitialized || !oauthToken || processedTokenRef.current === oauthToken) return;
 
     processedTokenRef.current = oauthToken;
     setLocalError(null);
@@ -92,7 +64,7 @@ function LoginPageContent() {
     void (async () => {
       try {
         await completeYandexLogin(oauthToken);
-        router.replace("/bots");
+        router.replace("/login");
       } catch (err) {
         setLocalError(resolveOauthErrorMessage(err instanceof Error ? err.message : null) ?? "Не удалось завершить вход через Яндекс.");
         router.replace("/login");
@@ -101,18 +73,21 @@ function LoginPageContent() {
   }, [completeYandexLogin, isInitialized, oauthToken, router]);
 
   const buttonLabel = useMemo(() => {
-    if (loading && oauthToken) {
-      return "Завершаем вход...";
-    }
-    if (loading) {
-      return "Переходим в Яндекс...";
-    }
+    if (loading && oauthToken) return "Завершаем вход...";
+    if (loading) return "Переходим в Яндекс...";
     return "Войти через Яндекс";
   }, [loading, oauthToken]);
 
+  const handleCompleteProfile = useCallback(() => {
+    if (!firstName.trim()) {
+      setLocalError("Введите имя *");
+      return;
+    }
+    void completeProfile(firstName.trim(), lastName.trim());
+  }, [completeProfile, firstName, lastName]);
+
   const handleLogin = useCallback(() => {
     setLocalError(null);
-
     void (async () => {
       try {
         const { auth_url } = await startYandexLogin();
@@ -134,6 +109,17 @@ function LoginPageContent() {
               </Button>
             </div>
           </div>
+
+          {profileCompletionRequired && (
+            <div className={styles.profileCompletion}>
+              <input className={styles.input} placeholder="Введите имя *" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              <input className={styles.input} placeholder="Введите фамилию (необязательно)" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              <Button type="button" className={styles.btn} onClick={handleCompleteProfile} disabled={!firstName.trim()}>
+                Сохранить профиль
+              </Button>
+            </div>
+          )}
+
           {(localError || error) && <p className={styles.error}>{localError || error}</p>}
         </div>
       </div>
@@ -143,23 +129,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <LayoutShell title="Вход" description="Авторизация в ServiceAI">
-          <div className={styles.screen}>
-            <div className={styles.panel}>
-              <div className={styles.loginGrid}>
-                <div className={styles.buttonCell}>
-                  <Button type="button" className={styles.btn} disabled>
-                    Войти через Яндекс
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </LayoutShell>
-      }
-    >
+    <Suspense fallback={<div />}>
       <LoginPageContent />
     </Suspense>
   );

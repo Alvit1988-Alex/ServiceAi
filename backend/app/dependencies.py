@@ -1,10 +1,10 @@
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.modules.accounts.models import Account, User, UserRole, account_operators
-from app.modules.bots.models import Bot
+from app.modules.bots.models import Bot, BotAdmin
 from app.security.auth import get_current_user
 
 
@@ -27,19 +27,41 @@ async def get_accessible_account_ids(session: AsyncSession, user: User) -> list[
 
     account_ids = set(owned_result.scalars().all())
     account_ids.update(operated_result.scalars().all())
+
+    delegated = await session.execute(
+        select(Bot.account_id)
+        .join(BotAdmin, BotAdmin.bot_id == Bot.id)
+        .where(BotAdmin.user_id == user.id)
+    )
+    account_ids.update(delegated.scalars().all())
     return list(account_ids)
+
+
+async def get_bot_access_role(session: AsyncSession, user: User, bot: Bot) -> str | None:
+    if user.role == UserRole.admin or bot.account.owner_id == user.id:
+        return "owner"
+    admin = await session.scalar(select(BotAdmin).where(BotAdmin.bot_id == bot.id, BotAdmin.user_id == user.id))
+    if admin:
+        return admin.role.value
+    account_ids = await get_accessible_account_ids(session=session, user=user)
+    if account_ids is None or bot.account_id in account_ids:
+        return "account_operator"
+    return None
 
 
 async def require_bot_access(bot_id: int, session: AsyncSession, user: User) -> Bot:
     """Fetch bot only if it is accessible for the user."""
 
-    if user.role == UserRole.admin:
-        stmt = select(Bot).where(Bot.id == bot_id)
-    else:
-        account_ids = await get_accessible_account_ids(session=session, user=user)
-        if not account_ids:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bot not found")
-        stmt = select(Bot).where(Bot.id == bot_id, Bot.account_id.in_(account_ids))
+    stmt = select(Bot).join(Account, Account.id == Bot.account_id).where(Bot.id == bot_id)
+
+    if user.role != UserRole.admin:
+        stmt = stmt.outerjoin(BotAdmin, BotAdmin.bot_id == Bot.id).where(
+            or_(
+                Account.owner_id == user.id,
+                BotAdmin.user_id == user.id,
+                Bot.account_id.in_(await get_accessible_account_ids(session=session, user=user) or []),
+            )
+        )
 
     bot = (await session.execute(stmt)).scalars().first()
     if not bot:
@@ -55,6 +77,61 @@ async def get_accessible_bot(
     return await require_bot_access(bot_id, session, current_user)
 
 
-# Placeholder for future common dependencies (authentication, services, etc.).
-# def get_current_user():
-#     ...
+async def get_bot_for_dialogs(
+    bot_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Bot:
+    bot = await require_bot_access(bot_id, session, current_user)
+    role = await get_bot_access_role(session=session, user=current_user, bot=bot)
+    if role in {"owner", "superadmin", "admin", "account_operator"}:
+        return bot
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+async def get_bot_for_ai(
+    bot_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Bot:
+    bot = await require_bot_access(bot_id, session, current_user)
+    role = await get_bot_access_role(session=session, user=current_user, bot=bot)
+    if role in {"owner", "superadmin", "account_operator"}:
+        return bot
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+async def get_bot_for_settings_read(
+    bot_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Bot:
+    bot = await require_bot_access(bot_id, session, current_user)
+    role = await get_bot_access_role(session=session, user=current_user, bot=bot)
+    if role in {"owner", "superadmin", "account_operator"}:
+        return bot
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+async def get_bot_owner_only(
+    bot_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Bot:
+    bot = await require_bot_access(bot_id, session, current_user)
+    role = await get_bot_access_role(session=session, user=current_user, bot=bot)
+    if role == "owner":
+        return bot
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can modify bot settings")
+
+
+async def require_owner_or_superadmin(
+    bot_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> tuple[Bot, str, User]:
+    bot = await require_bot_access(bot_id, session, current_user)
+    role = await get_bot_access_role(session=session, user=current_user, bot=bot)
+    if role not in {"owner", "superadmin"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    return bot, role or "", current_user

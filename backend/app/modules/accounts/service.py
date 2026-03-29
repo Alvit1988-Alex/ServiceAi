@@ -1,6 +1,7 @@
 """Service layer for account and user operations."""
 from __future__ import annotations
 
+import random
 from typing import Any
 
 from sqlalchemy import select
@@ -17,18 +18,36 @@ class UsersService:
     def __init__(self) -> None:
         self.accounts_service = AccountsService()
 
+    @staticmethod
+    def _sync_name_fields(payload: dict[str, Any]) -> dict[str, Any]:
+        if "first_name" in payload or "last_name" in payload:
+            first_name = (payload.get("first_name") or "").strip()
+            last_name = (payload.get("last_name") or "").strip()
+            payload["first_name"] = first_name or None
+            payload["last_name"] = last_name or None
+            payload["full_name"] = " ".join(part for part in [first_name, last_name] if part) or None
+        elif "full_name" in payload and payload.get("full_name") is not None:
+            full_name = str(payload["full_name"]).strip()
+            payload["full_name"] = full_name or None
+            if full_name:
+                parts = full_name.split(maxsplit=1)
+                payload["first_name"] = parts[0]
+                payload["last_name"] = parts[1] if len(parts) > 1 else None
+        return payload
+
     async def create(self, session: AsyncSession, obj_in: UserCreate) -> User:
+        data = self._sync_name_fields(obj_in.model_dump())
         db_obj = User(
-            email=obj_in.email,
-            password_hash=hash_password(obj_in.password),
-            full_name=obj_in.full_name,
-            telegram_id=obj_in.telegram_id,
-            yandex_id=obj_in.yandex_id,
-            username=obj_in.username,
-            first_name=obj_in.first_name,
-            last_name=obj_in.last_name,
-            role=obj_in.role,
-            is_active=obj_in.is_active,
+            email=data["email"],
+            password_hash=hash_password(data["password"]),
+            full_name=data.get("full_name"),
+            telegram_id=data.get("telegram_id"),
+            yandex_id=data.get("yandex_id"),
+            username=data.get("username"),
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            role=data["role"],
+            is_active=data["is_active"],
         )
         session.add(db_obj)
         await session.commit()
@@ -53,7 +72,7 @@ class UsersService:
         return result.scalars().all()
 
     async def update(self, session: AsyncSession, db_obj: User, obj_in: UserUpdate) -> User:
-        data = obj_in.model_dump(exclude_unset=True)
+        data = self._sync_name_fields(obj_in.model_dump(exclude_unset=True))
         if "password" in data:
             db_obj.password_hash = hash_password(data.pop("password"))
         for field, value in data.items():
@@ -72,6 +91,14 @@ class UsersService:
 
 class AccountsService:
     model = Account
+
+    async def _generate_public_id(self, session: AsyncSession) -> str:
+        for _ in range(20):
+            candidate = f"{random.randint(0, 99999999):08d}"
+            existing = await session.scalar(select(Account.id).where(Account.public_id == candidate))
+            if not existing:
+                return candidate
+        raise ValueError("Unable to generate unique account public id")
 
     async def get_or_create_for_owner(
         self,
@@ -97,7 +124,7 @@ class AccountsService:
             return existing_account
 
         default_name = f"{owner.email}'s account" if owner.email else f"Account {owner_id}"
-        account = Account(name=default_name, owner_id=owner_id)
+        account = Account(name=default_name, owner_id=owner_id, public_id=await self._generate_public_id(session))
         session.add(account)
         await session.commit()
         await session.refresh(account)
@@ -111,7 +138,12 @@ class AccountsService:
 
     async def create(self, session: AsyncSession, obj_in: AccountCreate) -> Account:
         operators = await self._load_operators(session, obj_in.operator_ids)
-        db_obj = Account(name=obj_in.name, owner_id=obj_in.owner_id, operators=operators)
+        db_obj = Account(
+            name=obj_in.name,
+            owner_id=obj_in.owner_id,
+            public_id=await self._generate_public_id(session),
+            operators=operators,
+        )
         session.add(db_obj)
         await session.commit()
         await session.refresh(db_obj)

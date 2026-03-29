@@ -43,6 +43,13 @@ class YandexCompleteRequest(BaseModel):
     completion_token: str
 
 
+class YandexCompleteResponse(BaseModel):
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    requires_profile_completion: bool = False
+
+
 class PendingLoginResponse(BaseModel):
     token: str
     status: PendingLoginStatus
@@ -68,3 +75,17 @@ class TelegramConfirmRequest(BaseModel):
 class TelegramWebhookResponse(BaseModel):
     ok: bool
     message: str
+
+
+class AuthMeResponse(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: str | None = None
+    avatar_url: str | None = None
+    role: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    first_name: str | None = None
+    last_name: str | None = None
+    account_public_id: str | None = None

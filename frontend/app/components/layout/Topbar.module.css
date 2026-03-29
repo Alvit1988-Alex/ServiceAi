@@ -9,119 +9,23 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
+.left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.actions { display: flex; align-items: center; gap: 0.75rem; position: relative; }
+.brand { display: inline-flex; align-items: baseline; gap: 6px; font-size: 18px; font-weight: 800; white-space: nowrap; }
+.brandAccent { color: #38bdf8; }
+.brandText { color: var(--color-text); }
+.statuses { display: inline-flex; align-items: center; gap: 0.5rem; }
+.status { display: inline-flex; align-items: center; gap: 0.4rem; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--color-border); font-size: 0.9rem; background-color: var(--color-bg); color: var(--color-text-muted); }
+.loading { border-color: color-mix(in srgb, var(--color-border) 60%, var(--color-primary) 40%); color: var(--color-primary); }
+.error { border-color: #ef4444; color: #ef4444; }
+.themeToggle { height: 38px; padding: 0 0.75rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 10px; background-color: var(--color-bg); color: #404040; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+.logout { height: 42px; padding: 0 18px; border-radius: 12px; background: #ffffff; border: 1px solid rgba(0, 0, 0, 0.12); color: #404040; font-weight: 700; cursor: pointer; }
+.avatar { height: 38px; width: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--color-border); background-color: var(--color-bg); color: var(--color-text); font-weight: 700; letter-spacing: 0.02em; cursor: pointer; }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 18px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.brandAccent {
-  color: #38bdf8;
-}
-
-.brandText {
-  color: var(--color-text);
-}
-
-.statuses {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  font-size: 0.9rem;
-  background-color: var(--color-bg);
-  color: var(--color-text-muted);
-}
-
-.loading {
-  border-color: color-mix(in srgb, var(--color-border) 60%, var(--color-primary) 40%);
-  color: var(--color-primary);
-}
-
-.error {
-  border-color: #ef4444;
-  color: #ef4444;
-}
-
-.themeToggle {
-  height: 38px;
-  padding: 0 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background-color: var(--color-bg);
-  color: #404040;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.themeToggle:hover {
-  background-color: var(--color-bg);
-  border-color: color-mix(in srgb, var(--color-border) 70%, var(--color-text) 30%);
-  color: #404040;
-}
-
-.logout {
-  height: 42px;
-  padding: 0 18px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  color: #404040;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.1), inset 0 2px 0 rgba(255, 255, 255, 0.7);
-}
-
-.logout:hover {
-  background: #f6f7f9;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.8);
-  color: #404040;
-}
-
-.logout:active {
-  transform: translateY(1px);
-}
-
-.avatar {
-  height: 38px;
-  width: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
+.accountIdWrap { display: flex; align-items: center; gap: 6px; position: relative; }
+.accountId { border: none; background: transparent; cursor: pointer; color: var(--color-text); font-weight: 700; }
+.copyBtn { height: 32px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); cursor: pointer; }
+.copied { position: absolute; top: 34px; left: 0; font-size: 12px; color: #16a34a; white-space: nowrap; }
+.panel { position: absolute; right: 66px; top: 48px; width: 260px; background: #fff; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; display: grid; gap: 8px; z-index: 30; }
+.panelTitle { margin: 0; font-size: 13px; font-weight: 700; }
+.field { border: 1px solid var(--color-border); border-radius: 8px; padding: 8px; }

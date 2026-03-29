@@ -2,16 +2,28 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.modules.ai.models import AIInstructions, KnowledgeChunk, KnowledgeFile
 
+if TYPE_CHECKING:
+    from app.modules.accounts.models import Account, User
+    from app.modules.channels.models import BotChannel
+    from app.modules.dialogs.models import Dialog
+
 
 def utcnow() -> datetime:
     return datetime.utcnow()
+
+
+class BotAdminRole(str, Enum):
+    superadmin = "superadmin"
+    admin = "admin"
 
 
 class Bot(Base):
@@ -27,6 +39,12 @@ class Bot(Base):
     account: Mapped["Account"] = relationship(
         "Account",
         back_populates="bots",
+        passive_deletes=True,
+    )
+    admins: Mapped[list["BotAdmin"]] = relationship(
+        "BotAdmin",
+        back_populates="bot",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     channels: Mapped[list["BotChannel"]] = relationship(
@@ -60,3 +78,18 @@ class Bot(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+
+class BotAdmin(Base):
+    __tablename__ = "bot_admins"
+    __table_args__ = (UniqueConstraint("bot_id", "user_id", name="uq_bot_admins_bot_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[BotAdminRole] = mapped_column(SQLEnum(BotAdminRole, name="bot_admin_role"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    bot: Mapped["Bot"] = relationship("Bot", back_populates="admins", passive_deletes=True)
+    user: Mapped["User"] = relationship("User", back_populates="bot_admin_accesses", passive_deletes=True)
