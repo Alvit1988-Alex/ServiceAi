@@ -97,7 +97,7 @@ async def get_bot_for_ai(
 ) -> Bot:
     bot = await require_bot_access(bot_id, session, current_user)
     role = await get_bot_access_role(session=session, user=current_user, bot=bot)
-    if role in {"owner", "superadmin", "account_operator"}:
+    if role in {"owner", "superadmin"}:
         return bot
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
@@ -109,7 +109,7 @@ async def get_bot_for_settings_read(
 ) -> Bot:
     bot = await require_bot_access(bot_id, session, current_user)
     role = await get_bot_access_role(session=session, user=current_user, bot=bot)
-    if role in {"owner", "superadmin", "account_operator"}:
+    if role in {"owner", "superadmin"}:
         return bot
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 

@@ -117,7 +117,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         user,
         loading: false,
-        profileCompletionRequired: Boolean(tokens.requires_profile_completion) || !user.first_name,
+        profileCompletionRequired: tokens.requires_profile_completion ?? false,
         isAuthenticated: true,
         isInitialized: true,
       });
@@ -204,7 +204,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({
         user,
-        profileCompletionRequired: !user.first_name,
+        profileCompletionRequired: false,
         isAuthenticated: true,
         isInitialized: true,
       });
