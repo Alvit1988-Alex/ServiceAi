@@ -47,7 +47,6 @@ def upgrade() -> None:
     op.alter_column("accounts", "public_id", nullable=False)
     op.create_index("ix_accounts_public_id", "accounts", ["public_id"], unique=True)
 
-    bot_admin_role.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "bot_admins",
         sa.Column("id", sa.Integer(), nullable=False),
