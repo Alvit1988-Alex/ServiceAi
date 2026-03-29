@@ -1,6 +1,6 @@
 """add account public id and bot admins
 
-Revision ID: 0012_account_public_id_and_bot_admins
+Revision ID: 0012_account_public_id_botadm
 Revises: 0011_yandex_oauth_login
 Create Date: 2026-03-29 00:00:00.000000
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "0012_account_public_id_and_bot_admins"
+revision = "0012_account_public_id_botadm"
 down_revision = "0011_yandex_oauth_login"
 branch_labels = None
 depends_on = None
