@@ -107,18 +107,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const tokens = await completeYandexLoginApi(completionToken);
-      if (tokens.requires_profile_completion) {
-        set({ loading: false, profileCompletionRequired: true, isInitialized: true, isAuthenticated: false });
-        return;
+      if (!tokens.access_token || !tokens.refresh_token) {
+        throw new Error("Не удалось получить токены после входа через Яндекс");
       }
-      get().setTokens(tokens.access_token!, tokens.refresh_token!);
 
-      const user = await getCurrentUser(tokens.access_token!);
+      get().setTokens(tokens.access_token, tokens.refresh_token);
+      const user = await getCurrentUser(tokens.access_token);
 
       set({
         user,
         loading: false,
-        profileCompletionRequired: !user.first_name,
+        profileCompletionRequired: Boolean(tokens.requires_profile_completion) || !user.first_name,
         isAuthenticated: true,
         isInitialized: true,
       });

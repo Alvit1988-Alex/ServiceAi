@@ -1,5 +1,6 @@
 """Bots API router."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import (
@@ -12,7 +13,7 @@ from app.dependencies import (
 )
 from app.modules.accounts.models import User, UserRole
 from app.modules.accounts.service import AccountsService
-from app.modules.bots.models import Bot, BotAdminRole
+from app.modules.bots.models import Bot, BotAdmin, BotAdminRole
 from app.modules.bots.schemas import (
     BotAdminCreate,
     BotAdminDelete,
@@ -53,10 +54,22 @@ async def list_bots(
         items = await service.list(session=session)
     else:
         account_ids = await get_accessible_account_ids(session=session, user=current_user)
-        if not account_ids:
-            items = []
-        else:
-            items = await service.list(session=session, extra_clauses=[Bot.account_id.in_(account_ids)])
+        account_level_items: list[Bot] = []
+        if account_ids:
+            account_level_items = await service.list(session=session, extra_clauses=[Bot.account_id.in_(account_ids)])
+
+        delegated_ids_result = await session.execute(
+            select(BotAdmin.bot_id).where(BotAdmin.user_id == current_user.id)
+        )
+        delegated_ids = set(delegated_ids_result.scalars().all())
+
+        delegated_items: list[Bot] = []
+        if delegated_ids:
+            delegated_items = await service.list(session=session, extra_clauses=[Bot.id.in_(delegated_ids)])
+
+        merged: dict[int, Bot] = {bot.id: bot for bot in account_level_items}
+        merged.update({bot.id: bot for bot in delegated_items})
+        items = list(merged.values())
 
     output: list[BotOut] = []
     for bot in items:

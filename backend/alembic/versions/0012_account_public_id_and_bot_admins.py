@@ -5,6 +5,8 @@ Revises: 0011_yandex_oauth_login
 Create Date: 2026-03-29 00:00:00.000000
 """
 
+import random
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -19,13 +21,24 @@ depends_on = None
 bot_admin_role = sa.Enum("superadmin", "admin", name="bot_admin_role")
 
 
+def _generate_unique_public_id(used: set[str]) -> str:
+    for _ in range(100):
+        candidate = f"{random.randint(0, 99999999):08d}"
+        if candidate not in used:
+            used.add(candidate)
+            return candidate
+    raise RuntimeError("Unable to backfill unique account public_id")
+
+
 def upgrade() -> None:
     op.add_column("accounts", sa.Column("public_id", sa.String(length=8), nullable=True))
 
     conn = op.get_bind()
     rows = conn.execute(sa.text("SELECT id FROM accounts ORDER BY id")).fetchall()
+    used_ids: set[str] = set()
+
     for row in rows:
-        public_id = f"{(10000000 + int(row.id)) % 100000000:08d}"
+        public_id = _generate_unique_public_id(used_ids)
         conn.execute(
             sa.text("UPDATE accounts SET public_id=:public_id WHERE id=:account_id"),
             {"public_id": public_id, "account_id": int(row.id)},
