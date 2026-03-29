@@ -13,6 +13,14 @@ import { AuthTokens, User } from "@/app/api/types";
 
 export const AUTH_STORAGE_KEY = "serviceai_auth";
 
+function normalizeUser(user: User): User {
+  const maybeUserWithPublicId = user as User & { public_id?: string | null };
+  return {
+    ...user,
+    account_public_id: user.account_public_id ?? maybeUserWithPublicId.public_id ?? null,
+  };
+}
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
@@ -80,7 +88,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const tokens = await loginApi(email, password);
       get().setTokens(tokens.access_token!, tokens.refresh_token!);
 
-      const user = await getCurrentUser(tokens.access_token!);
+      const user = normalizeUser(await getCurrentUser(tokens.access_token!));
 
       set({
         user,
@@ -113,7 +121,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       get().setTokens(tokens.access_token, tokens.refresh_token);
-      const user = await getCurrentUser(tokens.access_token);
+      const user = normalizeUser(await getCurrentUser(tokens.access_token));
 
       set({
         user,
@@ -201,7 +209,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
 
     try {
-      const user = await getCurrentUser(tokens.access_token);
+      const user = normalizeUser(await getCurrentUser(tokens.access_token));
 
       set({
         user,

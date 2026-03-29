@@ -61,7 +61,7 @@ const Topbar: React.FC = () => {
         </div>
         {user?.account_public_id && (
           <div className={styles.accountIdWrap}>
-            <button type="button" className={styles.accountId} onClick={copyId}>ID {user.account_public_id}</button>
+            <button type="button" className={styles.accountId} onClick={copyId}>ID: {user.account_public_id}</button>
             <button type="button" className={styles.copyBtn} onClick={copyId}>Копировать</button>
             {copied && <span className={styles.copied}>ID скопирован</span>}
           </div>
