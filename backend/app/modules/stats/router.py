@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.dependencies import get_accessible_bot, get_db_session
+from app.dependencies import get_bot_for_ai, get_db_session
 from app.modules.accounts.models import Account, User
 from app.modules.bots.models import Bot
 from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus
@@ -29,7 +29,7 @@ def _calculate_average(values: list[float]) -> float | None:
 @router.get("/summary", response_model=StatsSummary)
 async def get_summary(
     bot_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_ai),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> StatsSummary:
@@ -91,7 +91,7 @@ async def get_summary(
 @router.get("/admins", response_model=AdminsStatsResponse)
 async def get_admins(
     bot_id: int,
-    accessible_bot: Bot = Depends(get_accessible_bot),
+    accessible_bot: Bot = Depends(get_bot_for_ai),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminsStatsResponse:

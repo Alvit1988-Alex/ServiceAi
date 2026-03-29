@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.modules.bots.models import Bot
+    from app.modules.bots.models import Bot, BotAdmin
     from app.modules.dialogs.models import Dialog
 
 
@@ -62,6 +62,12 @@ class User(Base):
         secondary=account_operators,
         back_populates="operators",
     )
+    bot_admin_accesses: Mapped[list["BotAdmin"]] = relationship(
+        "BotAdmin",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     assigned_dialogs: Mapped[list["Dialog"]] = relationship(
         "Dialog",
         back_populates="assigned_admin",
@@ -72,6 +78,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(8), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

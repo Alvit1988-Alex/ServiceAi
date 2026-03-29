@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.dependencies import get_db_session
-from app.modules.accounts.models import User, UserRole
+from app.modules.accounts.models import Account, User, UserRole
 from app.modules.accounts.schemas import UserCreate, UserOut
 from app.modules.accounts.service import AccountsService, UsersService
 from app.modules.auth.models import PendingLogin, PendingLoginStatus
@@ -27,6 +27,8 @@ from app.modules.auth.schemas import (
     PendingStatusResponse,
     RefreshRequest,
     Token,
+    AuthMeResponse,
+    YandexCompleteResponse,
     TelegramConfirmRequest,
     TelegramWebhookResponse,
     YandexAuthStartResponse,
@@ -173,11 +175,11 @@ async def yandex_callback(
     return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
 
 
-@router.post("/yandex/complete", response_model=Token)
+@router.post("/yandex/complete", response_model=YandexCompleteResponse)
 async def complete_yandex_login(
     payload: YandexCompleteRequest,
     session: AsyncSession = Depends(get_db_session),
-) -> Token:
+) -> YandexCompleteResponse:
     service = YandexOAuthService()
     try:
         user = await service.consume_completion_token(session=session, completion_token=payload.completion_token)
@@ -186,7 +188,11 @@ async def complete_yandex_login(
 
     access_token = create_access_token(subject=user.id)
     refresh_token = create_refresh_token(subject=user.id)
-    return Token(access_token=access_token, refresh_token=refresh_token)
+    return YandexCompleteResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        requires_profile_completion=not bool(user.first_name),
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -236,9 +242,25 @@ async def refresh_token(
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 
-@router.get("/me", response_model=UserOut)
-async def read_me(current_user: User = Depends(get_current_user)) -> UserOut:
-    return current_user
+@router.get("/me", response_model=AuthMeResponse)
+async def read_me(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> AuthMeResponse:
+    account = await session.scalar(select(Account).where(Account.owner_id == current_user.id))
+    return AuthMeResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        avatar_url=current_user.avatar_url,
+        role=current_user.role.value,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at,
+        updated_at=current_user.updated_at,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        account_public_id=account.public_id if account else None,
+    )
 
 
 @router.post("/me/avatar", response_model=UserOut)

@@ -8,6 +8,7 @@ import {
   login as loginApi,
   refreshToken as refreshTokenApi,
 } from "@/app/api/authApi";
+import { updateAccountProfile } from "@/app/api/accountApi";
 import { AuthTokens, User } from "@/app/api/types";
 
 export const AUTH_STORAGE_KEY = "serviceai_auth";
@@ -16,6 +17,7 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
+  profileCompletionRequired: boolean;
   isAuthenticated: boolean;
   isInitialized: boolean;
   loading: boolean;
@@ -24,6 +26,7 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string) => void;
   login: (email: string, password: string) => Promise<void>;
   completeYandexLogin: (completionToken: string) => Promise<void>;
+  completeProfile: (firstName: string, lastName: string) => Promise<void>;
   logout: () => void;
   refreshSession: () => Promise<void>;
   initFromStorage: () => Promise<void>;
@@ -59,6 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
   refreshToken: null,
+  profileCompletionRequired: false,
   isAuthenticated: false,
   isInitialized: false,
   loading: false,
@@ -74,13 +78,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const tokens = await loginApi(email, password);
-      get().setTokens(tokens.access_token, tokens.refresh_token);
+      get().setTokens(tokens.access_token!, tokens.refresh_token!);
 
-      const user = await getCurrentUser(tokens.access_token);
+      const user = await getCurrentUser(tokens.access_token!);
 
       set({
         user,
         loading: false,
+        profileCompletionRequired: false,
         isAuthenticated: true,
         isInitialized: true,
       });
@@ -103,13 +108,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const tokens = await completeYandexLoginApi(completionToken);
-      get().setTokens(tokens.access_token, tokens.refresh_token);
+      if (!tokens.access_token || !tokens.refresh_token) {
+        throw new Error("Не удалось получить токены после входа через Яндекс");
+      }
 
+      get().setTokens(tokens.access_token, tokens.refresh_token);
       const user = await getCurrentUser(tokens.access_token);
 
       set({
         user,
         loading: false,
+        profileCompletionRequired: tokens.requires_profile_completion ?? false,
         isAuthenticated: true,
         isInitialized: true,
       });
@@ -127,12 +136,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  completeProfile: async (firstName: string, lastName: string) => {
+    const user = get().user;
+    if (!user?.id) {
+      set({ error: "Нет данных пользователя" });
+      return;
+    }
+    const updated = await updateAccountProfile(user.id, {
+      first_name: firstName,
+      last_name: lastName,
+      email: user.email,
+    });
+    set({ user: updated, profileCompletionRequired: false, isAuthenticated: true });
+  },
+
   logout: () => {
     persistTokens(null);
     set({
       user: null,
       accessToken: null,
       refreshToken: null,
+      profileCompletionRequired: false,
       isAuthenticated: false,
       loading: false,
       error: null,
@@ -148,7 +172,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const tokens = await refreshTokenApi(refreshToken);
-      get().setTokens(tokens.access_token, tokens.refresh_token);
+      get().setTokens(tokens.access_token!, tokens.refresh_token!);
     } catch (error) {
       console.error("Failed to refresh session", error);
       get().logout();
@@ -160,7 +184,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const tokens = loadTokens();
 
-    if (!tokens) {
+    if (!tokens?.access_token || !tokens?.refresh_token) {
       set({
         isInitialized: true,
         isAuthenticated: false,
@@ -181,6 +205,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({
         user,
+        profileCompletionRequired: false,
         isAuthenticated: true,
         isInitialized: true,
       });

@@ -35,6 +35,8 @@ export default function BotsPage() {
     setIsCreating(false);
   };
 
+  const ownedBots = bots.filter((bot) => bot.is_owned !== false);
+  const delegatedBots = bots.filter((bot) => bot.is_owned === false);
   const hasBots = bots.length > 0;
 
   return (
@@ -58,21 +60,47 @@ export default function BotsPage() {
             )}
 
             {!error && hasBots && (
-              <div className={styles.list}>
-                {bots.map((bot) => (
-                  <Button
-                    key={bot.id}
-                    type="button"
-                    className={styles.botBtn}
-                    onClick={() => {
-                      selectBot(bot.id);
-                      router.push("/");
-                    }}
-                  >
-                    {bot.name}
-                  </Button>
-                ))}
-              </div>
+              <>
+                <div className={styles.listSection}>
+                  <h3 className={styles.subTitle}>Мои боты</h3>
+                  <div className={styles.list}>
+                    {ownedBots.map((bot) => (
+                      <Button
+                        key={bot.id}
+                        type="button"
+                        className={styles.botBtn}
+                        onClick={() => {
+                          selectBot(bot.id);
+                          router.push("/");
+                        }}
+                      >
+                        {bot.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {delegatedBots.length > 0 && (
+                  <div className={styles.listSection}>
+                    <h3 className={styles.subTitle}>Доступные мне боты</h3>
+                    <div className={styles.list}>
+                      {delegatedBots.map((bot) => (
+                        <Button
+                          key={bot.id}
+                          type="button"
+                          className={styles.botBtn}
+                          onClick={() => {
+                            selectBot(bot.id);
+                            router.push("/");
+                          }}
+                        >
+                          {bot.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             <div className={styles.createArea}>

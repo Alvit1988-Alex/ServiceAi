@@ -2,149 +2,158 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { getCurrentAccount, updateAccountProfile } from "@/app/api/accountApi";
-import { AccountProfile } from "@/app/api/types";
+import { addBotAdmin, listBotAdmins, removeBotAdmin, updateBot } from "@/app/api/botsApi";
+import { BotAdmin } from "@/app/api/types";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import LayoutShell from "@/app/components/layout/LayoutShell";
-import { useAuthStore } from "@/store/auth.store";
+import { useBotsStore } from "@/store/bots.store";
 
 import styles from "./settings.module.css";
 
 export default function SettingsPage() {
-  const authUser = useAuthStore((state) => state.user);
-
-  const [account, setAccount] = useState<AccountProfile | null>(authUser);
-  const [profileForm, setProfileForm] = useState({
-    full_name: authUser?.full_name ?? "",
-    email: authUser?.email ?? "",
-  });
-  const [profileLoading, setProfileLoading] = useState(!authUser);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+  const { selectedBot, reloadSelectedBot } = useBotsStore();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [admins, setAdmins] = useState<BotAdmin[]>([]);
+  const [accountPublicId, setAccountPublicId] = useState("");
+  const [role, setRole] = useState<"superadmin" | "admin">("admin");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
-    if (authUser) {
-      setAccount(authUser);
-      setProfileForm({
-        full_name: authUser.full_name ?? "",
-        email: authUser.email,
-      });
-      setProfileLoading(false);
-      return;
-    }
+    setName(selectedBot?.name ?? "");
+    setDescription(selectedBot?.description ?? "");
+    void loadAdmins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBot?.id]);
 
-    void loadAccountProfile();
-  }, [authUser]);
-
-  async function loadAccountProfile() {
-    setProfileLoading(true);
-    setProfileError(null);
-
+  async function loadAdmins() {
+    if (!selectedBot?.id) return;
     try {
-      const profile = await getCurrentAccount();
-      setAccount(profile);
-      setProfileForm({
-        full_name: profile.full_name ?? "",
-        email: profile.email,
-      });
-      useAuthStore.setState({ user: profile });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось загрузить профиль";
-      setProfileError(message);
-    } finally {
-      setProfileLoading(false);
+      const data = await listBotAdmins(selectedBot.id);
+      setAdmins(data);
+    } catch {
+      setAdmins([]);
     }
   }
 
-  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setProfileError(null);
-    setProfileSuccess(null);
-
-    if (!profileForm.full_name.trim() || !profileForm.email.trim()) {
-      setProfileError("Заполните все поля профиля");
-      return;
-    }
-
-    if (!account?.id) {
-      setProfileError("Не удалось определить пользователя для обновления");
-      return;
-    }
-
-    setProfileLoading(true);
-
+    if (!selectedBot?.id) return;
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
-      const updated = await updateAccountProfile(account.id, {
-        full_name: profileForm.full_name.trim(),
-        email: profileForm.email.trim(),
-      });
-      setAccount(updated);
-      useAuthStore.setState({ user: updated });
-      setProfileSuccess("Профиль успешно обновлен");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Не удалось обновить профиль";
-      setProfileError(message);
+      await updateBot(selectedBot.id, { name: name.trim(), description: description.trim() || null });
+      await reloadSelectedBot();
+      setSuccess("Настройки бота сохранены");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
-      setProfileLoading(false);
+      setLoading(false);
+    }
+  }
+
+  async function handleAddAdmin() {
+    if (!selectedBot?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await addBotAdmin(selectedBot.id, accountPublicId.trim(), role);
+      setAccountPublicId("");
+      setRole("admin");
+      setShowAdd(false);
+      await loadAdmins();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка добавления администратора");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemoveAdmin(userId: number) {
+    if (!selectedBot?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await removeBotAdmin(selectedBot.id, userId);
+      await loadAdmins();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка удаления администратора");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <AuthGuard>
-      <LayoutShell
-        title="Настройки аккаунта"
-        description="Обновите данные профиля, чтобы поддерживать актуальную информацию."
-      >
-        <div className={styles.page}>
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.eyebrow}>Профиль</p>
-                <h2 className={styles.sectionTitle}>Личные данные</h2>
-              </div>
-              {profileLoading && <span className={styles.muted}>Загружаем профиль...</span>}
-            </div>
+      <LayoutShell title="Настройки бота" description="Управление выбранным ботом.">
+        {!selectedBot ? (
+          <p className={styles.muted}>Выберите бота на странице «Боты», чтобы открыть настройки.</p>
+        ) : (
+          <div className={styles.page}>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Название бота</h2>
+              <form className={styles.form} onSubmit={handleSave}>
+                <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} required />
+                <h2 className={styles.sectionTitle}>Описание</h2>
+                <input className={styles.input} value={description} onChange={(e) => setDescription(e.target.value)} />
+                <button className={styles.button} type="submit" disabled={loading}>Сохранить</button>
+              </form>
+            </section>
 
-            <form className={styles.form} onSubmit={handleProfileSubmit}>
-              <label className={styles.field}>
-                <span className={styles.label}>Имя и фамилия</span>
-                <input
-                  className={styles.input}
-                  name="full_name"
-                  type="text"
-                  value={profileForm.full_name}
-                  onChange={(event) =>
-                    setProfileForm((prev) => ({ ...prev, full_name: event.target.value }))
-                  }
-                  disabled={profileLoading}
-                  placeholder="Введите имя"
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span className={styles.label}>Email</span>
-                <input
-                  className={styles.input}
-                  name="email"
-                  type="email"
-                  value={profileForm.email}
-                  onChange={(event) => setProfileForm((prev) => ({ ...prev, email: event.target.value }))}
-                  disabled={profileLoading}
-                  placeholder="example@domain.com"
-                />
-              </label>
-
-              <div className={styles.actions}>
-                <button className={styles.button} type="submit" disabled={profileLoading}>
-                  {profileLoading ? "Сохраняем..." : "Сохранить"}
+            <section className={styles.section}>
+              <div className={styles.adminHeader}>
+                <h2 className={styles.sectionTitle}>Администраторы</h2>
+                <button
+                  type="button"
+                  title="Добавить нового администратора"
+                  className={styles.plusBtn}
+                  onClick={() => setShowAdd((v) => !v)}
+                >
+                  +
                 </button>
               </div>
 
-              {profileError && <p className={styles.error}>{profileError}</p>}
-              {profileSuccess && <p className={styles.success}>{profileSuccess}</p>}
-            </form>
-          </section>
-        </div>
+              {showAdd && (
+                <div className={styles.addRow}>
+                  <input
+                    className={styles.input}
+                    placeholder="ID аккаунта (8 цифр)"
+                    value={accountPublicId}
+                    onChange={(e) => setAccountPublicId(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  />
+                  <select className={styles.input} value={role} onChange={(e) => setRole(e.target.value as "superadmin" | "admin")}>
+                    <option value="admin">admin</option>
+                    <option value="superadmin">superadmin</option>
+                  </select>
+                  <button className={styles.button} type="button" onClick={handleAddAdmin} disabled={accountPublicId.length !== 8 || loading}>
+                    Добавить
+                  </button>
+                </div>
+              )}
+
+              <div className={styles.form}>
+                {admins.map((admin) => (
+                  <div key={admin.id} className={styles.adminRow}>
+                    <span>
+                      {admin.first_name ?? "Пользователь"}
+                      {admin.last_name ? ` ${admin.last_name}` : ""} — ID {admin.account_public_id}
+                    </span>
+                    <button type="button" className={styles.button} onClick={() => handleRemoveAdmin(admin.user_id)}>
+                      Удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {error && <p className={styles.error}>{error}</p>}
+            {success && <p className={styles.success}>{success}</p>}
+          </div>
+        )}
       </LayoutShell>
     </AuthGuard>
   );

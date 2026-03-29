@@ -4,6 +4,9 @@ export interface User {
   id: number;
   email: string;
   full_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  account_public_id?: string | null;
   avatar_url?: string | null;
   role: UserRole;
   is_active: boolean;
@@ -15,7 +18,8 @@ export interface AccountProfile extends User {}
 
 export interface UpdateAccountProfilePayload {
   email: string;
-  full_name: string;
+  first_name: string;
+  last_name?: string | null;
 }
 
 export interface ChangePasswordPayload {
@@ -24,9 +28,10 @@ export interface ChangePasswordPayload {
 }
 
 export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
+  access_token?: string;
+  refresh_token?: string;
   token_type?: string;
+  requires_profile_completion?: boolean;
 }
 
 export interface YandexAuthStartResponse {
@@ -76,14 +81,28 @@ export interface BotChannel {
   updated_at: string;
 }
 
+export type BotAccessRole = "owner" | "superadmin" | "admin" | "account_operator";
+
 export interface Bot {
   id: number;
   name: string;
   description?: string | null;
   account_id: number;
+  is_owned?: boolean;
+  access_role?: BotAccessRole;
   created_at: string;
   updated_at: string;
   channels?: BotChannel[];
+}
+
+export interface BotAdmin {
+  id: number;
+  bot_id: number;
+  user_id: number;
+  role: "superadmin" | "admin";
+  account_public_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 export interface BotCreate {
@@ -183,10 +202,6 @@ export interface DialogShort extends Dialog {
 export type DialogSearchResponse = ListResponse<DialogShort>;
 
 export interface DialogDetail extends Dialog {
-  /**
-   * Опционально: бэкенд может вернуть last_message как в DialogShort,
-   * а фронт использует это как fallback.
-   */
   last_message?: DialogMessage | null;
   messages: DialogMessage[];
 }

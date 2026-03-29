@@ -34,6 +34,7 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
+    email: EmailStr | None = None
     full_name: str | None = None
     telegram_id: int | None = None
     username: str | None = None
@@ -71,6 +72,7 @@ class AccountUpdate(BaseModel):
 
 class AccountOut(AccountBase):
     id: int
+    public_id: str
     owner_id: int
     operators: list[UserOut] = Field(default_factory=list)
     created_at: datetime
