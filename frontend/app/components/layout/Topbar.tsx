@@ -62,7 +62,18 @@ const Topbar: React.FC = () => {
         {user?.account_public_id && (
           <div className={styles.accountIdWrap}>
             <button type="button" className={styles.accountId} onClick={copyId}>ID: {user.account_public_id}</button>
-            <button type="button" className={styles.copyBtn} onClick={copyId}>Копировать</button>
+            <button
+              type="button"
+              className={styles.copyIconBtn}
+              onClick={copyId}
+              aria-label="Скопировать ID"
+              title="Скопировать ID"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 9h10v11H9z" />
+                <path d="M5 4h10v2H7v11H5z" />
+              </svg>
+            </button>
             {copied && <span className={styles.copied}>ID скопирован</span>}
           </div>
         )}

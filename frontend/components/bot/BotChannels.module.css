@@ -22,6 +22,180 @@
   color: var(--color-text-muted);
 }
 
+.channelTilesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.channelTile {
+  position: relative;
+  min-height: 120px;
+  padding: 1rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 18px;
+  background: #f8fafc;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: tileFadeIn 0.4s ease forwards;
+  animation-delay: calc(var(--tile-index, 0) * 0.06s);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.channelTile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+  border-color: var(--color-primary);
+}
+
+.channelTile:active {
+  transform: translateY(0);
+}
+
+.channelTileActive {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.channelTileTitle {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.channelTileMeta {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.channelTileLogo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.channelTileLogo svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.channelTileLogoGlyph {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.channelTileTelegram {
+  background: linear-gradient(145deg, #55aef6, #2397f3);
+}
+
+.channelTileWebchat {
+  background: linear-gradient(145deg, #30b67f, #189965);
+}
+
+.channelTileAvito {
+  background: linear-gradient(145deg, #28a8e1, #0f89cc);
+}
+
+.channelTileMax {
+  background: linear-gradient(145deg, #3556d9, #233eb4);
+}
+
+.channelTileVk {
+  background: linear-gradient(145deg, #6195e9, #4f80d8);
+}
+
+.channelTileOk {
+  background: linear-gradient(145deg, #f3b236, #e69816);
+}
+
+.activeCheck {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #16a34a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.channelLightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 55;
+}
+
+.channelLightbox {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid var(--color-border-subtle);
+  background: #fff;
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem;
+}
+
+.channelLightboxHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.channelLightboxBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.channelLightboxClose {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@keyframes tileFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .card {
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 18px;
@@ -529,6 +703,13 @@
 :global(html[data-theme="dark"]) .card,
 :global(html[data-theme="dark"]) .addChannelCard {
   background: var(--color-bg-soft);
+  border-color: var(--color-border-subtle);
+}
+
+:global(html[data-theme="dark"]) .channelLightbox,
+:global(html[data-theme="dark"]) .channelLightboxClose {
+  background: var(--color-bg-soft);
+  color: var(--color-text);
   border-color: var(--color-border-subtle);
 }
 
