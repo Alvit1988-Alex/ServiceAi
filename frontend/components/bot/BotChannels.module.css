@@ -61,7 +61,7 @@
 
 .channelTileActive {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-soft), 0 14px 28px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 14px 28px rgba(15, 23, 42, 0.14);
 }
 
 .channelTileTitle {

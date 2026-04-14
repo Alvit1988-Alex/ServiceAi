@@ -1048,7 +1048,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       )}
 
       {!loading && !loadError && visibleChannels.length > 0 && (
-        <div className={styles.channelTilesGrid} role="tablist" aria-label="Каналы связи">
+        <div className={styles.channelTilesGrid}>
           {visibleChannels.map((channel, index) => {
             const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
             const isActive = channelActivation[channel.id] ?? channel.is_active;
@@ -1059,9 +1059,6 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 type="button"
                 className={`${styles.channelTile} ${isSelected ? styles.channelTileActive : ""}`}
                 onClick={() => setActiveLightboxChannelId(channel.id)}
-                role="tab"
-                aria-selected={isSelected}
-                aria-controls={`channel-lightbox-${channel.id}`}
                 style={{ "--tile-index": index } as CSSProperties}
               >
                 {isActive && <span className={styles.activeCheck}>✓</span>}
