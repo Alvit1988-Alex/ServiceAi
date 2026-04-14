@@ -88,6 +88,60 @@ const THEME_LABELS: Record<"light" | "dark" | "neutral", string> = {
   neutral: "Нейтральная",
 };
 
+function getChannelTileThemeClass(channelType: ChannelType): string {
+  switch (channelType) {
+    case ChannelType.TELEGRAM:
+      return styles.channelTileTelegram;
+    case ChannelType.WEBCHAT:
+      return styles.channelTileWebchat;
+    case ChannelType.AVITO:
+      return styles.channelTileAvito;
+    case ChannelType.MAX:
+      return styles.channelTileMax;
+    case ChannelType.VK:
+      return styles.channelTileVk;
+    case ChannelType.OK:
+      return styles.channelTileOk;
+    default:
+      return "";
+  }
+}
+
+function renderChannelTileLogo(channelType: ChannelType) {
+  switch (channelType) {
+    case ChannelType.TELEGRAM:
+      return <span className={styles.channelTileLogoGlyph}>✈</span>;
+    case ChannelType.WEBCHAT:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5h16v10H9l-5 4V5z" />
+        </svg>
+      );
+    case ChannelType.AVITO:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="8" cy="8" r="4" />
+          <circle cx="15.5" cy="7.5" r="3.2" />
+          <circle cx="9" cy="15.5" r="3.4" />
+          <circle cx="16" cy="15" r="4.2" />
+        </svg>
+      );
+    case ChannelType.MAX:
+      return <span className={styles.channelTileLogoGlyph}>M</span>;
+    case ChannelType.VK:
+      return <span className={styles.channelTileLogoGlyph}>VK</span>;
+    case ChannelType.OK:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="7" r="3" />
+          <path d="M8.5 12.5l3.5 2.9 3.5-2.9 1.3 1.6-3.7 3.1 3.3 3.5-1.5 1.4-2.9-3-2.9 3-1.5-1.4 3.3-3.5-3.7-3.1z" />
+        </svg>
+      );
+    default:
+      return <span className={styles.channelTileLogoGlyph}>•</span>;
+  }
+}
+
 function buildConfigState(channel: BotChannel): ChannelConfigState {
   const fields = CHANNEL_FIELDS[channel.channel_type] ?? [];
   const initialEntries: ChannelConfigState = { ...(channel.config ?? {}) };
@@ -1057,11 +1111,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
               <button
                 key={channel.id}
                 type="button"
-                className={`${styles.channelTile} ${isSelected ? styles.channelTileActive : ""}`}
+                className={`${styles.channelTile} ${getChannelTileThemeClass(channel.channel_type)} ${isSelected ? styles.channelTileActive : ""}`}
                 onClick={() => setActiveLightboxChannelId(channel.id)}
                 style={{ "--tile-index": index } as CSSProperties}
               >
                 {isActive && <span className={styles.activeCheck}>✓</span>}
+                <span className={styles.channelTileLogo}>{renderChannelTileLogo(channel.channel_type)}</span>
                 <span className={styles.channelTileTitle}>{channelLabel}</span>
                 <span className={styles.channelTileMeta}>ID: {channel.id}</span>
               </button>

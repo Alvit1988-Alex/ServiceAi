@@ -39,7 +39,7 @@
   text-align: left;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.35rem;
   cursor: pointer;
   opacity: 0;
@@ -67,12 +67,60 @@
 .channelTileTitle {
   font-size: 1.1rem;
   font-weight: 800;
-  color: var(--color-text);
+  color: #ffffff;
 }
 
 .channelTileMeta {
   font-size: 0.88rem;
-  color: var(--color-text-muted);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.channelTileLogo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.channelTileLogo svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.channelTileLogoGlyph {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.channelTileTelegram {
+  background: linear-gradient(145deg, #55aef6, #2397f3);
+}
+
+.channelTileWebchat {
+  background: linear-gradient(145deg, #30b67f, #189965);
+}
+
+.channelTileAvito {
+  background: linear-gradient(145deg, #28a8e1, #0f89cc);
+}
+
+.channelTileMax {
+  background: linear-gradient(145deg, #3556d9, #233eb4);
+}
+
+.channelTileVk {
+  background: linear-gradient(145deg, #6195e9, #4f80d8);
+}
+
+.channelTileOk {
+  background: linear-gradient(145deg, #f3b236, #e69816);
 }
 
 .activeCheck {
@@ -658,7 +706,6 @@
   border-color: var(--color-border-subtle);
 }
 
-:global(html[data-theme="dark"]) .channelTile,
 :global(html[data-theme="dark"]) .channelLightbox,
 :global(html[data-theme="dark"]) .channelLightboxClose {
   background: var(--color-bg-soft);
