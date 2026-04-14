@@ -159,6 +159,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const [channelErrors, setChannelErrors] = useState<Record<number, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [successChannelId, setSuccessChannelId] = useState<number | null>(null);
+  const [activeLightboxChannelId, setActiveLightboxChannelId] = useState<number | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const modalIframeRef = useRef<HTMLIFrameElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -634,6 +635,21 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (activeLightboxChannelId === null) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveLightboxChannelId(null);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeLightboxChannelId]);
+
   const closeAvatarEditor = () => {
     setIsAvatarEditorOpen(false);
     avatarImageRef.current = null;
@@ -1006,6 +1022,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
   const visibleChannels = channels.filter((channel) =>
     VISIBLE_CHANNEL_TYPES.includes(channel.channel_type),
   );
+  const activeLightboxChannel = visibleChannels.find(
+    (channel) => channel.id === activeLightboxChannelId,
+  );
+  const activeChannelInstruction = activeLightboxChannel
+    ? CHANNEL_INSTRUCTIONS[activeLightboxChannel.channel_type]
+    : undefined;
 
   return (
     <section className={styles.section}>
@@ -1025,126 +1047,167 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         <p className={styles.muted}>Нет доступных каналов для отображения.</p>
       )}
 
-      {!loading && !loadError && visibleChannels.map((channel) => {
-        const instruction = CHANNEL_INSTRUCTIONS[channel.channel_type];
-        const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
-        const channelError = channelErrors[channel.id];
-        const isActive = channelActivation[channel.id] ?? channel.is_active;
-        return (
-          <form
-            key={channel.id}
-            className={styles.card}
-            onSubmit={(event) => handleSubmit(event, channel.id)}
+      {!loading && !loadError && visibleChannels.length > 0 && (
+        <div className={styles.channelTilesGrid}>
+          {visibleChannels.map((channel) => {
+            const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
+            const isActive = channelActivation[channel.id] ?? channel.is_active;
+            return (
+              <button
+                key={channel.id}
+                type="button"
+                className={styles.channelTile}
+                onClick={() => setActiveLightboxChannelId(channel.id)}
+              >
+                {isActive && <span className={styles.activeCheck}>✓</span>}
+                <span className={styles.channelTileTitle}>{channelLabel}</span>
+                <span className={styles.channelTileMeta}>ID: {channel.id}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {activeLightboxChannel && (
+        <div
+          className={styles.channelLightboxOverlay}
+          onClick={() => setActiveLightboxChannelId(null)}
+          role="presentation"
+        >
+          <div
+            className={styles.channelLightbox}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
-            <div className={styles.cardHeader}>
+            <div className={styles.channelLightboxHeader}>
               <div>
-                <div className={styles.badge}>{channelLabel}</div>
-                <div className={styles.channelMeta}>ID: {channel.id}</div>
+                <div className={styles.badge}>
+                  {CHANNEL_TYPE_LABELS[activeLightboxChannel.channel_type] ?? activeLightboxChannel.channel_type}
+                </div>
+                <div className={styles.channelMeta}>ID: {activeLightboxChannel.id}</div>
               </div>
+              <button
+                type="button"
+                className={styles.channelLightboxClose}
+                onClick={() => setActiveLightboxChannelId(null)}
+                aria-label="Закрыть"
+                title="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              className={styles.channelLightboxBody}
+              onSubmit={(event) => handleSubmit(event, activeLightboxChannel.id)}
+            >
               <div className={styles.channelToggleWrapper}>
                 <span className={styles.channelToggleLabel}>Активировать канал</span>
                 <label className={styles.channelToggle}>
                   <input
                     type="checkbox"
-                    checked={isActive}
+                    checked={channelActivation[activeLightboxChannel.id] ?? activeLightboxChannel.is_active}
                     onChange={(event) =>
                       setChannelActivation((prev) => ({
                         ...prev,
-                        [channel.id]: event.target.checked,
+                        [activeLightboxChannel.id]: event.target.checked,
                       }))
                     }
                   />
                   <span className={styles.channelToggleSlider} />
                 </label>
               </div>
-            </div>
 
-            {channel.channel_type === ChannelType.WEBCHAT
-              ? renderWebchatSettings(channel)
-              : (
-                <>
-                  {channel.channel_type === ChannelType.VK && (
-                    <div className={styles.vkWebhookBlock}>
-                      <div className={styles.vkWebhookTitle}>
-                        Скопируйте это в строку «Адрес» в настройках сервера VK
+              {activeLightboxChannel.channel_type === ChannelType.WEBCHAT
+                ? renderWebchatSettings(activeLightboxChannel)
+                : (
+                  <>
+                    {activeLightboxChannel.channel_type === ChannelType.VK && (
+                      <div className={styles.vkWebhookBlock}>
+                        <div className={styles.vkWebhookTitle}>
+                          Скопируйте это в строку «Адрес» в настройках сервера VK
+                        </div>
+                        <div className={styles.vkWebhookRow}>
+                          <input className={styles.vkWebhookInput} value={vkWebhookUrl} readOnly />
+                          <button
+                            type="button"
+                            className={styles.vkWebhookCopyButton}
+                            onClick={() => void navigator.clipboard.writeText(vkWebhookUrl)}
+                            aria-label="Скопировать webhook URL"
+                            title="Скопировать"
+                          >
+                            ⧉
+                          </button>
+                        </div>
                       </div>
-                      <div className={styles.vkWebhookRow}>
-                        <input className={styles.vkWebhookInput} value={vkWebhookUrl} readOnly />
-                        <button
-                          type="button"
-                          className={styles.vkWebhookCopyButton}
-                          onClick={() => void navigator.clipboard.writeText(vkWebhookUrl)}
-                          aria-label="Скопировать webhook URL"
-                          title="Скопировать"
-                        >
-                          ⧉
-                        </button>
+                    )}
+                    {activeLightboxChannel.channel_type === ChannelType.OK && (
+                      <div className={styles.vkWebhookBlock}>
+                        <div className={styles.vkWebhookTitle}>
+                          Webhook URL для Odnoklassniki
+                        </div>
+                        <div className={styles.vkWebhookRow}>
+                          <input className={styles.vkWebhookInput} value={okWebhookUrl} readOnly />
+                          <button
+                            type="button"
+                            className={styles.vkWebhookCopyButton}
+                            onClick={() => void navigator.clipboard.writeText(okWebhookUrl)}
+                            aria-label="Скопировать webhook URL"
+                            title="Скопировать"
+                          >
+                            ⧉
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {channel.channel_type === ChannelType.OK && (
-                    <div className={styles.vkWebhookBlock}>
-                      <div className={styles.vkWebhookTitle}>
-                        Webhook URL для Odnoklassniki
-                      </div>
-                      <div className={styles.vkWebhookRow}>
-                        <input className={styles.vkWebhookInput} value={okWebhookUrl} readOnly />
-                        <button
-                          type="button"
-                          className={styles.vkWebhookCopyButton}
-                          onClick={() => void navigator.clipboard.writeText(okWebhookUrl)}
-                          aria-label="Скопировать webhook URL"
-                          title="Скопировать"
-                        >
-                          ⧉
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {renderFields(channel)}
-                </>
-              )}
+                    )}
+                    {renderFields(activeLightboxChannel)}
+                  </>
+                )}
 
-            {renderWebhookStatus(channel)}
+              {renderWebhookStatus(activeLightboxChannel)}
 
-            <div className={styles.actions}>
-              {successChannelId === channel.id && (
-                <span className={styles.success}>Настройки сохранены</span>
-              )}
-              {channelError && <span className={styles.error}>{channelError}</span>}
-              {instruction && (
-                <a
-                  href={instruction.href}
-                  className={styles.instructionLink}
-                  download
-                  title={instruction.summary}
+              <div className={styles.actions}>
+                {successChannelId === activeLightboxChannel.id && (
+                  <span className={styles.success}>Настройки сохранены</span>
+                )}
+                {channelErrors[activeLightboxChannel.id] && (
+                  <span className={styles.error}>{channelErrors[activeLightboxChannel.id]}</span>
+                )}
+                {activeChannelInstruction && (
+                  <a
+                    href={activeChannelInstruction.href}
+                    className={styles.instructionLink}
+                    download
+                    title={activeChannelInstruction.summary}
+                  >
+                    Инструкция
+                  </a>
+                )}
+                <span className={styles.actionHint}>
+                  Тестирование канала будет добавлено позже. Сейчас доступно только сохранение
+                  конфигурации.
+                </span>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled
+                  title="Тестирование канала скоро будет доступно."
                 >
-                  Инструкция
-                </a>
-              )}
-              <span className={styles.actionHint}>
-                Тестирование канала будет добавлено позже. Сейчас доступно только сохранение
-                конфигурации.
-              </span>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                disabled
-                title="Тестирование канала скоро будет доступно."
-              >
-                Скоро
-              </button>
-              <button
-                type="submit"
-                className={styles.saveButton}
-                disabled={savingChannelId === channel.id}
-              >
-                {savingChannelId === channel.id ? "Сохраняем..." : "Сохранить"}
-              </button>
-            </div>
-          </form>
-        );
-      })}
+                  Скоро
+                </button>
+                <button
+                  type="submit"
+                  className={styles.saveButton}
+                  disabled={savingChannelId === activeLightboxChannel.id}
+                >
+                  {savingChannelId === activeLightboxChannel.id ? "Сохраняем..." : "Сохранить"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

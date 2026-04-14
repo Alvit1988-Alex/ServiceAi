@@ -25,6 +25,11 @@
 .accountIdWrap { display: flex; align-items: center; gap: 6px; position: relative; }
 .accountId { border: none; background: transparent; cursor: pointer; color: var(--color-text); font-weight: 700; }
 .copyBtn { height: 32px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); cursor: pointer; }
+
+.copyIconBtn { height: 30px; width: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-text); cursor: pointer; }
+.copyIconBtn svg { width: 16px; height: 16px; fill: currentColor; }
+.copyIconBtn:hover { background: var(--color-bg-soft); }
+.copyIconBtn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .copied { position: absolute; top: 34px; left: 0; font-size: 12px; color: #16a34a; white-space: nowrap; }
 .panel { position: absolute; right: 66px; top: 48px; width: 260px; background: #fff; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; display: grid; gap: 8px; z-index: 30; }
 .panelTitle { margin: 0; font-size: 13px; font-weight: 700; }
