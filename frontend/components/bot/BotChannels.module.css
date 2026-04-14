@@ -45,25 +45,24 @@
   opacity: 0;
   transform: translateY(14px);
   animation: tileFadeIn 0.4s ease forwards;
+  animation-delay: calc(var(--tile-index, 0) * 0.06s);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .channelTile:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
-  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border-subtle) 78%);
+  border-color: var(--color-primary);
 }
 
 .channelTile:active {
   transform: translateY(0);
 }
 
-.channelTile:nth-child(1) { animation-delay: 0.04s; }
-.channelTile:nth-child(2) { animation-delay: 0.08s; }
-.channelTile:nth-child(3) { animation-delay: 0.12s; }
-.channelTile:nth-child(4) { animation-delay: 0.16s; }
-.channelTile:nth-child(5) { animation-delay: 0.20s; }
-.channelTile:nth-child(6) { animation-delay: 0.24s; }
+.channelTileActive {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft), 0 14px 28px rgba(15, 23, 42, 0.14);
+}
 
 .channelTileTitle {
   font-size: 1.1rem;

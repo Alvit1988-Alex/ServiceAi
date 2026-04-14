@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, CSSProperties, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 
 import { deleteAvatar, getCurrentAccount, uploadAvatar } from "@/app/api/accountApi";
 import { listChannels, updateChannel } from "@/app/api/channelsApi";
@@ -1048,16 +1048,21 @@ export default function BotChannels({ botId }: BotChannelsProps) {
       )}
 
       {!loading && !loadError && visibleChannels.length > 0 && (
-        <div className={styles.channelTilesGrid}>
-          {visibleChannels.map((channel) => {
+        <div className={styles.channelTilesGrid} role="tablist" aria-label="Каналы связи">
+          {visibleChannels.map((channel, index) => {
             const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
             const isActive = channelActivation[channel.id] ?? channel.is_active;
+            const isSelected = activeLightboxChannelId === channel.id;
             return (
               <button
                 key={channel.id}
                 type="button"
-                className={styles.channelTile}
+                className={`${styles.channelTile} ${isSelected ? styles.channelTileActive : ""}`}
                 onClick={() => setActiveLightboxChannelId(channel.id)}
+                role="tab"
+                aria-selected={isSelected}
+                aria-controls={`channel-lightbox-${channel.id}`}
+                style={{ "--tile-index": index } as CSSProperties}
               >
                 {isActive && <span className={styles.activeCheck}>✓</span>}
                 <span className={styles.channelTileTitle}>{channelLabel}</span>
@@ -1079,10 +1084,15 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
+            id={`channel-lightbox-${activeLightboxChannel.id}`}
+            aria-labelledby={`channel-lightbox-title-${activeLightboxChannel.id}`}
           >
             <div className={styles.channelLightboxHeader}>
               <div>
-                <div className={styles.badge}>
+                <div
+                  className={styles.badge}
+                  id={`channel-lightbox-title-${activeLightboxChannel.id}`}
+                >
                   {CHANNEL_TYPE_LABELS[activeLightboxChannel.channel_type] ?? activeLightboxChannel.channel_type}
                 </div>
                 <div className={styles.channelMeta}>ID: {activeLightboxChannel.id}</div>
