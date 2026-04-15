@@ -1115,11 +1115,15 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 style={{ "--tile-index": index } as CSSProperties}
               >
                 <div className={styles.channelTileTop}>
-                  <span className={logoClassName}>{renderChannelTileLogo(channel.channel_type)}</span>
+                  <div className={styles.channelTileMain}>
+                    <span className={logoClassName}>{renderChannelTileLogo(channel.channel_type)}</span>
+                    <div className={styles.channelTileText}>
+                      <span className={styles.channelTileTitle}>{channelLabel}</span>
+                      <span className={styles.channelTileDescription}>{channelDescription}</span>
+                    </div>
+                  </div>
                   {isActive && <span className={styles.activeCheck}>✓</span>}
                 </div>
-                <span className={styles.channelTileTitle}>{channelLabel}</span>
-                <span className={styles.channelTileDescription}>{channelDescription}</span>
               </button>
             );
           })}

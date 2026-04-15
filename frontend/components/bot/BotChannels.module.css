@@ -39,8 +39,8 @@
   text-align: left;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 0.35rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
   cursor: pointer;
   opacity: 0;
   transform: translateY(14px);
@@ -50,10 +50,26 @@
 }
 
 .channelTileTop {
-  min-height: 44px;
+  min-height: 56px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.channelTileMain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.channelTileText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .channelTile:hover {
@@ -88,8 +104,8 @@
 }
 
 .channelTileLogo {
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -101,13 +117,13 @@
 
 .channelTileLogoAvito {
   background: #ffffff;
-  border-radius: 10px;
-  padding: 6px;
+  border-radius: 12px;
+  padding: 8px;
 }
 
 .channelTileLogo svg {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   fill: currentColor;
 }
 
@@ -119,27 +135,36 @@
 }
 
 .channelTileTelegram {
-  background: linear-gradient(145deg, #55aef6, #2397f3);
+  background: linear-gradient(145deg, #2aabee, #229ed9);
 }
 
 .channelTileWebchat {
-  background: linear-gradient(145deg, #30b67f, #189965);
+  background: linear-gradient(145deg, #2dbd74, #24a965);
 }
 
 .channelTileAvito {
-  background: linear-gradient(145deg, #28a8e1, #0f89cc);
+  background: #ffffff;
+  border-color: #d7dde8;
 }
 
 .channelTileMax {
-  background: linear-gradient(145deg, #3556d9, #233eb4);
+  background: linear-gradient(145deg, #8a63f6, #7249e5);
 }
 
 .channelTileVk {
-  background: linear-gradient(145deg, #6195e9, #4f80d8);
+  background: linear-gradient(145deg, #58c8fb, #39b7ee);
 }
 
 .channelTileOk {
-  background: linear-gradient(145deg, #f3b236, #e69816);
+  background: linear-gradient(145deg, #f5af2f, #eb8f1f);
+}
+
+.channelTileAvito .channelTileTitle {
+  color: #334155;
+}
+
+.channelTileAvito .channelTileDescription {
+  color: #64748b;
 }
 
 .activeCheck {
