@@ -1105,6 +1105,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
             const channelDescription = CHANNEL_TYPE_DESCRIPTIONS[channel.channel_type] ?? "";
             const isActive = channelActivation[channel.id] ?? channel.is_active;
             const isSelected = activeLightboxChannelId === channel.id;
+            const logoClassName = `${styles.channelTileLogo} ${channel.channel_type === ChannelType.AVITO ? styles.channelTileLogoAvito : ""}`;
             return (
               <button
                 key={channel.id}
@@ -1114,12 +1115,11 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 style={{ "--tile-index": index } as CSSProperties}
               >
                 <div className={styles.channelTileTop}>
+                  <span className={logoClassName}>{renderChannelTileLogo(channel.channel_type)}</span>
                   {isActive && <span className={styles.activeCheck}>✓</span>}
-                  <span className={styles.channelTileLogo}>{renderChannelTileLogo(channel.channel_type)}</span>
                 </div>
                 <span className={styles.channelTileTitle}>{channelLabel}</span>
                 <span className={styles.channelTileDescription}>{channelDescription}</span>
-                <span className={styles.channelTileMeta}>ID: {channel.id}</span>
               </button>
             );
           })}
