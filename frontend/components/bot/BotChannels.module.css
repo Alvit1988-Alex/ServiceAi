@@ -49,6 +49,14 @@
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
+.channelTileTop {
+  position: relative;
+  min-height: 44px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
 .channelTile:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
@@ -75,16 +83,21 @@
   color: rgba(255, 255, 255, 0.88);
 }
 
+.channelTileDescription {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
 .channelTileLogo {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.32);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .channelTileLogo svg {
@@ -126,8 +139,8 @@
 
 .activeCheck {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 0;
+  left: 0;
   width: 24px;
   height: 24px;
   border-radius: 999px;
