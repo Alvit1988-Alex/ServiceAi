@@ -24,7 +24,7 @@
 
 .channelTilesGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
 }
 
@@ -50,10 +50,9 @@
 }
 
 .channelTileTop {
-  position: relative;
   min-height: 44px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: flex-start;
 }
 
@@ -100,6 +99,12 @@
   box-shadow: none;
 }
 
+.channelTileLogoAvito {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 6px;
+}
+
 .channelTileLogo svg {
   width: 24px;
   height: 24px;
@@ -138,9 +143,6 @@
 }
 
 .activeCheck {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 24px;
   height: 24px;
   border-radius: 999px;
@@ -151,6 +153,18 @@
   color: #fff;
   font-size: 14px;
   font-weight: 800;
+}
+
+@media (max-width: 1024px) {
+  .channelTilesGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .channelTilesGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .channelLightboxOverlay {
