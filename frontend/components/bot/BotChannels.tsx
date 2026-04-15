@@ -34,6 +34,15 @@ const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
   [ChannelType.OK]: "OK",
 };
 
+const CHANNEL_TYPE_DESCRIPTIONS: Partial<Record<ChannelType, string>> = {
+  [ChannelType.TELEGRAM]: "Бот Telegram",
+  [ChannelType.WEBCHAT]: "Виджет на сайт",
+  [ChannelType.AVITO]: "Сообщения Avito",
+  [ChannelType.MAX]: "Чат Max",
+  [ChannelType.VK]: "Сообщения VK",
+  [ChannelType.OK]: "Одноклассники",
+};
+
 const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary: string }>> = {
   [ChannelType.TELEGRAM]: {
     href: "/instructions/telegram.pdf",
@@ -1093,6 +1102,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
         <div className={styles.channelTilesGrid}>
           {visibleChannels.map((channel, index) => {
             const channelLabel = CHANNEL_TYPE_LABELS[channel.channel_type] ?? channel.channel_type;
+            const channelDescription = CHANNEL_TYPE_DESCRIPTIONS[channel.channel_type] ?? "";
             const isActive = channelActivation[channel.id] ?? channel.is_active;
             const isSelected = activeLightboxChannelId === channel.id;
             return (
@@ -1103,9 +1113,12 @@ export default function BotChannels({ botId }: BotChannelsProps) {
                 onClick={() => setActiveLightboxChannelId(channel.id)}
                 style={{ "--tile-index": index } as CSSProperties}
               >
-                {isActive && <span className={styles.activeCheck}>✓</span>}
-                <span className={styles.channelTileLogo}>{renderChannelTileLogo(channel.channel_type)}</span>
+                <div className={styles.channelTileTop}>
+                  {isActive && <span className={styles.activeCheck}>✓</span>}
+                  <span className={styles.channelTileLogo}>{renderChannelTileLogo(channel.channel_type)}</span>
+                </div>
                 <span className={styles.channelTileTitle}>{channelLabel}</span>
+                <span className={styles.channelTileDescription}>{channelDescription}</span>
                 <span className={styles.channelTileMeta}>ID: {channel.id}</span>
               </button>
             );
