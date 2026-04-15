@@ -93,10 +93,11 @@
   fill: currentColor;
 }
 
-.channelTileLogoGlyph {
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1;
+.channelTileLogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .channelTileTelegram {

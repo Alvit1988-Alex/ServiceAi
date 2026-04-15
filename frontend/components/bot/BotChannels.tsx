@@ -110,7 +110,7 @@ function getChannelTileThemeClass(channelType: ChannelType): string {
 function renderChannelTileLogo(channelType: ChannelType) {
   switch (channelType) {
     case ChannelType.TELEGRAM:
-      return <span className={styles.channelTileLogoGlyph}>✈</span>;
+      return <img src="/logos/telegram.svg" alt="" aria-hidden="true" draggable={false} />;
     case ChannelType.WEBCHAT:
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -118,27 +118,15 @@ function renderChannelTileLogo(channelType: ChannelType) {
         </svg>
       );
     case ChannelType.AVITO:
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="8" cy="8" r="4" />
-          <circle cx="15.5" cy="7.5" r="3.2" />
-          <circle cx="9" cy="15.5" r="3.4" />
-          <circle cx="16" cy="15" r="4.2" />
-        </svg>
-      );
+      return <img src="/logos/avito.svg" alt="" aria-hidden="true" draggable={false} />;
     case ChannelType.MAX:
-      return <span className={styles.channelTileLogoGlyph}>M</span>;
+      return <img src="/logos/max.svg" alt="" aria-hidden="true" draggable={false} />;
     case ChannelType.VK:
-      return <span className={styles.channelTileLogoGlyph}>VK</span>;
+      return <img src="/logos/vk.svg" alt="" aria-hidden="true" draggable={false} />;
     case ChannelType.OK:
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="7" r="3" />
-          <path d="M8.5 12.5l3.5 2.9 3.5-2.9 1.3 1.6-3.7 3.1 3.3 3.5-1.5 1.4-2.9-3-2.9 3-1.5-1.4 3.3-3.5-3.7-3.1z" />
-        </svg>
-      );
+      return <img src="/logos/ok.svg" alt="" aria-hidden="true" draggable={false} />;
     default:
-      return <span className={styles.channelTileLogoGlyph}>•</span>;
+      return null;
   }
 }
 
