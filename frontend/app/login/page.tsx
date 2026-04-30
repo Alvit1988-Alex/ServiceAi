@@ -64,7 +64,11 @@ function LoginPageContent() {
     void (async () => {
       try {
         await completeYandexLogin(oauthToken);
-        router.replace("/login");
+        if (useAuthStore.getState().profileCompletionRequired === true) {
+          router.replace("/login");
+        } else {
+          router.replace("/bots");
+        }
       } catch (err) {
         setLocalError(resolveOauthErrorMessage(err instanceof Error ? err.message : null) ?? "Не удалось завершить вход через Яндекс.");
         router.replace("/login");
