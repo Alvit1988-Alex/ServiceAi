@@ -75,7 +75,13 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
 }
 
 export async function startYandexLogin(): Promise<YandexAuthStartResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/yandex/start`);
+  const response = await fetch(`${API_BASE_URL}/auth/yandex/start?ts=${Date.now()}`, {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-store",
+      Pragma: "no-cache",
+    },
+  });
 
   if (!response.ok) {
     await parseAuthError(response, "Не удалось начать вход через Яндекс");
@@ -87,8 +93,11 @@ export async function startYandexLogin(): Promise<YandexAuthStartResponse> {
 export async function completeYandexLogin(completionToken: string): Promise<AuthTokens> {
   const response = await fetch(`${API_BASE_URL}/auth/yandex/complete`, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      Pragma: "no-cache",
     },
     body: JSON.stringify({ completion_token: completionToken }),
   });
