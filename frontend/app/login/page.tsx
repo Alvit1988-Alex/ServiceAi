@@ -102,6 +102,19 @@ function LoginPageContent() {
     })();
   }, []);
 
+
+  if (oauthToken) {
+    return (
+      <LayoutShell title="Вход" description="Авторизация в ServiceAI">
+        <div className={styles.screen}>
+          <div className={styles.panel}>
+            <div className={styles.loadingTitle}>Завершаем вход...</div>
+          </div>
+        </div>
+      </LayoutShell>
+    );
+  }
+
   return (
     <LayoutShell title="Вход" description="Авторизация в ServiceAI">
       <div className={styles.screen}>
