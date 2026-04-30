@@ -8,7 +8,7 @@ import secrets
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,6 +108,15 @@ def _ensure_password_enabled() -> None:
         )
 
 
+
+
+def _set_no_cache_headers(response: RedirectResponse) -> RedirectResponse:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 def _map_yandex_error_to_http(error_code: str) -> HTTPException:
     status_code = status.HTTP_400_BAD_REQUEST
     detail = "Yandex login failed"
@@ -137,8 +146,13 @@ def _map_yandex_error_to_http(error_code: str) -> HTTPException:
 
 @router.get("/yandex/start", response_model=YandexAuthStartResponse)
 async def start_yandex_login(
+    response: Response,
     session: AsyncSession = Depends(get_db_session),
 ) -> YandexAuthStartResponse:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
     service = YandexOAuthService()
     try:
         auth_url = await service.create_login_session(session=session)
@@ -162,9 +176,13 @@ async def yandex_callback(
         raise _map_yandex_error_to_http(exc.code) from exc
 
     if error:
-        return RedirectResponse(service.build_error_redirect_url("access_denied"), status_code=status.HTTP_302_FOUND)
+        return _set_no_cache_headers(
+            RedirectResponse(service.build_error_redirect_url("access_denied"), status_code=status.HTTP_302_FOUND)
+        )
     if not code or not state:
-        return RedirectResponse(service.build_error_redirect_url("invalid_request"), status_code=status.HTTP_302_FOUND)
+        return _set_no_cache_headers(
+            RedirectResponse(service.build_error_redirect_url("invalid_request"), status_code=status.HTTP_302_FOUND)
+        )
 
     try:
         completion_token = await service.handle_callback(session=session, code=code, state=state)
@@ -172,7 +190,7 @@ async def yandex_callback(
     except YandexOAuthError as exc:
         redirect_url = service.build_error_redirect_url(exc.code)
 
-    return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+    return _set_no_cache_headers(RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND))
 
 
 @router.post("/yandex/complete", response_model=YandexCompleteResponse)
