@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.service import AIService
 from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
-from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
+from app.modules.dialogs.schemas import DialogOut
 from app.modules.dialogs.service import DialogsService
 from app.modules.dialogs.websocket_manager import WebSocketManager
 
@@ -83,19 +83,4 @@ async def _send_webchat_updates(
             bot_id=bot_id,
             session_id=session_id,
             message={"event": "dialog_created", "data": dialog_payload},
-        )
-
-    for message in messages:
-        if getattr(message, "sender", None) == "user":
-            continue
-        message_payload = DialogMessageOut.model_validate(message).model_dump(mode="json")
-        await manager.send_to_webchat(
-            bot_id=bot_id,
-            session_id=session_id,
-            message={"event": "message_created", "data": message_payload},
-        )
-        await manager.send_to_webchat(
-            bot_id=bot_id,
-            session_id=session_id,
-            message={"event": "dialog_updated", "data": dialog_payload},
         )
