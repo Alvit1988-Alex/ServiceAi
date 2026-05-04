@@ -528,10 +528,6 @@ async def vk_webhook(
         _ensure_channel_available(channel)
         channel = channels_service.decrypt(channel)
 
-        expected_secret = channel.config.get("secret")
-        provided_secret = payload.get("secret") or _extract_provided_secret(request=request, payload=payload)
-        _validate_required_secret(expected_secret, provided_secret, "Invalid VK webhook secret")
-
         event_type = str(payload.get("type") or "")
         if event_type == "confirmation":
             confirmation = channel.config.get("confirmation_token") or channel.config.get("confirmation") or ""
@@ -549,6 +545,10 @@ async def vk_webhook(
                 latency_ms=latency_ms,
             )
             return PlainTextResponse(content=str(confirmation))
+
+        expected_secret = channel.config.get("secret")
+        provided_secret = payload.get("secret") or _extract_provided_secret(request=request, payload=payload)
+        _validate_required_secret(expected_secret, provided_secret, "Invalid VK webhook secret")
 
         if event_type == "message_new":
             _validate_vk_message_payload(payload)
