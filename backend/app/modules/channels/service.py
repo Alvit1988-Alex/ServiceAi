@@ -85,8 +85,14 @@ class ChannelsService:
             ChannelType.OK,
         ]
         channels: list[BotChannel] = []
+        existing_result = await session.execute(
+            select(BotChannel.channel_type).where(BotChannel.bot_id == bot_id)
+        )
+        existing_channel_types = set(existing_result.scalars().all())
 
         for channel_type in default_types:
+            if channel_type in existing_channel_types:
+                continue
             prepared_config = self._prepare_config(channel_type, {})
             channel = BotChannel(
                 bot_id=bot_id,
@@ -96,6 +102,7 @@ class ChannelsService:
             )
             session.add(channel)
             channels.append(channel)
+            existing_channel_types.add(channel_type)
 
         await session.flush()
         return channels
