@@ -29,6 +29,19 @@ class ChannelsService:
     model = BotChannel
 
     async def create(self, session: AsyncSession, bot_id: int, obj_in: BotChannelCreate) -> BotChannel:
+        existing_result = await session.execute(
+            select(BotChannel)
+            .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == obj_in.channel_type)
+            .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
+        )
+        existing_channel = existing_result.scalars().first()
+        if existing_channel:
+            return await self.update(
+                session,
+                existing_channel,
+                BotChannelUpdate(config=obj_in.config, is_active=obj_in.is_active),
+            )
+
         prepared_config = self._prepare_config(obj_in.channel_type, obj_in.config)
         if obj_in.channel_type == ChannelType.VK:
             prepared_config = self._apply_vk_webhook_status(prepared_config)

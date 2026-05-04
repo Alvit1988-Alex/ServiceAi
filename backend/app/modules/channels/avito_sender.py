@@ -26,10 +26,12 @@ class AvitoSender(BaseChannelSender):
     async def _get_channel(self, bot_id: int) -> BotChannel | None:
         async with async_session_factory() as session:
             result = await session.execute(
-                select(BotChannel).where(
+                select(BotChannel)
+                .where(
                     BotChannel.bot_id == bot_id,
                     BotChannel.channel_type == ChannelType.AVITO,
                 )
+                .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
             )
             channel = result.scalars().first()
             if channel:

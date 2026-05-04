@@ -26,7 +26,7 @@ class OkSender(BaseChannelSender):
                     BotChannel.bot_id == bot_id,
                     BotChannel.channel_type == ChannelType.OK,
                 )
-                .order_by(BotChannel.is_active.desc(), BotChannel.id)
+                .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
             )
             channel = result.scalars().first()
             if channel:
