@@ -76,7 +76,7 @@ async def _send_webchat_updates(
     dialog_created: bool,
     messages: list,
 ) -> None:
-    dialog_payload = DialogOut.model_validate(dialog).model_dump()
+    dialog_payload = DialogOut.model_validate(dialog).model_dump(mode="json")
 
     if dialog_created:
         await manager.send_to_webchat(
@@ -88,7 +88,7 @@ async def _send_webchat_updates(
     for message in messages:
         if getattr(message, "sender", None) == "user":
             continue
-        message_payload = DialogMessageOut.model_validate(message).model_dump()
+        message_payload = DialogMessageOut.model_validate(message).model_dump(mode="json")
         await manager.send_to_webchat(
             bot_id=bot_id,
             session_id=session_id,
