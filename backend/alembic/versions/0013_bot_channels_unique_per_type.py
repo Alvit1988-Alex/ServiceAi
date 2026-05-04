@@ -1,6 +1,6 @@
 """deduplicate bot channels and enforce unique bot/type
 
-Revision ID: 0013_bot_channels_unique_per_type
+Revision ID: 0013_channels_unique
 Revises: 0012_account_public_id_botadm
 Create Date: 2026-05-04 00:00:00.000000
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "0013_bot_channels_unique_per_type"
+revision = "0013_channels_unique"
 down_revision = "0012_account_public_id_botadm"
 branch_labels = None
 depends_on = None
