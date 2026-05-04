@@ -65,7 +65,7 @@ async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> B
     stmt = (
         select(BotChannel)
         .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.TELEGRAM)
-        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
     )
     result = await session.execute(stmt)
     channel = result.scalars().first()
@@ -78,7 +78,7 @@ async def _get_webchat_channel_for_bot(session: AsyncSession, bot_id: int) -> Bo
     stmt = (
         select(BotChannel)
         .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.WEBCHAT)
-        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
     )
     result = await session.execute(stmt)
     channel = result.scalars().first()
