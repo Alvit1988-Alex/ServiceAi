@@ -75,7 +75,9 @@ class AIService:
         instructions = await self._instructions_service.get_instructions(bot_id=bot_id)
         system_prompt = self._build_system_prompt(instructions, hint_mode)
 
-        history = await self._load_history(dialog_id=dialog_id)
+        history = await self._load_history(
+            dialog_id=dialog_id, exclude_last_user_text=user_message
+        )
 
         knowledge_enabled = await self._rag_service.has_knowledge(bot_id)
         instruction_text = instructions.system_prompt if instructions else ""
@@ -194,7 +196,10 @@ class AIService:
         )
 
     async def _load_history(
-        self, dialog_id: int | None, limit: int = 10
+        self,
+        dialog_id: int | None,
+        limit: int = 10,
+        exclude_last_user_text: str | None = None,
     ) -> list[dict[str, str]]:
         if dialog_id is None:
             return []
@@ -217,6 +222,13 @@ class AIService:
                 continue
             role = "assistant" if message.sender == MessageSender.BOT else "user"
             history.append({"role": role, "content": message.text})
+        if (
+            exclude_last_user_text is not None
+            and history
+            and history[-1]["role"] == "user"
+            and history[-1]["content"] == exclude_last_user_text
+        ):
+            history.pop()
         return history
 
     @staticmethod
