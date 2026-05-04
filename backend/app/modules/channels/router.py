@@ -90,7 +90,7 @@ async def _get_vk_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChan
     stmt = (
         select(BotChannel)
         .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.VK)
-        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
     )
     result = await session.execute(stmt)
     channel = result.scalars().first()
@@ -103,7 +103,7 @@ async def _get_ok_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChan
     stmt = (
         select(BotChannel)
         .where(BotChannel.bot_id == bot_id, BotChannel.channel_type == ChannelType.OK)
-        .order_by(BotChannel.is_active.desc(), BotChannel.id)
+        .order_by(BotChannel.is_active.desc(), BotChannel.id.desc())
     )
     result = await session.execute(stmt)
     channel = result.scalars().first()
