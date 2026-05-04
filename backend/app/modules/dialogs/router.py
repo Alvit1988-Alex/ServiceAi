@@ -1,5 +1,6 @@
 """Dialogs API router."""
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from app.modules.ai.service import AIService, get_ai_service
 from app.modules.accounts.models import User
 from app.modules.bots.models import Bot
 from app.modules.channels.models import BotChannel, ChannelType
+from app.modules.channels.sender_registry import get_sender
 from app.modules.channels.webchat_handler import handle_webchat_ws_message
 from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
 from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
@@ -21,6 +23,7 @@ from app.security.jwt import decode_access_token
 from app.utils.validators import validate_pagination
 
 router = APIRouter(tags=["dialogs"])
+logger = logging.getLogger(__name__)
 
 
 class OperatorMessageIn(BaseModel):
@@ -484,6 +487,25 @@ async def _create_operator_message(
         text=data.text,
         payload=data.payload,
     )
+
+    if data.text and dialog.channel_type != ChannelType.WEBCHAT:
+        try:
+            sender_cls = get_sender(dialog.channel_type)
+            await sender_cls().send_text(
+                bot_id=dialog.bot_id,
+                external_chat_id=dialog.external_chat_id,
+                text=data.text,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send operator message to external channel",
+                extra={
+                    "bot_id": dialog.bot_id,
+                    "dialog_id": dialog.id,
+                    "channel_type": str(dialog.channel_type),
+                    "external_chat_id": dialog.external_chat_id,
+                },
+            )
 
     dialog_detail = await service.get(session=session, bot_id=None, dialog_id=dialog_id, include_messages=True)
     message_payload = DialogMessageOut.model_validate(message).model_dump()
