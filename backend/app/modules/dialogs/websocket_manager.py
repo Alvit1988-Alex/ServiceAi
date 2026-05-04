@@ -1,10 +1,14 @@
 """WebSocket connection manager."""
 
+import logging
 from collections import defaultdict
 from typing import DefaultDict, Iterable, Set, Tuple
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
+
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
@@ -88,6 +92,13 @@ class WebSocketManager:
             try:
                 await ws.send_json(message)
             except Exception:
+                logger.exception(
+                    "Failed to send websocket message",
+                    extra={
+                        "event": message.get("event"),
+                        "type": message.get("type"),
+                    },
+                )
                 disconnected.add(ws)
 
         for ws in disconnected:
