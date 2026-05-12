@@ -316,7 +316,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
 
                 {operatorDialogsPanelOpen && (
                   <div className={styles.operatorDialogs}>
-                    <h4>Диалоги оператора</h4>
+                    <h4>Диалоги оператора{operatorDialogsForId !== null ? ` · ID: ${operatorDialogsForId}` : ""}</h4>
                     {operatorDialogsLoading && <p className={styles.muted}>Загрузка...</p>}
                     {!operatorDialogsLoading && operatorDialogsError && (
                       <p className={styles.error}>{operatorDialogsError}</p>
