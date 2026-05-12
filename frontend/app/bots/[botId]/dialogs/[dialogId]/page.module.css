@@ -98,7 +98,7 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.75rem;
-  background: white;
+  background: var(--color-bg-elevated);
 }
 
 .messageHeader {
@@ -161,3 +161,30 @@
     grid-template-columns: 1fr;
   }
 }
+
+.lockBanner {
+  background: rgba(239, 68, 68, 0.18);
+  color: #7f1d1d;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-weight: 600;
+}
+
+.lockNote {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.operatorMenuWrap { position: relative; }
+.operatorButton { border: none; background: transparent; color: var(--color-text); font-weight: 600; cursor: pointer; padding: 0; }
+.operatorMenu { position: absolute; top: 100%; left: 0; z-index: 2; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 8px; padding: 0.4rem; display: flex; flex-direction: column; gap: 0.2rem; min-width: 180px; }
+.operatorMenu button { text-align: left; border: none; background: transparent; cursor: pointer; padding: 0.2rem 0.1rem; }
+.operatorMenu button:disabled { opacity: 0.5; cursor: not-allowed; }
+.operatorMenu button:not(:disabled) { color: var(--color-text); }
+.operatorMenuId { font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 0.2rem; }
+.highlighted { outline: 2px solid #f59e0b; }
+.operatorDialogs { border-top: 1px solid var(--color-border); padding-top: 0.75rem; }

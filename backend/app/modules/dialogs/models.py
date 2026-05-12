@@ -112,6 +112,9 @@ class DialogMessage(Base):
     sender: Mapped[MessageSender] = mapped_column(MESSAGE_SENDER_ENUM, nullable=False)
     text: Mapped[str | None] = mapped_column(String, nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    operator_admin_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -120,3 +123,4 @@ class DialogMessage(Base):
         back_populates="messages",
         passive_deletes=True,
     )
+    operator_admin: Mapped[User | None] = relationship("User")

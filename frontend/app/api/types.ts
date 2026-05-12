@@ -166,6 +166,12 @@ export interface DialogSearchParams {
   offset?: number;
 }
 
+export interface DialogAdminShort {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 export interface Dialog {
   id: number;
   bot_id: number;
@@ -180,6 +186,7 @@ export interface Dialog {
   is_locked: boolean;
   locked_until: string | null;
   assigned_admin_id: number | null;
+  assigned_admin: DialogAdminShort | null;
   waiting_time_seconds: number;
   created_at: string;
   updated_at: string;
@@ -191,6 +198,8 @@ export interface DialogMessage {
   sender: MessageSender;
   text: string | null;
   payload: Record<string, unknown> | null;
+  operator_admin_id: number | null;
+  operator_admin: DialogAdminShort | null;
   created_at: string;
   updated_at: string;
 }
