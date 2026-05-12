@@ -54,6 +54,7 @@ class DialogOut(DialogBase):
     is_locked: bool
     locked_until: datetime | None
     assigned_admin_id: int | None
+    assigned_admin: "DialogAdminOut | None" = None
     waiting_time_seconds: int
     created_at: datetime
     updated_at: datetime
@@ -88,5 +89,15 @@ class DialogMessageOut(DialogMessageBase):
     dialog_id: int
     created_at: datetime
     updated_at: datetime
+    operator_admin_id: int | None = None
+    operator_admin: "DialogAdminOut | None" = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DialogAdminOut(BaseModel):
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

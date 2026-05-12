@@ -57,9 +57,10 @@ class DialogsService:
         stmt = select(Dialog).where(Dialog.id == dialog_id)
         if bot_id is not None:
             stmt = stmt.where(Dialog.bot_id == bot_id)
+        stmt = stmt.options(selectinload(Dialog.assigned_admin))
         if include_messages:
             # Keep eager loading simple; message ordering is handled when serializing the response.
-            stmt = stmt.options(selectinload(Dialog.messages))
+            stmt = stmt.options(selectinload(Dialog.messages).selectinload(DialogMessage.operator_admin))
         result = await session.execute(stmt)
         return result.scalars().unique().first()
 
@@ -116,9 +117,10 @@ class DialogsService:
                     conditions.append(getattr(Dialog, field) == value)
 
         stmt = select(Dialog).where(*conditions).order_by(Dialog.updated_at.desc())
+        stmt = stmt.options(selectinload(Dialog.assigned_admin))
         if include_messages:
             # Keep eager loading simple; message ordering is handled when serializing the response.
-            stmt = stmt.options(selectinload(Dialog.messages))
+            stmt = stmt.options(selectinload(Dialog.messages).selectinload(DialogMessage.operator_admin))
 
         total_result = await session.execute(
             select(func.count()).select_from(select(Dialog.id).where(*conditions).subquery())
@@ -172,6 +174,7 @@ class DialogsService:
             )
 
         stmt = stmt.order_by(Dialog.last_message_at.desc()).offset(offset).limit(limit)
+        stmt = stmt.options(selectinload(Dialog.assigned_admin))
 
         result = await session.execute(stmt)
         dialogs = result.scalars().unique().all()
@@ -181,6 +184,39 @@ class DialogsService:
         has_next = offset + limit < total
 
         return dialogs, total, has_next
+
+    async def list_operator_dialogs(
+        self,
+        session: AsyncSession,
+        bot_id: int,
+        operator_id: int,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list[Dialog], int, bool]:
+        validate_pagination(page, per_page)
+        operator_dialog_ids = (
+            select(DialogMessage.dialog_id)
+            .where(
+                DialogMessage.sender == MessageSender.OPERATOR,
+                DialogMessage.operator_admin_id == operator_id,
+            )
+            .distinct()
+        )
+        conditions = [Dialog.bot_id == bot_id, Dialog.id.in_(operator_dialog_ids)]
+        stmt = (
+            select(Dialog)
+            .where(*conditions)
+            .order_by(Dialog.last_message_at.desc())
+            .options(selectinload(Dialog.assigned_admin))
+        )
+        total_result = await session.execute(
+            select(func.count()).select_from(select(Dialog.id).where(*conditions).subquery())
+        )
+        total = total_result.scalar_one()
+        result = await session.execute(stmt.offset((page - 1) * per_page).limit(per_page))
+        items = result.scalars().unique().all()
+        has_next = page * per_page < total
+        return items, total, has_next
 
     async def update(self, session: AsyncSession, db_obj: Dialog, obj_in: DialogUpdate) -> Dialog:
         data = obj_in.model_dump(exclude_unset=True)
@@ -355,6 +391,7 @@ class DialogsService:
         sender: MessageSender,
         text: str | None = None,
         payload: dict | None = None,
+        operator_admin_id: int | None = None,
     ) -> tuple[DialogMessage, Dialog, bool]:
         dialog, dialog_created = await self.get_or_create_dialog(
             session=session,
@@ -386,6 +423,7 @@ class DialogsService:
             sender=sender,
             text=text,
             payload=payload,
+            operator_admin_id=operator_admin_id if sender == MessageSender.OPERATOR else None,
         )
         session.add_all([dialog, message])
         await session.commit()

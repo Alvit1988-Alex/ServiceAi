@@ -467,6 +467,7 @@ async def _create_operator_message(
     data: OperatorMessageIn,
     session: AsyncSession,
     service: DialogsService,
+    operator_admin_id: int,
     expected_bot_id: int | None = None,
 ) -> DialogMessageOut:
     dialog = await service.get(session=session, bot_id=None, dialog_id=dialog_id)
@@ -486,6 +487,7 @@ async def _create_operator_message(
         sender=MessageSender.OPERATOR,
         text=data.text,
         payload=data.payload,
+        operator_admin_id=operator_admin_id,
     )
 
     if data.text and dialog.channel_type != ChannelType.WEBCHAT:
@@ -553,7 +555,12 @@ async def create_bot_dialog_message(
     service: DialogsService = Depends(DialogsService),
 ) -> DialogMessageOut:
     return await _create_operator_message(
-        dialog_id=dialog_id, data=data, session=session, service=service, expected_bot_id=accessible_bot.id
+        dialog_id=dialog_id,
+        data=data,
+        session=session,
+        service=service,
+        operator_admin_id=current_user.id,
+        expected_bot_id=accessible_bot.id,
     )
 
 
@@ -575,4 +582,36 @@ async def create_dialog_message(
 
     await require_bot_access(dialog.bot_id, session, current_user)
 
-    return await _create_operator_message(dialog_id=dialog_id, data=data, session=session, service=service)
+    return await _create_operator_message(
+        dialog_id=dialog_id,
+        data=data,
+        session=session,
+        service=service,
+        operator_admin_id=current_user.id,
+    )
+
+
+@router.get("/bots/{bot_id}/operators/{operator_id}/dialogs", response_model=ListResponse[DialogShort])
+async def list_operator_dialogs(
+    bot_id: int,
+    operator_id: int,
+    accessible_bot: Bot = Depends(get_bot_for_dialogs),
+    page: int = 1,
+    per_page: int = 20,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+    messages_service: DialogMessagesService = Depends(DialogMessagesService),
+) -> ListResponse[DialogShort]:
+    validate_pagination(page, per_page)
+    dialogs, total, has_next = await service.list_operator_dialogs(
+        session=session,
+        bot_id=accessible_bot.id,
+        operator_id=operator_id,
+        page=page,
+        per_page=per_page,
+    )
+    dialog_ids = [dialog.id for dialog in dialogs]
+    last_map = await messages_service.get_last_messages_map(session=session, dialog_ids=dialog_ids)
+    items = [_build_dialog_short(dialog, last_map.get(dialog.id)) for dialog in dialogs]
+    return ListResponse[DialogShort](items=items, page=page, per_page=per_page, total=total, has_next=has_next)

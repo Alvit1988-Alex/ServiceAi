@@ -117,7 +117,7 @@ export async function lockDialog(botId: number, dialogId: number): Promise<Dialo
   });
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response, "Не удалось заблокировать диалог"));
+    throw new Error(await getErrorMessage(response, "Не удалось закрепить диалог"));
   }
 
   return (await response.json()) as DialogDetail;
@@ -129,7 +129,7 @@ export async function unlockDialog(botId: number, dialogId: number): Promise<Dia
   });
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response, "Не удалось разблокировать диалог"));
+    throw new Error(await getErrorMessage(response, "Не удалось открепить диалог"));
   }
 
   return (await response.json()) as DialogDetail;
@@ -153,4 +153,19 @@ export async function sendOperatorMessage(
   }
 
   return (await response.json()) as DialogMessage;
+}
+
+export async function listOperatorDialogs(
+  botId: number,
+  operatorId: number,
+  params: { page?: number; per_page?: number } = {},
+): Promise<ListResponse<DialogShort>> {
+  const query = buildQueryString(params);
+  const response = await httpClient(`/bots/${botId}/operators/${operatorId}/dialogs${query}`);
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось загрузить диалоги оператора"));
+  }
+
+  return (await response.json()) as ListResponse<DialogShort>;
 }
