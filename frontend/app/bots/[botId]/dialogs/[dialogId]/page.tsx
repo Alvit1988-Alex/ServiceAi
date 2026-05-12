@@ -39,8 +39,10 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
   const [operatorDialogsModalOpen, setOperatorDialogsModalOpen] = useState(false);
   const [operatorDialogsLoading, setOperatorDialogsLoading] = useState(false);
   const [operatorDialogsError, setOperatorDialogsError] = useState<string | null>(null);
+  const [menuOpensDownwardForId, setMenuOpensDownwardForId] = useState<number | null>(null);
 
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const operatorButtonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const activeMenuRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -72,6 +74,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     const handleOutsideClick = (event: MouseEvent) => {
       if (!activeMenuRef.current?.contains(event.target as Node)) {
         setActiveMessageId(null);
+        setMenuOpensDownwardForId(null);
       }
     };
 
@@ -187,6 +190,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     setOperatorDialogsError(null);
     setOperatorDialogs(null);
     setActiveMessageId(null);
+    setMenuOpensDownwardForId(null);
 
     try {
       const response = await listOperatorDialogs(botId, operatorId);
@@ -291,14 +295,30 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                               <button
                                 type="button"
                                 className={styles.operatorButton}
-                                onClick={() =>
-                                  setActiveMessageId((value) => (value === message.id ? null : message.id))
-                                }
+                                ref={(element) => {
+                                  operatorButtonRefs.current[message.id] = element;
+                                }}
+                                onClick={() => {
+                                  setActiveMessageId((value) => {
+                                    if (value === message.id) {
+                                      setMenuOpensDownwardForId(null);
+                                      return null;
+                                    }
+
+                                    const buttonRect = operatorButtonRefs.current[message.id]?.getBoundingClientRect();
+                                    const shouldOpenDownward =
+                                      buttonRect !== undefined && buttonRect !== null ? buttonRect.top < 260 : false;
+                                    setMenuOpensDownwardForId(shouldOpenDownward ? message.id : null);
+                                    return message.id;
+                                  });
+                                }}
                               >
                                 {getSenderLabel(message)}
                               </button>
                               {activeMessageId === message.id && (
-                                <div className={styles.operatorMenu}>
+                                <div
+                                  className={`${styles.operatorMenu} ${menuOpensDownwardForId === message.id ? styles.operatorMenuDownward : ""}`}
+                                >
                                   <div className={styles.operatorMenuId}>ID: {message.operator_admin_id}</div>
                                   <button
                                     type="button"
