@@ -31,12 +31,17 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
   const [messageText, setMessageText] = useState("");
   const [activeMessageId, setActiveMessageId] = useState<number | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [navigationMessageId, setNavigationMessageId] = useState<number | null>(null);
+  const [navigationOperatorId, setNavigationOperatorId] = useState<number | null>(null);
+  const [hasNavigatedToPrevious, setHasNavigatedToPrevious] = useState(false);
   const [operatorDialogs, setOperatorDialogs] = useState<DialogShort[] | null>(null);
   const [operatorDialogsForId, setOperatorDialogsForId] = useState<number | null>(null);
-  const [operatorDialogsPanelOpen, setOperatorDialogsPanelOpen] = useState(false);
+  const [operatorDialogsModalOpen, setOperatorDialogsModalOpen] = useState(false);
   const [operatorDialogsLoading, setOperatorDialogsLoading] = useState(false);
   const [operatorDialogsError, setOperatorDialogsError] = useState<string | null>(null);
+
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const activeMenuRef = useRef<HTMLDivElement | null>(null);
 
   const {
     dialogDetails,
@@ -59,11 +64,32 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     }
   }, [botId, dialogId, fetchDialog, invalidIds]);
 
+  useEffect(() => {
+    if (activeMessageId === null) {
+      return;
+    }
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!activeMenuRef.current?.contains(event.target as Node)) {
+        setActiveMessageId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [activeMessageId]);
+
   const isLockedByAnother = Boolean(dialog && dialog.is_locked && dialog.assigned_admin_id !== currentUser?.id);
   const isLockedByCurrent = Boolean(dialog && dialog.is_locked && dialog.assigned_admin_id === currentUser?.id);
   const interactionDisabled = Boolean(isLockedByAnother || dialog?.closed || updatingDialog || sendingMessage);
 
   const getOperatorLabel = (message: DialogMessage): string => {
+    if (message.operator_admin_id === null) {
+      return "Оператор (до обновления)";
+    }
+
     const firstName = message.operator_admin?.first_name?.trim();
     const lastName = message.operator_admin?.last_name?.trim();
 
@@ -76,11 +102,8 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     if (lastName) {
       return lastName;
     }
-    if (message.operator_admin_id !== null) {
-      return `ID: ${message.operator_admin_id}`;
-    }
 
-    return "ID: неизвестен";
+    return `ID: ${message.operator_admin_id}`;
   };
 
   const getSenderLabel = (message: DialogMessage): string => {
@@ -101,7 +124,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     }
 
     const target = dialog.messages[currentIndex];
-    if (target.operator_admin_id === null) {
+    if (target.sender !== MessageSender.OPERATOR || target.operator_admin_id === null) {
       return null;
     }
 
@@ -157,18 +180,13 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     await closeDialog(botId, dialogId);
   };
 
-  const loadOperatorDialogs = async (operatorId: number | null) => {
-    setOperatorDialogsPanelOpen(true);
+  const loadOperatorDialogs = async (operatorId: number) => {
+    setOperatorDialogsModalOpen(true);
     setOperatorDialogsForId(operatorId);
     setOperatorDialogsLoading(true);
     setOperatorDialogsError(null);
     setOperatorDialogs(null);
-
-    if (operatorId === null) {
-      setOperatorDialogsLoading(false);
-      setOperatorDialogsError("ID оператора неизвестен");
-      return;
-    }
+    setActiveMessageId(null);
 
     try {
       const response = await listOperatorDialogs(botId, operatorId);
@@ -198,7 +216,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
               <div className={styles.infoBox}>
                 {isLockedByAnother && (
                   <div className={styles.lockBanner}>
-                    Диалог ведется оператором: {dialog.assigned_admin?.first_name || dialog.assigned_admin?.last_name
+                    Диалог ведётся оператором: {dialog.assigned_admin?.first_name || dialog.assigned_admin?.last_name
                       ? `${dialog.assigned_admin?.first_name ?? ""} ${dialog.assigned_admin?.last_name ?? ""}`.trim()
                       : `ID: ${dialog.assigned_admin_id ?? "неизвестен"}`} · ID: {dialog.assigned_admin_id ?? "неизвестен"}
                   </div>
@@ -233,7 +251,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                     onClick={handleClose}
                     disabled={dialog.closed || updatingDialog || isLockedByAnother}
                   >
-                    Закрыть диалог
+                    Завершить диалог
                   </button>
                 </div>
               </div>
@@ -243,7 +261,16 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                 <div className={styles.messagesList}>
                   {dialog.messages.map((message) => {
                     const previousMessage = findSiblingOperatorMessage(message.id, -1);
-                    const nextMessage = findSiblingOperatorMessage(message.id, 1);
+                    const isOperatorWithId =
+                      message.sender === MessageSender.OPERATOR && message.operator_admin_id !== null;
+                    const isLegacyOperator =
+                      message.sender === MessageSender.OPERATOR && message.operator_admin_id === null;
+                    const nextMessage =
+                      hasNavigatedToPrevious &&
+                      navigationMessageId !== null &&
+                      navigationOperatorId === message.operator_admin_id
+                        ? findSiblingOperatorMessage(navigationMessageId, 1)
+                        : null;
 
                     return (
                       <div
@@ -256,8 +283,11 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                         }`}
                       >
                         <div className={styles.messageHeader}>
-                          {message.sender === MessageSender.OPERATOR ? (
-                            <div className={styles.operatorMenuWrap}>
+                          {isOperatorWithId ? (
+                            <div
+                              className={styles.operatorMenuWrap}
+                              ref={activeMessageId === message.id ? activeMenuRef : null}
+                            >
                               <button
                                 type="button"
                                 className={styles.operatorButton}
@@ -269,26 +299,41 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                               </button>
                               {activeMessageId === message.id && (
                                 <div className={styles.operatorMenu}>
-                                  <div className={styles.operatorMenuId}>
-                                    ID: {message.operator_admin_id ?? "неизвестен"}
-                                  </div>
+                                  <div className={styles.operatorMenuId}>ID: {message.operator_admin_id}</div>
                                   <button
                                     type="button"
-                                    onClick={() => void loadOperatorDialogs(message.operator_admin_id)}
+                                    onClick={() => void loadOperatorDialogs(message.operator_admin_id as number)}
                                   >
                                     Диалоги оператора
                                   </button>
                                   <button
                                     type="button"
                                     disabled={!previousMessage}
-                                    onClick={() => previousMessage && jumpToMessage(previousMessage.id)}
+                                    onClick={() => {
+                                      if (!previousMessage) {
+                                        return;
+                                      }
+                                      jumpToMessage(previousMessage.id);
+                                      setNavigationMessageId(previousMessage.id);
+                                      setNavigationOperatorId(message.operator_admin_id);
+                                      setHasNavigatedToPrevious(true);
+                                      setActiveMessageId(null);
+                                    }}
                                   >
                                     Предыдущее сообщение
                                   </button>
                                   <button
                                     type="button"
                                     disabled={!nextMessage}
-                                    onClick={() => nextMessage && jumpToMessage(nextMessage.id)}
+                                    onClick={() => {
+                                      if (!nextMessage) {
+                                        return;
+                                      }
+                                      jumpToMessage(nextMessage.id);
+                                      setNavigationMessageId(nextMessage.id);
+                                      setNavigationOperatorId(message.operator_admin_id);
+                                      setActiveMessageId(null);
+                                    }}
                                   >
                                     Следующее сообщение
                                   </button>
@@ -296,7 +341,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                               )}
                             </div>
                           ) : (
-                            <span className={styles.sender}>{getSenderLabel(message)}</span>
+                            <span className={styles.sender}>{isLegacyOperator ? "Оператор" : getSenderLabel(message)}</span>
                           )}
                           <span className={styles.timestamp}>{new Date(message.created_at).toLocaleString()}</span>
                         </div>
@@ -309,31 +354,8 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                     );
                   })}
 
-                  {dialog.messages.length === 0 && (
-                    <p className={styles.muted}>Сообщения пока отсутствуют.</p>
-                  )}
+                  {dialog.messages.length === 0 && <p className={styles.muted}>Сообщения пока отсутствуют.</p>}
                 </div>
-
-                {operatorDialogsPanelOpen && (
-                  <div className={styles.operatorDialogs}>
-                    <h4>Диалоги оператора{operatorDialogsForId !== null ? ` · ID: ${operatorDialogsForId}` : ""}</h4>
-                    {operatorDialogsLoading && <p className={styles.muted}>Загрузка...</p>}
-                    {!operatorDialogsLoading && operatorDialogsError && (
-                      <p className={styles.error}>{operatorDialogsError}</p>
-                    )}
-                    {!operatorDialogsLoading && !operatorDialogsError && operatorDialogs && (
-                      <ul>
-                        {operatorDialogs.map((item) => (
-                          <li key={item.id}>
-                            <Link href={`/bots/${botId}/dialogs/${item.id}`}>
-                              ID {item.id} · {item.status} · {new Date(item.last_message_at).toLocaleString()}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
 
                 <div className={styles.inputRow}>
                   <textarea
@@ -352,6 +374,48 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                     Отправить
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {operatorDialogsModalOpen && (
+            <div
+              className={styles.modalBackdrop}
+              onClick={() => {
+                setOperatorDialogsModalOpen(false);
+              }}
+            >
+              <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
+                <div className={styles.modalHeader}>
+                  <h4>Диалоги оператора · ID: {operatorDialogsForId}</h4>
+                  <button
+                    type="button"
+                    className={styles.modalClose}
+                    onClick={() => setOperatorDialogsModalOpen(false)}
+                  >
+                    Закрыть
+                  </button>
+                </div>
+
+                {operatorDialogsLoading && <p className={styles.muted}>Загрузка...</p>}
+                {!operatorDialogsLoading && operatorDialogsError && <p className={styles.error}>{operatorDialogsError}</p>}
+                {!operatorDialogsLoading && !operatorDialogsError && operatorDialogs?.length === 0 && (
+                  <p className={styles.muted}>Диалоги не найдены</p>
+                )}
+                {!operatorDialogsLoading && !operatorDialogsError && operatorDialogs && operatorDialogs.length > 0 && (
+                  <ul className={styles.operatorDialogsList}>
+                    {operatorDialogs.map((item) => (
+                      <li key={item.id}>
+                        <Link
+                          href={`/bots/${botId}/dialogs/${item.id}`}
+                          onClick={() => setOperatorDialogsModalOpen(false)}
+                        >
+                          ID {item.id} · {STATUS_LABELS[item.status]} · {new Date(item.last_message_at).toLocaleString()}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}
