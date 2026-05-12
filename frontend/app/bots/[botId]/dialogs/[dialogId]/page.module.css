@@ -192,10 +192,11 @@
 
 .operatorMenu {
   position: absolute;
-  top: calc(100% + 0.35rem);
+  bottom: calc(100% + 0.35rem);
+  top: auto;
   left: 0;
   z-index: 20;
-  background: var(--color-bg-elevated);
+  background: var(--color-bg);
   color: var(--color-text);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -205,6 +206,13 @@
   flex-direction: column;
   gap: 0.25rem;
   min-width: 220px;
+  max-width: min(280px, calc(100vw - 2rem));
+}
+
+
+.operatorMenuDownward {
+  top: calc(100% + 0.35rem);
+  bottom: auto;
 }
 
 .operatorMenu button {
@@ -246,7 +254,7 @@
   max-height: 80vh;
   overflow: auto;
   border-radius: 12px;
-  background: var(--color-bg-elevated);
+  background: var(--color-bg);
   color: var(--color-text);
   border: 1px solid var(--color-border);
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.35);
@@ -254,5 +262,5 @@
 }
 
 .modalHeader { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
-.modalClose { border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-elevated); color: var(--color-text); padding: 0.35rem 0.65rem; cursor: pointer; }
+.modalClose { border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-text); padding: 0.35rem 0.65rem; cursor: pointer; }
 .operatorDialogsList { display: flex; flex-direction: column; gap: 0.5rem; }
