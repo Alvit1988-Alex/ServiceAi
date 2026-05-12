@@ -33,6 +33,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [operatorDialogs, setOperatorDialogs] = useState<DialogShort[] | null>(null);
   const [operatorDialogsForId, setOperatorDialogsForId] = useState<number | null>(null);
+  const [operatorDialogsPanelOpen, setOperatorDialogsPanelOpen] = useState(false);
   const [operatorDialogsLoading, setOperatorDialogsLoading] = useState(false);
   const [operatorDialogsError, setOperatorDialogsError] = useState<string | null>(null);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -100,6 +101,10 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     }
 
     const target = dialog.messages[currentIndex];
+    if (target.operator_admin_id === null) {
+      return null;
+    }
+
     for (let idx = currentIndex + step; idx >= 0 && idx < dialog.messages.length; idx += step) {
       const candidate = dialog.messages[idx];
       if (candidate.sender !== MessageSender.OPERATOR) {
@@ -153,6 +158,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
   };
 
   const loadOperatorDialogs = async (operatorId: number | null) => {
+    setOperatorDialogsPanelOpen(true);
     setOperatorDialogsForId(operatorId);
     setOperatorDialogsLoading(true);
     setOperatorDialogsError(null);
@@ -204,7 +210,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                   <span className={styles.status}>{STATUS_LABELS[dialog.status]}</span>
                 </div>
                 <div className={styles.infoRow}>
-                  <span className={styles.label}>Закреплен:</span>
+                  <span className={styles.label}>Закреплён:</span>
                   <span className={styles.value}>{dialog.is_locked ? "Да" : "Нет"}</span>
                 </div>
                 <div className={styles.infoRow}>
@@ -308,7 +314,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                   )}
                 </div>
 
-                {operatorDialogsForId !== null && (
+                {operatorDialogsPanelOpen && (
                   <div className={styles.operatorDialogs}>
                     <h4>Диалоги оператора</h4>
                     {operatorDialogsLoading && <p className={styles.muted}>Загрузка...</p>}
