@@ -32,6 +32,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
   const [activeMessageId, setActiveMessageId] = useState<number | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [navigationMessageId, setNavigationMessageId] = useState<number | null>(null);
+  const [navigationOperatorId, setNavigationOperatorId] = useState<number | null>(null);
   const [hasNavigatedToPrevious, setHasNavigatedToPrevious] = useState(false);
   const [operatorDialogs, setOperatorDialogs] = useState<DialogShort[] | null>(null);
   const [operatorDialogsForId, setOperatorDialogsForId] = useState<number | null>(null);
@@ -260,12 +261,16 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                 <div className={styles.messagesList}>
                   {dialog.messages.map((message) => {
                     const previousMessage = findSiblingOperatorMessage(message.id, -1);
-                    const navigationBaseId = navigationMessageId === null ? message.id : navigationMessageId;
-                    const nextMessage = hasNavigatedToPrevious ? findSiblingOperatorMessage(navigationBaseId, 1) : null;
                     const isOperatorWithId =
                       message.sender === MessageSender.OPERATOR && message.operator_admin_id !== null;
                     const isLegacyOperator =
                       message.sender === MessageSender.OPERATOR && message.operator_admin_id === null;
+                    const nextMessage =
+                      hasNavigatedToPrevious &&
+                      navigationMessageId !== null &&
+                      navigationOperatorId === message.operator_admin_id
+                        ? findSiblingOperatorMessage(navigationMessageId, 1)
+                        : null;
 
                     return (
                       <div
@@ -310,6 +315,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                                       }
                                       jumpToMessage(previousMessage.id);
                                       setNavigationMessageId(previousMessage.id);
+                                      setNavigationOperatorId(message.operator_admin_id);
                                       setHasNavigatedToPrevious(true);
                                       setActiveMessageId(null);
                                     }}
@@ -325,6 +331,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                                       }
                                       jumpToMessage(nextMessage.id);
                                       setNavigationMessageId(nextMessage.id);
+                                      setNavigationOperatorId(message.operator_admin_id);
                                       setActiveMessageId(null);
                                     }}
                                   >
@@ -399,7 +406,10 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                   <ul className={styles.operatorDialogsList}>
                     {operatorDialogs.map((item) => (
                       <li key={item.id}>
-                        <Link href={`/bots/${botId}/dialogs/${item.id}`}>
+                        <Link
+                          href={`/bots/${botId}/dialogs/${item.id}`}
+                          onClick={() => setOperatorDialogsModalOpen(false)}
+                        >
                           ID {item.id} · {STATUS_LABELS[item.status]} · {new Date(item.last_message_at).toLocaleString()}
                         </Link>
                       </li>
