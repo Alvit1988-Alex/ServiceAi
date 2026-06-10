@@ -39,6 +39,12 @@ def _parse_token_expiry(expires_at: Any, expires_in: Any) -> datetime:
     return datetime.utcnow() + timedelta(seconds=lifetime_seconds)
 
 
+def _build_gigachat_verify() -> bool | str:
+    if not settings.gigachat_use_tls_cert:
+        return False
+    return settings.gigachat_cert_path or True
+
+
 class EmbeddingsClient:
     """Base interface for embeddings clients."""
 
@@ -134,11 +140,7 @@ class GigaChatEmbeddingsClient(EmbeddingsClient):
         self._auth_url = settings.gigachat_auth_url
         self._api_url = settings.gigachat_api_url
         self._scope = settings.gigachat_scope or "GIGACHAT_API_PERS"
-        self._verify = (
-            settings.gigachat_cert_path
-            if settings.gigachat_use_tls_cert and settings.gigachat_cert_path
-            else True
-        )
+        self._verify = _build_gigachat_verify()
 
     async def _get_access_token(self) -> str:
         if not settings.gigachat_client_id or not settings.gigachat_client_secret:
