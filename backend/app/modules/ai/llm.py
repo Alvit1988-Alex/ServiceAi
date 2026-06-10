@@ -4,7 +4,8 @@ from __future__ import annotations
 import base64
 import logging
 import os
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -12,6 +13,30 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_token_expiry(expires_at: Any, expires_in: Any) -> datetime:
+    if isinstance(expires_at, (int, float)) or (
+        isinstance(expires_at, str) and expires_at.strip().isdigit()
+    ):
+        try:
+            return datetime.utcfromtimestamp(float(expires_at) / 1000)
+        except (OverflowError, TypeError, ValueError):
+            pass
+    elif expires_at:
+        try:
+            expiry = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if expiry.tzinfo is not None:
+                expiry = expiry.astimezone(timezone.utc).replace(tzinfo=None)
+            return expiry
+        except ValueError:
+            pass
+
+    try:
+        lifetime_seconds = int(expires_in) if expires_in is not None else 3600
+    except (TypeError, ValueError):
+        lifetime_seconds = 3600
+    return datetime.utcnow() + timedelta(seconds=lifetime_seconds)
 
 
 class LLMClient:
@@ -91,7 +116,9 @@ class OpenAILLMClient(LLMClient):
 class GigaChatLLMClient(LLMClient):
     """Client for the GigaChat chat completion endpoint with token caching."""
 
-    def __init__(self, model: str = "GigaChat", timeout: float = 60.0):
+    def __init__(
+        self, model: str = settings.gigachat_chat_model, timeout: float = 60.0
+    ):
         self._model = model
         self._timeout = timeout
         self._token: str | None = None
@@ -119,6 +146,8 @@ class GigaChatLLMClient(LLMClient):
         headers = {
             "Authorization": f"Basic {auth_header}",
             "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "RqUID": str(uuid.uuid4()),
         }
         data = {"scope": self._scope}
 
@@ -131,15 +160,10 @@ class GigaChatLLMClient(LLMClient):
         if not access_token:
             raise RuntimeError("Failed to obtain GigaChat access token")
 
-        expires_in = payload.get("expires_in")
-        expires_at = payload.get("expires_at")
-        if expires_at:
-            try:
-                self._token_expiry = datetime.fromisoformat(str(expires_at))
-            except ValueError:
-                self._token_expiry = datetime.utcnow() + timedelta(seconds=int(expires_in or 3600))
-        else:
-            self._token_expiry = datetime.utcnow() + timedelta(seconds=int(expires_in or 3600))
+        self._token_expiry = _parse_token_expiry(
+            expires_at=payload.get("expires_at"),
+            expires_in=payload.get("expires_in"),
+        )
 
         self._token = access_token
         return access_token
