@@ -1,16 +1,19 @@
 """RAG service for retrieving relevant knowledge chunks."""
 from __future__ import annotations
 
+import logging
 import math
-import os
 from typing import Callable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.database import async_session_factory
 from app.modules.ai.embeddings import EmbeddingsClient, GigaChatEmbeddingsClient
 from app.modules.ai.models import KnowledgeChunk
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -24,11 +27,20 @@ class RAGService:
         self._session_factory = db_session_factory or async_session_factory
         if embeddings_client is not None:
             self._embeddings = embeddings_client
+        elif settings.ai_embeddings_provider == "openai":
+            self._embeddings = EmbeddingsClient()
+        elif settings.ai_embeddings_provider == "gigachat":
+            self._embeddings = GigaChatEmbeddingsClient(
+                model=settings.gigachat_embedding_model
+            )
         else:
-            if os.getenv("OPENAI_API_KEY"):
-                self._embeddings = EmbeddingsClient()
-            else:
-                self._embeddings = GigaChatEmbeddingsClient()
+            logger.warning(
+                "Unknown AI embeddings provider %r; falling back to GigaChat",
+                settings.ai_embeddings_provider,
+            )
+            self._embeddings = GigaChatEmbeddingsClient(
+                model=settings.gigachat_embedding_model
+            )
 
     async def find_relevant_chunks(
         self,

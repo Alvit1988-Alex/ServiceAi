@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Callable
 
@@ -58,11 +57,16 @@ class AIService:
         )
         if llm_client is not None:
             self._llm_client = llm_client
+        elif settings.ai_llm_provider == "openai":
+            self._llm_client = OpenAILLMClient()
+        elif settings.ai_llm_provider == "gigachat":
+            self._llm_client = GigaChatLLMClient(model=settings.gigachat_chat_model)
         else:
-            if os.getenv("OPENAI_API_KEY"):
-                self._llm_client = OpenAILLMClient()
-            else:
-                self._llm_client = GigaChatLLMClient()
+            logger.warning(
+                "Unknown AI LLM provider %r; falling back to GigaChat",
+                settings.ai_llm_provider,
+            )
+            self._llm_client = GigaChatLLMClient(model=settings.gigachat_chat_model)
         self._confidence_threshold = 0.35
 
     async def generate_answer(

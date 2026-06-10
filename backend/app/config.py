@@ -138,6 +138,16 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("GIGACHAT_CLIENT_SECRET", "gigachat_client_secret"),
     )
+    gigachat_chat_model: str = Field(
+        default="GigaChat-2",
+        validation_alias=AliasChoices("GIGACHAT_CHAT_MODEL", "gigachat_chat_model"),
+    )
+    gigachat_embedding_model: str = Field(
+        default="Embeddings-2",
+        validation_alias=AliasChoices(
+            "GIGACHAT_EMBEDDING_MODEL", "gigachat_embedding_model"
+        ),
+    )
     gigachat_auth_url: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_AUTH_URL", "gigachat_auth_url"))
     gigachat_api_url: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_API_URL", "gigachat_api_url"))
     gigachat_scope: str | None = Field(default=None, validation_alias=AliasChoices("GIGACHAT_SCOPE", "gigachat_scope"))
