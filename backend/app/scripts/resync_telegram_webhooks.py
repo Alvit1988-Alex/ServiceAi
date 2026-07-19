@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_factory
 from app.modules.channels.models import BotChannel, ChannelType
-from app.modules.channels.service import ChannelsService, sync_telegram_webhook
+from app.modules.channels.service import sync_telegram_webhook
+from app.utils.encryption import decrypt_config
 
 
 @dataclass(frozen=True)
@@ -40,14 +41,19 @@ async def resync_active_telegram_webhooks(
             )
         )
         channels = list(result.scalars().all())
-        service = ChannelsService()
         updated = 0
         failed = 0
 
         for channel in channels:
             try:
-                decrypted = service.decrypt(channel)
-                status, error = await sync_func(decrypted)
+                transient_channel = BotChannel(
+                    id=channel.id,
+                    bot_id=channel.bot_id,
+                    channel_type=channel.channel_type,
+                    config=decrypt_config(channel.config),
+                    is_active=channel.is_active,
+                )
+                status, error = await sync_func(transient_channel)
             except Exception as exc:  # noqa: BLE001 - continue resyncing remaining channels
                 failed += 1
                 print(f"Telegram webhook resync failed for channel_id={channel.id}: {type(exc).__name__}")

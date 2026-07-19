@@ -26,18 +26,37 @@ def build_telegram_request_headers() -> dict[str, str]:
     return {_DIALOGUS_GATEWAY_HEADER: gateway_key}
 
 
+def get_telegram_auth_bot_id() -> int | None:
+    """Return the numeric auth bot id encoded in the bot token, if configured."""
+
+    token = settings.telegram_auth_bot_token
+    if not token or ":" not in token:
+        return None
+
+    raw_bot_id = token.split(":", 1)[0]
+    if not raw_bot_id.isdigit():
+        return None
+    return int(raw_bot_id)
+
+
 def build_telegram_auth_webhook_url() -> str | None:
     """Build the external webhook URL used when registering the auth bot."""
 
-    base_url = settings.telegram_auth_webhook_base_url or settings.public_base_url
-    if not base_url:
-        return None
+    if settings.telegram_auth_webhook_base_url:
+        bot_id = get_telegram_auth_bot_id()
+        if bot_id is None:
+            return None
+        webhook_url = f"{settings.telegram_auth_webhook_base_url.rstrip('/')}/webhooks/telegram/{bot_id}"
+    else:
+        base_url = settings.public_base_url
+        if not base_url:
+            return None
 
-    path = settings.telegram_webhook_path or "/auth/telegram/webhook"
-    if not path.startswith("/"):
-        path = f"/{path}"
+        path = settings.telegram_webhook_path or "/auth/telegram/webhook"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        webhook_url = f"{base_url.rstrip('/')}{path}"
 
-    webhook_url = f"{base_url.rstrip('/')}{path}"
     if settings.telegram_webhook_secret:
         return f"{webhook_url}?secret={settings.telegram_webhook_secret}"
     return webhook_url
