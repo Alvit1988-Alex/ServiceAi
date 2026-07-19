@@ -20,7 +20,6 @@ def reset_telegram_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "telegram_auth_webhook_base_url", None)
     monkeypatch.setattr(settings, "public_base_url", None)
     monkeypatch.setattr(settings, "telegram_webhook_secret", None)
-    monkeypatch.setattr(settings, "telegram_auth_bot_token", "12345:TOKEN")
 
 
 def test_default_telegram_api_url() -> None:
@@ -189,7 +188,7 @@ def test_auth_webhook_base_url_takes_precedence(monkeypatch: pytest.MonkeyPatch)
 
     assert (
         build_telegram_auth_webhook_url()
-        == "https://tg.dialogus-ai.ru/webhooks/telegram/12345"
+        == "https://tg.dialogus-ai.ru/auth/telegram/webhook"
     )
 
 
@@ -205,5 +204,5 @@ def test_auth_webhook_base_url_falls_back_to_public_base_url(
 
     assert (
         build_telegram_auth_webhook_url()
-        == "https://service.dialogus-ai.ru/auth/telegram/webhook?secret=webhook-secret"
+        == "https://service.dialogus-ai.ru/auth/telegram/webhook"
     )

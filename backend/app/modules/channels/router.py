@@ -13,7 +13,6 @@ from app.config import settings
 from app.database import async_session_factory
 from app.dependencies import get_accessible_bot, get_db_session
 from app.modules.accounts.models import User
-from app.modules.auth.router import telegram_webhook as auth_telegram_webhook
 from app.modules.ai.service import AIService, get_ai_service
 from app.modules.channels.schemas import (
     BotChannelCreate,
@@ -39,7 +38,6 @@ from app.modules.dialogs.schemas import DialogMessageOut, DialogOut
 from app.modules.dialogs.service import DialogsService
 from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
-from app.utils.telegram_http import get_telegram_auth_bot_id
 
 router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
 webhooks_router = APIRouter(tags=["channels"])
@@ -494,15 +492,6 @@ async def telegram_webhook_alias(
     ai_service: AIService = Depends(get_ai_service),
     diagnostics_service: DiagnosticsService = Depends(get_diagnostics_service),
 ) -> dict:
-    if bot_id == get_telegram_auth_bot_id():
-        async with async_session_factory() as session:
-            response = await auth_telegram_webhook(
-                request=request,
-                background_tasks=background_tasks,
-                session=session,
-            )
-        return response.model_dump()
-
     async with async_session_factory() as session:
         channel = await _get_telegram_channel_for_bot(session=session, bot_id=bot_id)
     return await telegram_webhook(

@@ -348,7 +348,7 @@ class Settings(BaseSettings):
         "telegram_api_base_url",
         "telegram_webhook_base_url",
         "telegram_auth_webhook_base_url",
-        mode="before"
+        mode="before",
     )
     @classmethod
     def _normalize_telegram_base_url(cls, value: str | None) -> str | None:

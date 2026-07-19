@@ -26,10 +26,14 @@ async def register_telegram_auth_webhook() -> bool:
         print("Public base URL is not configured")
         return False
 
+    data: dict[str, str] = {"url": webhook_url}
+    if settings.telegram_webhook_secret:
+        data["secret_token"] = settings.telegram_webhook_secret
+
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(
             build_telegram_api_url(settings.telegram_auth_bot_token, "setWebhook"),
-            data={"url": webhook_url},
+            data=data,
             headers=build_telegram_request_headers(),
         )
     if response.is_success:

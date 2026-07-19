@@ -37,15 +37,15 @@ from app.modules.auth.schemas import (
 from app.modules.auth.yandex_oauth import YandexOAuthError, YandexOAuthService
 from app.security import hashing
 from app.security.auth import get_current_user
-from app.utils.telegram_http import (
-    build_telegram_api_url,
-    build_telegram_request_headers,
-)
 from app.security.jwt import (
     TokenDecodeError,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+)
+from app.utils.telegram_http import (
+    build_telegram_api_url,
+    build_telegram_request_headers,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
