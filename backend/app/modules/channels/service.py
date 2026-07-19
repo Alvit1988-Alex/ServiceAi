@@ -16,6 +16,10 @@ from app.modules.channels.avito_webhook import unsubscribe as avito_unsubscribe
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.schemas import BotChannelCreate, BotChannelUpdate
 from app.utils.encryption import decrypt_config, encrypt_config
+from app.utils.telegram_http import (
+    build_telegram_api_url,
+    build_telegram_request_headers,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -288,10 +292,12 @@ class ChannelsService:
 
     @classmethod
     async def _validate_telegram_token(cls, token: str) -> str | None:
-        url = f"https://api.telegram.org/bot{token}/getMe"
+        url = build_telegram_api_url(token, "getMe")
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(url)
+                response = await client.get(
+                    url, headers=build_telegram_request_headers()
+                )
         except httpx.RequestError as exc:
             raise TelegramTokenValidationUnavailableError("Telegram API request failed") from exc
 
@@ -477,6 +483,12 @@ def _get_public_api_base_url() -> str | None:
     return f"{normalized}/api"
 
 
+def _get_telegram_webhook_base_url() -> str | None:
+    if settings.telegram_webhook_base_url:
+        return settings.telegram_webhook_base_url.rstrip("/")
+    return _get_public_api_base_url()
+
+
 async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | None]:
     config = channel.config or {}
     token = config.get("token")
@@ -485,7 +497,7 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
     if not token:
         return "pending", "Telegram token is not configured"
 
-    base_url = _get_public_api_base_url()
+    base_url = _get_telegram_webhook_base_url()
     if channel.is_active and not base_url:
         logger.warning(
             "Public base URL is not configured; Telegram webhook sync skipped",
@@ -497,16 +509,20 @@ async def sync_telegram_webhook(channel: BotChannel) -> tuple[str | None, str | 
     if channel.is_active:
         webhook_url = f"{base_url}/webhooks/telegram/{channel.bot_id}"
 
-    api_url = f"https://api.telegram.org/bot{token}"
+    api_url = build_telegram_api_url(token)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             if webhook_url:
                 response = await client.post(
                     f"{api_url}/setWebhook",
                     params={"url": webhook_url, "secret_token": secret_token},
+                    headers=build_telegram_request_headers(),
                 )
             else:
-                response = await client.post(f"{api_url}/deleteWebhook")
+                response = await client.post(
+                    f"{api_url}/deleteWebhook",
+                    headers=build_telegram_request_headers(),
+                )
 
             response.raise_for_status()
             payload = response.json()

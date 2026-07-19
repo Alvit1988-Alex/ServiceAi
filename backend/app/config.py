@@ -87,6 +87,36 @@ class Settings(BaseSettings):
         default="/auth/telegram/webhook",
         validation_alias=AliasChoices("TELEGRAM_WEBHOOK_PATH", "telegram_webhook_path"),
     )
+    telegram_api_base_url: str = Field(
+        default="https://api.telegram.org",
+        validation_alias=AliasChoices("TELEGRAM_API_BASE_URL", "telegram_api_base_url"),
+        description="Telegram Bot API compatible base URL",
+    )
+    telegram_gateway_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "TELEGRAM_GATEWAY_API_KEY", "telegram_gateway_api_key"
+        ),
+        description="Optional Dialogus Gateway key for Telegram Bot API proxy requests",
+    )
+    telegram_webhook_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "TELEGRAM_WEBHOOK_BASE_URL", "telegram_webhook_base_url"
+        ),
+        description=(
+            "Optional dedicated external base URL for Telegram channel webhooks"
+        ),
+    )
+    telegram_auth_webhook_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "TELEGRAM_AUTH_WEBHOOK_BASE_URL", "telegram_auth_webhook_base_url"
+        ),
+        description=(
+            "Optional dedicated external base URL for Telegram auth webhooks"
+        ),
+    )
     public_base_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),
@@ -313,6 +343,27 @@ class Settings(BaseSettings):
     def _normalize_cors_allow_headers(cls, value: Any) -> list[str]:
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
+
+    @field_validator(
+        "telegram_api_base_url",
+        "telegram_webhook_base_url",
+        "telegram_auth_webhook_base_url",
+        mode="before"
+    )
+    @classmethod
+    def _normalize_telegram_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = str(value).strip().rstrip("/")
+        return normalized or None
+
+    @field_validator("telegram_gateway_api_key", mode="before")
+    @classmethod
+    def _normalize_telegram_gateway_api_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
     @field_validator("webchat_static_dir", mode="before")
     @classmethod

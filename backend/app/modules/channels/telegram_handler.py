@@ -5,13 +5,19 @@ from __future__ import annotations
 import httpx
 
 from app.modules.channels.schemas import ChannelType, NormalizedIncomingMessage
+from app.utils.telegram_http import (
+    build_telegram_api_url,
+    build_telegram_request_headers,
+)
 
 
 async def send_telegram_message(token: str, chat_id: str, text: str) -> httpx.Response:
     payload = {"chat_id": chat_id, "text": text}
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = build_telegram_api_url(token, "sendMessage")
     async with httpx.AsyncClient(timeout=10) as client:
-        return await client.post(url, json=payload)
+        return await client.post(
+            url, json=payload, headers=build_telegram_request_headers()
+        )
 
 
 def _extract_telegram_message(update: dict) -> tuple[dict | None, dict | None]:
