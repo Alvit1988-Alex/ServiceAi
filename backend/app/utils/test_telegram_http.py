@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import settings
+from app.config import Settings, settings
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels import service as channels_service
 from app.modules.channels.telegram_handler import send_telegram_message
@@ -23,6 +23,31 @@ def reset_telegram_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_default_telegram_api_url() -> None:
+    assert build_telegram_api_url("TOKEN", "getMe") == "https://api.telegram.org/botTOKEN/getMe"
+
+
+def _load_telegram_api_base_url(raw_value: str, monkeypatch: pytest.MonkeyPatch) -> str:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test" * 8)
+    monkeypatch.setenv("JWT_REFRESH_SECRET_KEY", "refresh" * 5)
+    monkeypatch.setenv("CHANNEL_CONFIG_SECRET_KEY", "secret")
+    monkeypatch.setenv("TELEGRAM_API_BASE_URL", raw_value)
+    return Settings().telegram_api_base_url
+
+
+def test_empty_telegram_api_base_url_uses_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings, "telegram_api_base_url", _load_telegram_api_base_url("", monkeypatch)
+    )
+
+    assert build_telegram_api_url("TOKEN", "getMe") == "https://api.telegram.org/botTOKEN/getMe"
+
+
+def test_blank_telegram_api_base_url_uses_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings, "telegram_api_base_url", _load_telegram_api_base_url("   ", monkeypatch)
+    )
+
     assert build_telegram_api_url("TOKEN", "getMe") == "https://api.telegram.org/botTOKEN/getMe"
 
 

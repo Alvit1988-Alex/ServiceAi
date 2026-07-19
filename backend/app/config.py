@@ -344,14 +344,21 @@ class Settings(BaseSettings):
         parsed = cls._parse_csv_list(value)
         return parsed if parsed is not None else value
 
+    @field_validator("telegram_api_base_url", mode="before")
+    @classmethod
+    def _normalize_telegram_api_base_url(cls, value: str | None) -> str:
+        if value is None:
+            return "https://api.telegram.org"
+        normalized = str(value).strip().rstrip("/")
+        return normalized or "https://api.telegram.org"
+
     @field_validator(
-        "telegram_api_base_url",
         "telegram_webhook_base_url",
         "telegram_auth_webhook_base_url",
         mode="before",
     )
     @classmethod
-    def _normalize_telegram_base_url(cls, value: str | None) -> str | None:
+    def _normalize_optional_telegram_base_url(cls, value: str | None) -> str | None:
         if value is None:
             return value
         normalized = str(value).strip().rstrip("/")
