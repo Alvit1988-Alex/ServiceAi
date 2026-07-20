@@ -21,6 +21,10 @@ from app.modules.channels.service import ChannelsService
 from app.modules.diagnostics.models import IntegrationLog
 from app.modules.diagnostics.schemas import DiagnosticCheck, DiagnosticsResponse, DiagnosticsSummary, IntegrationError
 from app.utils.encryption import decrypt_config
+from app.utils.telegram_http import (
+    build_telegram_api_url,
+    build_telegram_request_headers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -471,12 +475,14 @@ class DiagnosticsService:
                         )
                         continue
 
-                    api_url = f"https://api.telegram.org/bot{token}/getMe"
+                    api_url = build_telegram_api_url(token, "getMe")
                     status_value = "ok"
                     details = "Токен задан"
                     http_status: int | None = None
                     try:
-                        response = await client.get(api_url)
+                        response = await client.get(
+                            api_url, headers=build_telegram_request_headers()
+                        )
                         http_status = response.status_code
                         if response.status_code in (401, 403):
                             status_value = "fail"

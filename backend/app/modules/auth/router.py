@@ -43,6 +43,10 @@ from app.security.jwt import (
     create_refresh_token,
     decode_refresh_token,
 )
+from app.utils.telegram_http import (
+    build_telegram_api_url,
+    build_telegram_request_headers,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 MAX_AVATAR_SIZE = 2 * 1024 * 1024
@@ -365,10 +369,12 @@ async def _resolve_bot_username() -> str | None:
     if not settings.telegram_auth_bot_token:
         return settings.telegram_auth_bot_username or None
 
-    bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
     try:
-        async with httpx.AsyncClient(base_url=bot_base_url, timeout=3) as client:
-            response = await client.get("/getMe")
+        async with httpx.AsyncClient(timeout=3) as client:
+            response = await client.get(
+                build_telegram_api_url(settings.telegram_auth_bot_token, "getMe"),
+                headers=build_telegram_request_headers(),
+            )
             response.raise_for_status()
             payload = response.json()
     except Exception:
@@ -524,15 +530,15 @@ async def _send_telegram_confirmation_message(chat_id: int | str, text: str) -> 
     if not settings.telegram_auth_bot_token:
         return
 
-    bot_base_url = f"https://api.telegram.org/bot{settings.telegram_auth_bot_token}"
     try:
-        async with httpx.AsyncClient(base_url=bot_base_url, timeout=3) as client:
+        async with httpx.AsyncClient(timeout=3) as client:
             await client.post(
-                "/sendMessage",
+                build_telegram_api_url(settings.telegram_auth_bot_token, "sendMessage"),
                 json={
                     "chat_id": chat_id,
                     "text": text,
                 },
+                headers=build_telegram_request_headers(),
             )
     except Exception:
         if settings.runtime_debug:
