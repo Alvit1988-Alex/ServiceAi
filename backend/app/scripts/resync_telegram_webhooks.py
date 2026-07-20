@@ -9,6 +9,16 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Import all ORM model modules before creating standalone sessions so SQLAlchemy
+# can resolve string-based relationships in the registry.
+import app.modules.accounts.models  # noqa: F401
+import app.modules.ai.models  # noqa: F401
+import app.modules.auth.models  # noqa: F401
+import app.modules.bots.models  # noqa: F401
+import app.modules.channels.models  # noqa: F401
+import app.modules.diagnostics.models  # noqa: F401
+import app.modules.dialogs.models  # noqa: F401
+import app.modules.integrations.bitrix24.models  # noqa: F401
 from app.database import async_session_factory
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.service import sync_telegram_webhook
