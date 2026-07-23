@@ -107,7 +107,7 @@ export function SearchResults({
 
             {!loading && !error &&
               items.map((dialog) => {
-                const isWaitingOperator = dialog.status === DialogStatus.WAIT_OPERATOR;
+                const isWaitingOperator = dialog.status === DialogStatus.WAIT_OPERATOR && !dialog.closed;
 
                 return (
                 <tr

@@ -319,20 +319,13 @@ async def switch_dialog_to_auto(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     service: DialogsService = Depends(DialogsService),
-    ai_service: AIService = Depends(get_ai_service),
 ) -> DialogDetail:
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
     if not dialog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dialog not found")
 
     try:
-        await service.switch_to_auto(
-            session=session,
-            dialog=dialog,
-            admin_id=current_user.id,
-            ai_service=ai_service,
-            ws_manager=manager,
-        )
+        await service.switch_to_auto(session=session, dialog=dialog, admin_id=current_user.id)
     except DialogLockError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:

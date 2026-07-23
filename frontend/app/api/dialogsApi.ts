@@ -123,6 +123,18 @@ export async function closeDialog(botId: number, dialogId: number): Promise<Dial
   return (await response.json()) as DialogDetail;
 }
 
+export async function switchDialogToAuto(botId: number, dialogId: number): Promise<DialogDetail> {
+  const response = await httpClient(`/bots/${botId}/dialogs/${dialogId}/auto`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось включить автоматический режим"));
+  }
+
+  return (await response.json()) as DialogDetail;
+}
+
 export async function lockDialog(botId: number, dialogId: number): Promise<DialogDetail> {
   const response = await httpClient(`/bots/${botId}/dialogs/${dialogId}/lock`, {
     method: "POST",

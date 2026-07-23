@@ -55,7 +55,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     sendMessage,
     lockDialog,
     unlockDialog,
-    closeDialog,
+    switchDialogToAuto,
   } = useDialogsStore();
 
   const dialog = dialogDetails[dialogId];
@@ -176,11 +176,11 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
     }
   };
 
-  const handleClose = async () => {
-    if (isLockedByAnother) {
+  const handleSwitchToAuto = async () => {
+    if (!dialog || isLockedByAnother) {
       return;
     }
-    await closeDialog(botId, dialogId);
+    await switchDialogToAuto(botId, dialogId);
   };
 
   const loadOperatorDialogs = async (operatorId: number) => {
@@ -229,7 +229,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
 
                 <div className={styles.infoRow}>
                   <span className={styles.label}>Статус:</span>
-                  <span className={styles.status}>{dialog.closed ? "Завершён" : STATUS_LABELS[dialog.status]}</span>
+                  <span className={styles.status}>{STATUS_LABELS[dialog.status]}</span>
                 </div>
                 <div className={styles.infoRow}>
                   <span className={styles.label}>Закреплён:</span>
@@ -252,10 +252,14 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
                   <button
                     className={styles.button}
                     type="button"
-                    onClick={handleClose}
-                    disabled={dialog.closed || updatingDialog || isLockedByAnother}
+                    onClick={handleSwitchToAuto}
+                    disabled={
+                      updatingDialog ||
+                      isLockedByAnother ||
+                      (dialog.status === DialogStatus.AUTO && !dialog.closed)
+                    }
                   >
-                    Завершить диалог
+                    Автоматический режим
                   </button>
                 </div>
               </div>

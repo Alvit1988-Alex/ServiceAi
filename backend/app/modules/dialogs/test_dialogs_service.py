@@ -16,8 +16,8 @@ os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "refresh" * 5)
 os.environ.setdefault("CHANNEL_CONFIG_SECRET_KEY", "secret")
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, select
+from sqlalchemy.dialects.postgresql import JSONB, dialect as postgresql_dialect
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -460,18 +460,9 @@ def test_process_incoming_locked_operator_priority_skips_ai(db_sessionmaker):
     assert dialog.assigned_admin_id == operator.id
 
 
-def test_switch_to_auto_handoff_trigger_skips_ai(db_sessionmaker, monkeypatch):
-    DummySender.sent = []
-    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+def test_switch_to_auto_does_not_reprocess_last_trigger_message(db_sessionmaker):
     service = DialogsService()
     bot, operator, _ = run(_create_base_entities(db_sessionmaker))
-
-    class DummyWS:
-        async def broadcast_to_admins(self, *_args, **_kwargs):
-            return None
-
-        async def broadcast_new_message(self, *_args, **_kwargs):
-            return None
 
     async def _case():
         async with db_sessionmaker() as session:
@@ -486,25 +477,258 @@ def test_switch_to_auto_handoff_trigger_skips_ai(db_sessionmaker, monkeypatch):
                 external_chat_id="chat-1",
                 external_user_id="user-1",
             )
+            dialog.status = DialogStatus.WAIT_OPERATOR
             dialog.assigned_admin_id = operator.id
+            dialog.is_locked = True
             user_message = DialogMessage(dialog_id=dialog.id, sender=MessageSender.USER, text="оператор")
             session.add_all([dialog, user_message])
             await session.commit()
             await session.refresh(dialog)
-            ai = DummyAIService(AIAnswer(can_answer=True, answer="ok", confidence=1, used_chunk_ids=[]))
-            updated = await service.switch_to_auto(
+
+            before_count = (await session.execute(select(DialogMessage).where(DialogMessage.dialog_id == dialog.id))).scalars().all()
+            updated = await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            after_count = (await session.execute(select(DialogMessage).where(DialogMessage.dialog_id == dialog.id))).scalars().all()
+            return updated, len(before_count), len(after_count), dialog.id
+
+    dialog, before_count, after_count, original_id = run(_case())
+    assert dialog.id == original_id
+    assert before_count == 1
+    assert after_count == 1
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.closed is False
+    assert dialog.assigned_admin_id is None
+    assert dialog.is_locked is False
+    assert dialog.locked_until is None
+
+
+
+
+def test_get_or_create_dialog_locks_bot_before_open_dialog_lookup(db_sessionmaker):
+    service = DialogsService()
+    bot, _, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            scalar_statements = []
+            original_scalar = session.scalar
+
+            async def scalar_spy(statement):
+                scalar_statements.append(statement)
+                return await original_scalar(statement)
+
+            session.scalar = scalar_spy
+            dialog, created = await service.get_or_create_dialog(
                 session=session,
-                dialog=dialog,
-                admin_id=operator.id,
-                ai_service=ai,
-                ws_manager=DummyWS(),
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="get-or-create-lock",
+                external_user_id="get-or-create-lock-user",
             )
-            return ai.calls, updated
+            return dialog, created, scalar_statements
 
-    calls, dialog = run(_case())
-    assert calls == 0
-    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    dialog, created, scalar_statements = run(_case())
+    assert dialog.bot_id == bot.id
+    assert created is True
+    assert len(scalar_statements) == 1
 
+    bot_lock_statement = scalar_statements[0]
+    compiled = str(bot_lock_statement.compile(dialect=postgresql_dialect()))
+    assert "FROM bots" in compiled
+    assert "WHERE bots.id" in compiled
+    assert "FOR UPDATE" in compiled
+
+def test_switch_to_auto_closed_dialog_locks_bot_before_duplicate_check(db_sessionmaker):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="lock-structural",
+                external_user_id="lock-structural-user",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=True,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
+            scalar_statements = []
+            original_scalar = session.scalar
+
+            async def scalar_spy(statement):
+                scalar_statements.append(statement)
+                return await original_scalar(statement)
+
+            session.scalar = scalar_spy
+            updated = await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            return updated, scalar_statements
+
+    dialog, scalar_statements = run(_case())
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.closed is False
+    assert len(scalar_statements) >= 2
+
+    bot_lock_statement = scalar_statements[0]
+    compiled = str(bot_lock_statement.compile(dialect=postgresql_dialect()))
+    assert "FROM bots" in compiled
+    assert "WHERE bots.id" in compiled
+    assert "FOR UPDATE" in compiled
+
+
+def test_switch_to_auto_open_dialog_does_not_lock_bot(db_sessionmaker):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog, _ = await service.get_or_create_dialog(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="open-no-lock",
+                external_user_id="open-no-lock-user",
+            )
+            dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.assigned_admin_id = operator.id
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
+            scalar_statements = []
+            original_scalar = session.scalar
+
+            async def scalar_spy(statement):
+                scalar_statements.append(statement)
+                return await original_scalar(statement)
+
+            session.scalar = scalar_spy
+            updated = await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            return updated, scalar_statements
+
+    dialog, scalar_statements = run(_case())
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.closed is False
+    assert scalar_statements == []
+
+def test_switch_to_auto_reopens_closed_dialog(db_sessionmaker):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="legacy",
+                external_user_id="legacy-user",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=True,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                locked_until=datetime.utcnow() + timedelta(minutes=5),
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            original_id = dialog.id
+
+            updated = await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            return updated, original_id
+
+    dialog, original_id = run(_case())
+    assert dialog.id == original_id
+    assert dialog.closed is False
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.assigned_admin_id is None
+    assert dialog.is_locked is False
+    assert dialog.locked_until is None
+
+
+def test_switch_to_auto_rejects_reopen_when_another_active_dialog_exists(db_sessionmaker):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            legacy = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="duplicate",
+                external_user_id="legacy-user",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=True,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+            )
+            active = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="duplicate",
+                external_user_id="active-user",
+                status=DialogStatus.WAIT_USER,
+                closed=False,
+            )
+            session.add_all([legacy, active])
+            await session.commit()
+            await session.refresh(legacy)
+            await session.refresh(active)
+
+            with pytest.raises(DialogLockError, match="активный диалог"):
+                await service.switch_to_auto(session=session, dialog=legacy, admin_id=operator.id)
+
+            await session.refresh(legacy)
+            await session.refresh(active)
+            return legacy, active
+
+    legacy, active = run(_case())
+    assert legacy.closed is True
+    assert legacy.status == DialogStatus.WAIT_OPERATOR
+    assert legacy.assigned_admin_id == operator.id
+    assert legacy.is_locked is True
+    assert legacy.locked_until is None
+    assert active.closed is False
+    assert active.status == DialogStatus.WAIT_USER
+    assert active.assigned_admin_id is None
+    assert active.is_locked is False
+
+
+def test_get_or_create_reuses_dialog_after_switch_to_auto(db_sessionmaker):
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog, _ = await service.get_or_create_dialog(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+            )
+            dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.assigned_admin_id = operator.id
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
+            updated = await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            fetched, created = await service.get_or_create_dialog(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+            )
+            return updated.id, fetched.id, created
+
+    updated_id, fetched_id, created = run(_case())
+    assert fetched_id == updated_id
+    assert created is False
 
 def test_count_waiting_operator_dialogs_filters_status_closed_and_access(db_sessionmaker):
     service = DialogsService()

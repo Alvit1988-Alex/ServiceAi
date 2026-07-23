@@ -9,6 +9,7 @@ import {
   listDialogs,
   lockDialog as lockDialogApi,
   sendOperatorMessage,
+  switchDialogToAuto as switchDialogToAutoApi,
   unlockDialog as unlockDialogApi,
 } from "@/app/api/dialogsApi";
 import {
@@ -51,6 +52,7 @@ interface DialogsState {
   lockDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
   unlockDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
   closeDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
+  switchDialogToAuto: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
   applyDialogCreated: (dialog: DialogDetail | DialogShort) => boolean;
   applyDialogUpdated: (dialog: DialogDetail | DialogShort) => boolean;
   applyDialogLocked: (dialog: DialogDetail | DialogShort) => boolean;
@@ -364,6 +366,31 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
       return dialog;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось закрыть диалог";
+      set({ error: message, updatingDialog: false });
+      return null;
+    }
+  },
+  switchDialogToAuto: async (botId, dialogId) => {
+    set({ updatingDialog: true, error: null });
+
+    try {
+      const dialog = await switchDialogToAutoApi(botId, dialogId);
+      get().reconcileWaitingOperatorCountForDialog(dialog);
+      set((state) => ({
+        dialogDetails: { ...state.dialogDetails, [dialog.id]: dialog },
+        dialogsByBot: {
+          ...state.dialogsByBot,
+          [botId]: state.dialogsByBot[botId]
+            ? state.dialogsByBot[botId].map((item) =>
+                item.id === dialog.id ? mapDetailToShort(dialog) : item,
+              )
+            : [mapDetailToShort(dialog)],
+        },
+        updatingDialog: false,
+      }));
+      return dialog;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось включить автоматический режим";
       set({ error: message, updatingDialog: false });
       return null;
     }
