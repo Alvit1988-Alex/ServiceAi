@@ -395,6 +395,46 @@ def test_process_incoming_handoff_off_trigger_uses_ai(db_sessionmaker, monkeypat
     assert bot_message.text == "Ответ"
 
 
+def test_process_incoming_preserves_auto_status_after_ai_answer(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog, _ = await service.get_or_create_dialog(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+            )
+            dialog.status = DialogStatus.WAIT_OPERATOR
+            dialog.assigned_admin_id = operator.id
+            dialog.is_locked = True
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
+            await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="Автоответ", confidence=1, used_chunk_ids=[]))
+            _user, bot_message, updated_dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "новый вопрос"),
+                ai_service=ai,
+            )
+            return ai.calls, bot_message, updated_dialog
+
+    calls, bot_message, dialog = run(_case())
+    assert calls == 1
+    assert bot_message.text == "Автоответ"
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.assigned_admin_id is None
+    assert dialog.is_locked is False
+    assert DummySender.sent == [(bot.id, "chat-1", "Автоответ")]
+
+
 @pytest.mark.parametrize(
     ("enabled", "ai", "expected_status", "expected_text"),
     [

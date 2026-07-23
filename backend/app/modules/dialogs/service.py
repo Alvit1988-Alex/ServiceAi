@@ -533,7 +533,9 @@ class DialogsService:
         now = datetime.utcnow()
 
         dialog.closed = False
-        dialog.status = DialogStatus.WAIT_OPERATOR
+        preserve_auto_status = dialog.status == DialogStatus.AUTO
+        if not preserve_auto_status:
+            dialog.status = DialogStatus.WAIT_OPERATOR
         dialog.updated_at = now
         dialog.last_message_at = now
         dialog.last_user_message_at = now
@@ -627,7 +629,8 @@ class DialogsService:
             bot_response_time_seconds = (
                 int((datetime.utcnow() - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
-            dialog.status = DialogStatus.WAIT_USER
+            if not preserve_auto_status:
+                dialog.status = DialogStatus.WAIT_USER
             dialog.updated_at = datetime.utcnow()
             dialog.last_message_at = datetime.utcnow()
             dialog.waiting_time_seconds = bot_response_time_seconds
