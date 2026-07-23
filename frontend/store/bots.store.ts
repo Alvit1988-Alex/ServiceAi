@@ -8,6 +8,8 @@ export interface BotDTO {
   id: number;
   name: string;
   description?: string | null;
+  operator_handoff_enabled: boolean;
+  operator_trigger_phrases: string[];
   account_id?: number;
   created_at?: string;
   updated_at?: string;
@@ -194,6 +196,8 @@ export const useBotsStore = create<BotsState>((set, get) => ({
         account_id: newBot.account_id,
         created_at: newBot.created_at,
         updated_at: newBot.updated_at,
+        operator_handoff_enabled: newBot.operator_handoff_enabled,
+        operator_trigger_phrases: newBot.operator_trigger_phrases,
       };
 
       set((state) => ({
