@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const { selectedBot, reloadSelectedBot } = useBotsStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [operatorHandoffEnabled, setOperatorHandoffEnabled] = useState(false);
+  const [operatorTriggerPhrases, setOperatorTriggerPhrases] = useState("");
   const [admins, setAdmins] = useState<BotAdmin[]>([]);
   const [accountPublicId, setAccountPublicId] = useState("");
   const [role, setRole] = useState<"superadmin" | "admin">("admin");
@@ -25,6 +27,8 @@ export default function SettingsPage() {
   useEffect(() => {
     setName(selectedBot?.name ?? "");
     setDescription(selectedBot?.description ?? "");
+    setOperatorHandoffEnabled(selectedBot?.operator_handoff_enabled ?? false);
+    setOperatorTriggerPhrases((selectedBot?.operator_trigger_phrases ?? []).join("\n"));
     void loadAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBot?.id]);
@@ -46,7 +50,12 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(null);
     try {
-      await updateBot(selectedBot.id, { name: name.trim(), description: description.trim() || null });
+      await updateBot(selectedBot.id, {
+        name: name.trim(),
+        description: description.trim() || null,
+        operator_handoff_enabled: operatorHandoffEnabled,
+        operator_trigger_phrases: operatorTriggerPhrases.split("\n"),
+      });
       await reloadSelectedBot();
       setSuccess("Настройки бота сохранены");
     } catch (e) {
@@ -100,6 +109,34 @@ export default function SettingsPage() {
                 <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} required />
                 <h2 className={styles.sectionTitle}>Описание</h2>
                 <input className={styles.input} value={description} onChange={(e) => setDescription(e.target.value)} />
+                <label className={styles.checkboxRow}>
+                  <input
+                    className={styles.checkbox}
+                    type="checkbox"
+                    checked={operatorHandoffEnabled}
+                    disabled={loading}
+                    onChange={(e) => setOperatorHandoffEnabled(e.target.checked)}
+                  />
+                  <span>Подключать оператора</span>
+                </label>
+                {operatorHandoffEnabled && (
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="operator-trigger-phrases">
+                      Фразы для подключения оператора
+                    </label>
+                    <p className={styles.helpText}>
+                      Укажите по одной фразе на строку. Если сообщение клиента содержит одну из этих фраз, бот передаст диалог оператору без обращения к ИИ.
+                    </p>
+                    <textarea
+                      id="operator-trigger-phrases"
+                      className={styles.textarea}
+                      value={operatorTriggerPhrases}
+                      disabled={loading}
+                      placeholder={"позови оператора\nхочу поговорить с человеком\nсоедините с администратором\nпереключите на менеджера"}
+                      onChange={(e) => setOperatorTriggerPhrases(e.target.value)}
+                    />
+                  </div>
+                )}
                 <button className={styles.button} type="submit" disabled={loading}>Сохранить</button>
               </form>
             </section>

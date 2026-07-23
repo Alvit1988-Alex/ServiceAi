@@ -87,6 +87,8 @@ export interface Bot {
   id: number;
   name: string;
   description?: string | null;
+  operator_handoff_enabled: boolean;
+  operator_trigger_phrases: string[];
   account_id: number;
   is_owned?: boolean;
   access_role?: BotAccessRole;
@@ -108,11 +110,15 @@ export interface BotAdmin {
 export interface BotCreate {
   name: string;
   description?: string | null;
+  operator_handoff_enabled?: boolean;
+  operator_trigger_phrases?: string[];
 }
 
 export interface BotUpdate {
   name?: string;
   description?: string | null;
+  operator_handoff_enabled?: boolean;
+  operator_trigger_phrases?: string[];
 }
 
 export interface BotAiInstructions {

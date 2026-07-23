@@ -22,7 +22,13 @@ class BotsService:
         channels_service = ChannelsService()
 
         try:
-            db_obj = Bot(account_id=obj_in.account_id, name=obj_in.name, description=obj_in.description)
+            db_obj = Bot(
+                account_id=obj_in.account_id,
+                name=obj_in.name,
+                description=obj_in.description,
+                operator_handoff_enabled=obj_in.operator_handoff_enabled,
+                operator_trigger_phrases=obj_in.operator_trigger_phrases,
+            )
             session.add(db_obj)
             await session.flush()
 

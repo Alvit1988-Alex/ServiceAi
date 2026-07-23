@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 from datetime import datetime
 from typing import Any
 
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.ai.service import AIService
+from app.modules.bots.models import Bot
 from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
@@ -28,6 +30,25 @@ from app.utils.validators import validate_pagination
 
 logger = logging.getLogger(__name__)
 AI_FALLBACK_TEXT = "Сейчас ИИ временно недоступен. Сообщение передано оператору — мы ответим как можно скорее."
+HANDOFF_TEXT = "Передаю ваш вопрос оператору. Мы ответим как можно скорее."
+AI_CANNOT_ANSWER_TEXT = "К сожалению, сейчас я не могу ответить на этот вопрос."
+
+
+def _normalize_handoff_text(value: str) -> str:
+    chars: list[str] = []
+    for char in value.casefold():
+        if char.isspace() or unicodedata.category(char).startswith("P"):
+            chars.append(" ")
+        else:
+            chars.append(char)
+    return " ".join("".join(chars).split())
+
+
+def _matches_operator_trigger(message: str, phrases: list[str]) -> bool:
+    normalized_message = _normalize_handoff_text(message)
+    if not normalized_message:
+        return False
+    return any(phrase and _normalize_handoff_text(phrase) in normalized_message for phrase in phrases)
 
 
 class DialogLockError(Exception):
@@ -36,6 +57,94 @@ class DialogLockError(Exception):
 
 class DialogsService:
     model = Dialog
+
+
+    async def _get_bot(self, session: AsyncSession, bot_id: int) -> Bot:
+        bot = await session.scalar(select(Bot).where(Bot.id == bot_id))
+        if bot is None:
+            raise ValueError("Bot not found")
+        return bot
+
+    async def _save_and_send_bot_message(
+        self,
+        *,
+        session: AsyncSession,
+        dialog: Dialog,
+        bot_id: int,
+        channel_type: ChannelType,
+        external_chat_id: str,
+        text: str,
+        status: DialogStatus,
+        system: bool = False,
+    ) -> DialogMessage:
+        dialog.status = status
+        dialog.updated_at = datetime.utcnow()
+        dialog.last_message_at = datetime.utcnow()
+        if status == DialogStatus.WAIT_USER:
+            dialog.waiting_time_seconds = (
+                int((datetime.utcnow() - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
+            )
+            dialog.unread_messages_count = 0
+
+        message = DialogMessage(
+            dialog_id=dialog.id,
+            sender=MessageSender.BOT,
+            text=text,
+            payload={"system": True} if system else None,
+        )
+        session.add_all([dialog, message])
+        await session.commit()
+        await session.refresh(dialog)
+        await session.refresh(message)
+
+        try:
+            sender_cls = get_sender(channel_type)
+            await sender_cls().send_text(bot_id=bot_id, external_chat_id=external_chat_id, text=text)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Bot message send failed",
+                extra={"bot_id": bot_id, "dialog_id": dialog.id, "channel_type": channel_type},
+            )
+        return message
+
+    async def _handoff_to_operator(
+        self,
+        *,
+        session: AsyncSession,
+        dialog: Dialog,
+        bot_id: int,
+        channel_type: ChannelType,
+        external_chat_id: str,
+    ) -> DialogMessage:
+        return await self._save_and_send_bot_message(
+            session=session,
+            dialog=dialog,
+            bot_id=bot_id,
+            channel_type=channel_type,
+            external_chat_id=external_chat_id,
+            text=HANDOFF_TEXT,
+            status=DialogStatus.WAIT_OPERATOR,
+            system=True,
+        )
+
+    async def _cannot_answer(
+        self,
+        *,
+        session: AsyncSession,
+        dialog: Dialog,
+        bot_id: int,
+        channel_type: ChannelType,
+        external_chat_id: str,
+    ) -> DialogMessage:
+        return await self._save_and_send_bot_message(
+            session=session,
+            dialog=dialog,
+            bot_id=bot_id,
+            channel_type=channel_type,
+            external_chat_id=external_chat_id,
+            text=AI_CANNOT_ANSWER_TEXT,
+            status=DialogStatus.WAIT_USER,
+        )
 
     async def create(self, session: AsyncSession, obj_in: DialogCreate) -> Dialog:
         db_obj = Dialog(
@@ -306,6 +415,22 @@ class DialogsService:
 
         last_message = dialog.messages[-1] if dialog.messages else None
         if last_message and last_message.sender == MessageSender.USER:
+            bot = await self._get_bot(session=session, bot_id=dialog.bot_id)
+            if bot.operator_handoff_enabled and _matches_operator_trigger(last_message.text or "", bot.operator_trigger_phrases):
+                system_message = await self._handoff_to_operator(
+                    session=session,
+                    dialog=dialog,
+                    bot_id=dialog.bot_id,
+                    channel_type=dialog.channel_type,
+                    external_chat_id=dialog.external_chat_id,
+                )
+
+                dialog_payload = DialogOut.model_validate(dialog).model_dump()
+                message_payload = DialogMessageOut.model_validate(system_message).model_dump()
+                await ws_manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=None)
+                await ws_manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=None)
+                return dialog
+
             try:
                 answer = await ai_service.answer(bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or "")
             except Exception:  # noqa: BLE001
@@ -315,33 +440,31 @@ class DialogsService:
                 )
                 answer = None
 
-            if answer is None or answer.answer is None or answer.answer == "":
-                dialog.status = DialogStatus.WAIT_OPERATOR
-                dialog.updated_at = datetime.utcnow()
-
-                system_message = DialogMessage(
-                    dialog_id=dialog.id,
-                    sender=MessageSender.BOT,
-                    text=AI_FALLBACK_TEXT if answer is None else "Бот временно не может ответить, передаем оператору...",
-                    payload={"system": True},
+            if answer is None or not answer.can_answer or not answer.answer:
+                system_message = await (
+                    self._handoff_to_operator(
+                        session=session,
+                        dialog=dialog,
+                        bot_id=dialog.bot_id,
+                        channel_type=dialog.channel_type,
+                        external_chat_id=dialog.external_chat_id,
+                    )
+                    if bot.operator_handoff_enabled
+                    else self._cannot_answer(
+                        session=session,
+                        dialog=dialog,
+                        bot_id=dialog.bot_id,
+                        channel_type=dialog.channel_type,
+                        external_chat_id=dialog.external_chat_id,
+                    )
                 )
-                session.add_all([dialog, system_message])
-                await session.commit()
-                await session.refresh(dialog)
-                await session.refresh(system_message)
 
                 dialog_payload = DialogOut.model_validate(dialog).model_dump()
                 message_payload = DialogMessageOut.model_validate(system_message).model_dump()
                 admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
 
-                await ws_manager.broadcast_to_admins(
-                    {"event": "message_created", "data": message_payload},
-                    admin_ids=admin_targets,
-                )
-                await ws_manager.broadcast_to_admins(
-                    {"event": "dialog_updated", "data": dialog_payload},
-                    admin_ids=admin_targets,
-                )
+                await ws_manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
+                await ws_manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
 
                 return dialog
 
@@ -493,6 +616,19 @@ class DialogsService:
         if dialog.assigned_admin_id is not None and dialog.locked_until is not None and dialog.locked_until > now:
             return user_message, None, dialog, dialog_created
 
+        bot = await self._get_bot(session=session, bot_id=incoming_message.bot_id)
+        if bot.operator_handoff_enabled and _matches_operator_trigger(
+            incoming_message.text or "", bot.operator_trigger_phrases
+        ):
+            system_message = await self._handoff_to_operator(
+                session=session,
+                dialog=dialog,
+                bot_id=incoming_message.bot_id,
+                channel_type=incoming_message.channel_type,
+                external_chat_id=incoming_message.external_chat_id,
+            )
+            return user_message, system_message, dialog, dialog_created
+
         bot_message: DialogMessage | None = None
         try:
             answer = await ai_service.answer(
@@ -507,39 +643,24 @@ class DialogsService:
             )
             answer = None
 
-        if answer is None or answer.answer is None or answer.answer == "":
-            dialog.status = DialogStatus.WAIT_OPERATOR
-            dialog.updated_at = datetime.utcnow()
-            system_message = DialogMessage(
-                dialog_id=dialog.id,
-                sender=MessageSender.BOT,
-                text=AI_FALLBACK_TEXT if answer is None else "Бот временно не может ответить, передаем оператору...",
-                payload={"system": True},
+        if answer is None or not answer.can_answer or not answer.answer:
+            system_message = await (
+                self._handoff_to_operator(
+                    session=session,
+                    dialog=dialog,
+                    bot_id=incoming_message.bot_id,
+                    channel_type=incoming_message.channel_type,
+                    external_chat_id=incoming_message.external_chat_id,
+                )
+                if bot.operator_handoff_enabled
+                else self._cannot_answer(
+                    session=session,
+                    dialog=dialog,
+                    bot_id=incoming_message.bot_id,
+                    channel_type=incoming_message.channel_type,
+                    external_chat_id=incoming_message.external_chat_id,
+                )
             )
-            session.add_all([dialog, system_message])
-            await session.commit()
-            await session.refresh(dialog)
-            await session.refresh(system_message)
-
-            if answer is None:
-                try:
-                    sender_cls = get_sender(incoming_message.channel_type)
-                    await sender_cls().send_text(
-                        bot_id=incoming_message.bot_id,
-                        external_chat_id=incoming_message.external_chat_id,
-                        text=AI_FALLBACK_TEXT,
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "AI fallback send failed",
-                        extra={
-                            "bot_id": incoming_message.bot_id,
-                            "dialog_id": dialog.id,
-                            "channel_type": incoming_message.channel_type,
-                            "external_chat_id": incoming_message.external_chat_id,
-                        },
-                    )
-
             return user_message, system_message, dialog, dialog_created
 
         if answer.can_answer and answer.answer:
@@ -569,12 +690,6 @@ class DialogsService:
                 external_chat_id=incoming_message.external_chat_id,
                 text=answer.answer,
             )
-        else:
-            dialog.status = DialogStatus.WAIT_OPERATOR
-            dialog.updated_at = datetime.utcnow()
-            session.add(dialog)
-            await session.commit()
-            await session.refresh(dialog)
 
         return user_message, bot_message, dialog, dialog_created
 
