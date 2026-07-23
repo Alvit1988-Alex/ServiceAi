@@ -6,7 +6,6 @@ import {
   useContext,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
 } from "react";
 
@@ -16,6 +15,12 @@ import { useAuthStore } from "@/store/auth.store";
 import { useDialogsStore } from "@/store/dialogs.store";
 
 const DialogsWsContext = createContext<AdminWebSocketClient | null>(null);
+
+interface CountReconciliationRunState {
+  generation: number;
+  inFlight: boolean;
+  pending: boolean;
+}
 
 function isDialogPayload(
   payload: unknown,
@@ -47,44 +52,109 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
   }
   const client = clientRef.current;
   const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countFetchInFlightRef = useRef(false);
-  const countReconciliationPendingRef = useRef(false);
   const authStateRef = useRef({ isAuthenticated, accessToken });
+  const authGenerationRef = useRef(0);
+  const authKeyRef = useRef<string | null>(null);
+  const countRunStateRef = useRef<CountReconciliationRunState>({
+    generation: 0,
+    inFlight: false,
+    pending: false,
+  });
+  const authKey = isAuthenticated && accessToken ? accessToken : null;
 
   useEffect(() => {
     authStateRef.current = { isAuthenticated, accessToken };
-  }, [accessToken, isAuthenticated]);
+
+    if (authKeyRef.current !== authKey) {
+      authKeyRef.current = authKey;
+      authGenerationRef.current += 1;
+      countRunStateRef.current = {
+        generation: authGenerationRef.current,
+        inFlight: false,
+        pending: false,
+      };
+
+      if (reconciliationTimerRef.current) {
+        clearTimeout(reconciliationTimerRef.current);
+        reconciliationTimerRef.current = null;
+      }
+    }
+  }, [accessToken, authKey, isAuthenticated]);
 
   const reconcileCountFromServer = useCallback(async () => {
-    const authState = authStateRef.current;
-    if (!authState.isAuthenticated || !authState.accessToken) {
+    const initialAuth = authStateRef.current;
+    const initialGeneration = authGenerationRef.current;
+    if (!initialAuth.isAuthenticated || !initialAuth.accessToken) {
       return;
     }
 
-    if (countFetchInFlightRef.current) {
-      countReconciliationPendingRef.current = true;
+    if (countRunStateRef.current.generation !== initialGeneration) {
+      countRunStateRef.current = {
+        generation: initialGeneration,
+        inFlight: false,
+        pending: false,
+      };
+    }
+
+    if (countRunStateRef.current.inFlight) {
+      countRunStateRef.current = { ...countRunStateRef.current, pending: true };
       return;
     }
 
-    countFetchInFlightRef.current = true;
+    countRunStateRef.current = {
+      generation: initialGeneration,
+      inFlight: true,
+      pending: false,
+    };
+
     try {
-      do {
-        countReconciliationPendingRef.current = false;
-        const revisionBefore = useDialogsStore.getState().dialogUpdateRevision;
-        await useDialogsStore.getState().fetchWaitingOperatorCount(() => {
-          const currentAuth = authStateRef.current;
-          return currentAuth.isAuthenticated && currentAuth.accessToken === authState.accessToken;
-        });
-        const revisionAfter = useDialogsStore.getState().dialogUpdateRevision;
+      while (true) {
+        const currentAuth = authStateRef.current;
+        const requestGeneration = authGenerationRef.current;
+        const requestToken = currentAuth.accessToken;
 
-        if (revisionAfter !== revisionBefore) {
-          countReconciliationPendingRef.current = true;
+        if (
+          requestGeneration !== initialGeneration ||
+          !currentAuth.isAuthenticated ||
+          !requestToken ||
+          countRunStateRef.current.generation !== initialGeneration
+        ) {
+          return;
         }
-      } while (countReconciliationPendingRef.current && authStateRef.current.isAuthenticated);
+
+        countRunStateRef.current = { ...countRunStateRef.current, pending: false };
+        const revisionBefore = useDialogsStore.getState().dialogUpdateRevision;
+        const isCurrentRequest = () => {
+          const latestAuth = authStateRef.current;
+          return (
+            latestAuth.isAuthenticated &&
+            latestAuth.accessToken === requestToken &&
+            authGenerationRef.current === requestGeneration &&
+            countRunStateRef.current.generation === requestGeneration
+          );
+        };
+
+        const applied = await useDialogsStore.getState().fetchWaitingOperatorCount(isCurrentRequest);
+
+        if (!applied || !isCurrentRequest()) {
+          return;
+        }
+
+        const revisionAfter = useDialogsStore.getState().dialogUpdateRevision;
+        if (revisionAfter !== revisionBefore && countRunStateRef.current.generation === requestGeneration) {
+          countRunStateRef.current = { ...countRunStateRef.current, pending: true };
+        }
+
+        if (!countRunStateRef.current.pending) {
+          return;
+        }
+      }
     } catch (error) {
       console.error("Failed to reconcile waiting operator dialogs count", error);
     } finally {
-      countFetchInFlightRef.current = false;
+      if (countRunStateRef.current.generation === initialGeneration) {
+        countRunStateRef.current = { ...countRunStateRef.current, inFlight: false };
+      }
     }
   }, []);
 
@@ -93,8 +163,13 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
       clearTimeout(reconciliationTimerRef.current);
     }
 
+    const scheduledGeneration = authGenerationRef.current;
     reconciliationTimerRef.current = setTimeout(() => {
       reconciliationTimerRef.current = null;
+      if (authGenerationRef.current !== scheduledGeneration) {
+        return;
+      }
+
       void reconcileCountFromServer();
     }, 200);
   }, [reconcileCountFromServer]);
@@ -181,8 +256,11 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
 
     client.disconnect();
     useDialogsStore.getState().resetWaitingOperatorCount();
-    countFetchInFlightRef.current = false;
-    countReconciliationPendingRef.current = false;
+    countRunStateRef.current = {
+      generation: authGenerationRef.current,
+      inFlight: false,
+      pending: false,
+    };
     if (reconciliationTimerRef.current) {
       clearTimeout(reconciliationTimerRef.current);
       reconciliationTimerRef.current = null;
