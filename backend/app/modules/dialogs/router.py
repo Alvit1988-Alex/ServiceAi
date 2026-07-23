@@ -15,7 +15,7 @@ from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.sender_registry import get_sender
 from app.modules.channels.webchat_handler import handle_webchat_ws_message
 from app.modules.dialogs.models import Dialog, DialogStatus, MessageSender
-from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, ListResponse
+from app.modules.dialogs.schemas import DialogDetail, DialogMessageOut, DialogShort, DialogWaitingOperatorCountOut, ListResponse
 from app.modules.dialogs.service import DialogLockError, DialogMessagesService, DialogsService
 from app.modules.dialogs.websocket_manager import manager
 from app.security.auth import get_current_user
@@ -85,6 +85,16 @@ async def _unlock_expired_dialogs(
         )
         for dialog in dialogs
     ]
+
+
+@router.get("/dialogs/waiting-operator-count", response_model=DialogWaitingOperatorCountOut)
+async def get_waiting_operator_dialogs_count(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    service: DialogsService = Depends(DialogsService),
+) -> DialogWaitingOperatorCountOut:
+    count = await service.count_waiting_operator_dialogs(session=session, current_user=current_user)
+    return DialogWaitingOperatorCountOut(count=count)
 
 
 @router.get("/bots/{bot_id}/dialogs", response_model=ListResponse[DialogShort])

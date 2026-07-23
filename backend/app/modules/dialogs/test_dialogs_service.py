@@ -22,9 +22,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base
-from app.modules.accounts.models import Account, User, UserRole
+from app.modules.accounts.models import Account, User, UserRole, account_operators
 from app.modules.ai.schemas import AIAnswer
-from app.modules.bots.models import Bot
+from app.modules.bots.models import Bot, BotAdmin, BotAdminRole
 from app.modules.bots.schemas import BotCreate, BotUpdate
 from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
@@ -111,7 +111,9 @@ def db_sessionmaker() -> Callable[[], AsyncSessionWrapper]:
             tables=[
                 DialogMessage.__table__,
                 Dialog.__table__,
+                BotAdmin.__table__,
                 Bot.__table__,
+                account_operators,
                 Account.__table__,
                 User.__table__,
             ],
@@ -502,3 +504,66 @@ def test_switch_to_auto_handoff_trigger_skips_ai(db_sessionmaker, monkeypatch):
     calls, dialog = run(_case())
     assert calls == 0
     assert dialog.status == DialogStatus.WAIT_OPERATOR
+
+
+def test_count_waiting_operator_dialogs_filters_status_closed_and_access(db_sessionmaker):
+    service = DialogsService()
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            owner = User(email="count-owner@example.com", password_hash="x", role=UserRole.owner)
+            other_owner = User(email="count-other@example.com", password_hash="x", role=UserRole.owner)
+            operator = User(email="count-operator@example.com", password_hash="x", role=UserRole.operator)
+            owner_account = Account(name="Owner Account", public_id="11111111", owner=owner)
+            other_account = Account(name="Other Account", public_id="22222222", owner=other_owner)
+            owned_bot = Bot(name="Owned", description=None, account=owner_account)
+            delegated_bot = Bot(name="Delegated", description=None, account=other_account)
+            foreign_bot = Bot(name="Foreign", description=None, account=other_account)
+            session.add_all([owner, other_owner, operator, owner_account, other_account, owned_bot, delegated_bot, foreign_bot])
+            await session.commit()
+            await session.refresh(owner)
+            await session.refresh(operator)
+            await session.refresh(owned_bot)
+            await session.refresh(delegated_bot)
+            await session.refresh(foreign_bot)
+
+            session.add(BotAdmin(bot_id=delegated_bot.id, user_id=operator.id, role=BotAdminRole.admin))
+            session.add_all([
+                Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="a", external_user_id="a", status=DialogStatus.WAIT_OPERATOR, closed=False),
+                Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="b", external_user_id="b", status=DialogStatus.AUTO, closed=False),
+                Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="c", external_user_id="c", status=DialogStatus.WAIT_USER, closed=False),
+                Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="d", external_user_id="d", status=DialogStatus.WAIT_OPERATOR, closed=True),
+                Dialog(bot_id=delegated_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="e", external_user_id="e", status=DialogStatus.WAIT_OPERATOR, closed=False),
+                Dialog(bot_id=foreign_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="f", external_user_id="f", status=DialogStatus.WAIT_OPERATOR, closed=False),
+            ])
+            await session.commit()
+
+            owner_count = await service.count_waiting_operator_dialogs(session=session, current_user=owner)
+            operator_count = await service.count_waiting_operator_dialogs(session=session, current_user=operator)
+            admin = User(email="count-admin@example.com", password_hash="x", role=UserRole.admin)
+            session.add(admin)
+            await session.commit()
+            await session.refresh(admin)
+            admin_count = await service.count_waiting_operator_dialogs(session=session, current_user=admin)
+            return owner_count, operator_count, admin_count
+
+    owner_count, operator_count, admin_count = run(_case())
+    assert owner_count == 1
+    assert operator_count == 1
+    assert admin_count == 3
+
+
+def test_count_waiting_operator_dialogs_returns_zero(db_sessionmaker):
+    service = DialogsService()
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            user = User(email="zero@example.com", password_hash="x", role=UserRole.owner)
+            account = Account(name="Zero", public_id="33333333", owner=user)
+            bot = Bot(name="Zero Bot", description=None, account=account)
+            session.add_all([user, account, bot])
+            await session.commit()
+            await session.refresh(user)
+            return await service.count_waiting_operator_dialogs(session=session, current_user=user)
+
+    assert run(_case()) == 0

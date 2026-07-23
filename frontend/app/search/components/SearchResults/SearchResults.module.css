@@ -116,3 +116,51 @@
     flex-wrap: wrap;
   }
 }
+
+
+.rowWaitingOperator {
+  background: rgba(56, 189, 248, 0.11);
+}
+
+.rowWaitingOperator:hover {
+  background: rgba(56, 189, 248, 0.18);
+}
+
+.statusWithIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waitingIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  flex-shrink: 0;
+}
+
+:global(html[data-theme="dark"]) .table {
+  background: var(--color-surface, #1f2937);
+  color: var(--color-text, #f3f4f6);
+}
+
+:global(html[data-theme="dark"]) .table th {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:global(html[data-theme="dark"]) .row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(html[data-theme="dark"]) .rowWaitingOperator {
+  background: rgba(56, 189, 248, 0.16);
+}
+
+:global(html[data-theme="dark"]) .rowWaitingOperator:hover {
+  background: rgba(56, 189, 248, 0.24);
+}
+
+:global(html[data-theme="dark"]) .waitingIndicator {
+  background: #38bdf8;
+}

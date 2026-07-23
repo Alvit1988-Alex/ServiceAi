@@ -5,6 +5,7 @@ import { create } from "zustand";
 import {
   closeDialog as closeDialogApi,
   getDialog,
+  getWaitingOperatorDialogsCount,
   listDialogs,
   lockDialog as lockDialogApi,
   sendOperatorMessage,
@@ -28,6 +29,14 @@ interface DialogsState {
   sendingMessage: boolean;
   updatingDialog: boolean;
   error: string | null;
+  waitingOperatorCount: number;
+  waitingOperatorCountLoaded: boolean;
+  dialogWaitOperatorState: Record<number, boolean>;
+  dialogUpdateRevision: number;
+  latestDialogUpdate: DialogDetail | DialogShort | null;
+  fetchWaitingOperatorCount: () => Promise<void>;
+  resetWaitingOperatorCount: () => void;
+  reconcileWaitingOperatorCountForDialog: (dialog: DialogDetail | DialogShort) => boolean;
   fetchDialogs: (
     botId: number,
     params?: Parameters<typeof listDialogs>[1],
@@ -74,6 +83,31 @@ function isDialogDetail(dialog: DialogDetail | DialogShort): dialog is DialogDet
   return (dialog as DialogDetail).messages !== undefined;
 }
 
+function contributesToWaitingOperatorCount(dialog: DialogDetail | DialogShort): boolean {
+  return dialog.status === DialogStatus.WAIT_OPERATOR && !dialog.closed;
+}
+
+function findKnownWaitingState(
+  state: DialogsState,
+  dialog: DialogDetail | DialogShort,
+): boolean | undefined {
+  if (Object.prototype.hasOwnProperty.call(state.dialogWaitOperatorState, dialog.id)) {
+    return state.dialogWaitOperatorState[dialog.id];
+  }
+
+  const existingDetail = state.dialogDetails[dialog.id];
+  if (existingDetail) {
+    return contributesToWaitingOperatorCount(existingDetail);
+  }
+
+  const existingListItem = state.dialogsByBot[dialog.bot_id]?.find((item) => item.id === dialog.id);
+  if (existingListItem) {
+    return contributesToWaitingOperatorCount(existingListItem);
+  }
+
+  return undefined;
+}
+
 export const useDialogsStore = create<DialogsState>((set, get) => ({
   dialogsByBot: {},
   paginationByBot: {},
@@ -84,6 +118,44 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
   sendingMessage: false,
   updatingDialog: false,
   error: null,
+  waitingOperatorCount: 0,
+  waitingOperatorCountLoaded: false,
+  dialogWaitOperatorState: {},
+  dialogUpdateRevision: 0,
+  latestDialogUpdate: null,
+  fetchWaitingOperatorCount: async () => {
+    try {
+      const response = await getWaitingOperatorDialogsCount();
+      set({ waitingOperatorCount: response.count, waitingOperatorCountLoaded: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить счётчик диалогов";
+      set({ error: message });
+      throw error;
+    }
+  },
+  resetWaitingOperatorCount: () =>
+    set({
+      waitingOperatorCount: 0,
+      waitingOperatorCountLoaded: false,
+      dialogWaitOperatorState: {},
+      dialogUpdateRevision: 0,
+      latestDialogUpdate: null,
+    }),
+  reconcileWaitingOperatorCountForDialog: (dialog) => {
+    const state = get();
+    const previous = findKnownWaitingState(state, dialog);
+    const next = contributesToWaitingOperatorCount(dialog);
+
+    set((current) => {
+      const delta = previous === undefined || previous === next ? 0 : next ? 1 : -1;
+      return {
+        waitingOperatorCount: Math.max(0, current.waitingOperatorCount + delta),
+        dialogWaitOperatorState: { ...current.dialogWaitOperatorState, [dialog.id]: next },
+      };
+    });
+
+    return previous === undefined;
+  },
   fetchDialogs: async (botId, params = {}) => {
     set({ loadingList: true, error: null });
 
@@ -101,6 +173,10 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
           },
         },
         loadingList: false,
+        dialogWaitOperatorState: {
+          ...state.dialogWaitOperatorState,
+          ...Object.fromEntries(response.items.map((dialog) => [dialog.id, contributesToWaitingOperatorCount(dialog)])),
+        },
       }));
 
       return response;
@@ -127,6 +203,10 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
             : [mapDetailToShort(dialog)],
         },
         loadingDialog: false,
+        dialogWaitOperatorState: {
+          ...state.dialogWaitOperatorState,
+          [dialog.id]: contributesToWaitingOperatorCount(dialog),
+        },
       }));
       return dialog;
     } catch (error) {
@@ -141,6 +221,10 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
 
     try {
       const message = await sendOperatorMessage(botId, dialogId, payload);
+      const existing = get().dialogDetails[dialogId] ?? get().dialogsByBot[botId]?.find((item) => item.id === dialogId);
+      if (existing) {
+        get().reconcileWaitingOperatorCountForDialog({ ...existing, status: DialogStatus.WAIT_USER });
+      }
 
       set((state) => {
         const existingDetail = state.dialogDetails[dialogId];
@@ -150,9 +234,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
               messages: mergeMessages(existingDetail.messages, [message]),
               last_message_at: message.created_at,
               status:
-                existingDetail.status === DialogStatus.WAIT_USER
-                  ? DialogStatus.WAIT_OPERATOR
-                  : existingDetail.status,
+                DialogStatus.WAIT_USER,
             }
           : undefined;
 
@@ -167,9 +249,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
                       last_message: message,
                       last_message_at: message.created_at,
                       status:
-                        item.status === DialogStatus.WAIT_USER
-                          ? DialogStatus.WAIT_OPERATOR
-                          : item.status,
+                        DialogStatus.WAIT_USER,
                     }
                   : item,
               )
@@ -199,6 +279,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
 
     try {
       const dialog = await lockDialogApi(botId, dialogId);
+      get().reconcileWaitingOperatorCountForDialog(dialog);
       set((state) => ({
         dialogDetails: { ...state.dialogDetails, [dialog.id]: dialog },
         dialogsByBot: {
@@ -223,6 +304,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
 
     try {
       const dialog = await unlockDialogApi(botId, dialogId);
+      get().reconcileWaitingOperatorCountForDialog(dialog);
       set((state) => ({
         dialogDetails: { ...state.dialogDetails, [dialog.id]: dialog },
         dialogsByBot: {
@@ -247,6 +329,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
 
     try {
       const dialog = await closeDialogApi(botId, dialogId);
+      get().reconcileWaitingOperatorCountForDialog(dialog);
       set((state) => ({
         dialogDetails: { ...state.dialogDetails, [dialog.id]: dialog },
         dialogsByBot: {
@@ -267,6 +350,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
     }
   },
   applyDialogCreated: (dialog) => {
+    get().reconcileWaitingOperatorCountForDialog(dialog);
     const short = isDialogDetail(dialog) ? mapDetailToShort(dialog) : dialog;
     const detail = isDialogDetail(dialog) ? dialog : undefined;
 
@@ -280,10 +364,13 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
         dialogDetails: detail
           ? { ...state.dialogDetails, [dialog.id]: detail }
           : state.dialogDetails,
+        dialogUpdateRevision: state.dialogUpdateRevision + 1,
+        latestDialogUpdate: dialog,
       };
     });
   },
   applyDialogUpdated: (dialog) => {
+    get().reconcileWaitingOperatorCountForDialog(dialog);
     const short = isDialogDetail(dialog) ? mapDetailToShort(dialog) : dialog;
     const detail = isDialogDetail(dialog) ? dialog : undefined;
 
@@ -308,6 +395,8 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
         dialogDetails: mergedDetail
           ? { ...state.dialogDetails, [dialog.id]: mergedDetail }
           : state.dialogDetails,
+        dialogUpdateRevision: state.dialogUpdateRevision + 1,
+        latestDialogUpdate: dialog,
       };
     });
   },

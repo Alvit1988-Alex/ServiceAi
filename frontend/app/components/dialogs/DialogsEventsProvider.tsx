@@ -4,6 +4,7 @@ import {
   PropsWithChildren,
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -45,6 +46,33 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     clientRef.current = new AdminWebSocketClient();
   }
   const client = clientRef.current;
+  const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconciliationInFlightRef = useRef(false);
+
+  const scheduleCountReconciliation = useCallback(() => {
+    if (reconciliationTimerRef.current) {
+      clearTimeout(reconciliationTimerRef.current);
+    }
+
+    reconciliationTimerRef.current = setTimeout(() => {
+      reconciliationTimerRef.current = null;
+      if (reconciliationInFlightRef.current) {
+        scheduleCountReconciliation();
+        return;
+      }
+
+      reconciliationInFlightRef.current = true;
+      void useDialogsStore
+        .getState()
+        .fetchWaitingOperatorCount()
+        .catch((error) => {
+          console.error("Failed to reconcile waiting operator dialogs count", error);
+        })
+        .finally(() => {
+          reconciliationInFlightRef.current = false;
+        });
+    }, 200);
+  }, []);
 
   // Подписка на события WS
   // Здесь НЕ используем useDialogsStore() – чтобы провайдер не подписывался на store.
@@ -58,28 +86,36 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
         applyMessageCreated,
       } = useDialogsStore.getState();
 
+      const applyDialogEvent = (dialog: DialogDetail | DialogShort, apply: (value: DialogDetail | DialogShort) => void) => {
+        const needsReconciliation = useDialogsStore.getState().reconcileWaitingOperatorCountForDialog(dialog);
+        apply(dialog);
+        if (needsReconciliation) {
+          scheduleCountReconciliation();
+        }
+      };
+
       switch (event.event) {
         case "dialog_created": {
           if (isDialogPayload(event.data)) {
-            applyDialogCreated(event.data);
+            applyDialogEvent(event.data, applyDialogCreated);
           }
           break;
         }
         case "dialog_updated": {
           if (isDialogPayload(event.data)) {
-            applyDialogUpdated(event.data);
+            applyDialogEvent(event.data, applyDialogUpdated);
           }
           break;
         }
         case "dialog_locked": {
           if (isDialogPayload(event.data)) {
-            applyDialogLocked(event.data);
+            applyDialogEvent(event.data, applyDialogLocked);
           }
           break;
         }
         case "dialog_unlocked": {
           if (isDialogPayload(event.data)) {
-            applyDialogUnlocked(event.data);
+            applyDialogEvent(event.data, applyDialogUnlocked);
           }
           break;
         }
@@ -94,17 +130,31 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
       }
     });
 
-    return unsubscribe;
-  }, [client]);
+    return () => {
+      unsubscribe();
+      if (reconciliationTimerRef.current) {
+        clearTimeout(reconciliationTimerRef.current);
+        reconciliationTimerRef.current = null;
+      }
+    };
+  }, [client, scheduleCountReconciliation]);
 
   // Подключение / отключение WebSocket при изменении auth-состояния
   useEffect(() => {
     if (isAuthenticated && accessToken) {
+      void useDialogsStore.getState().fetchWaitingOperatorCount().catch((error) => {
+        console.error("Failed to fetch waiting operator dialogs count", error);
+      });
       client.connect(accessToken);
       return () => client.disconnect();
     }
 
     client.disconnect();
+    useDialogsStore.getState().resetWaitingOperatorCount();
+    if (reconciliationTimerRef.current) {
+      clearTimeout(reconciliationTimerRef.current);
+      reconciliationTimerRef.current = null;
+    }
     return () => client.disconnect();
   }, [accessToken, client, isAuthenticated]);
 

@@ -82,6 +82,11 @@
     box-shadow: none;
   }
 
+  .tabLabelWrap {
+    min-height: 28px;
+    margin-bottom: 8px;
+  }
+
   .tabLabel {
     display: -webkit-box;
     max-width: 100%;
@@ -90,7 +95,6 @@
     font-weight: 600;
     line-height: 1.1;
     text-align: center;
-    margin-bottom: 8px;
     white-space: normal;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -125,5 +129,61 @@
   .tabActive .tabLabel {
     color: var(--color-primary, #38bdf8);
     font-weight: 700;
+  }
+}
+
+
+.tabLabelWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.notificationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #0ea5e9;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+:global(html[data-theme="dark"]) .tab {
+  background: var(--color-surface, #1f2937);
+  border-color: var(--color-border, rgba(255, 255, 255, 0.16));
+  color: var(--color-text, #f3f4f6);
+}
+
+:global(html[data-theme="dark"]) .tab:hover,
+:global(html[data-theme="dark"]) .tabActive {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+:global(html[data-theme="dark"]) .notificationBadge {
+  background: #38bdf8;
+  color: #082f49;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.85);
+}
+
+@media (max-width: 720px) {
+  .tabLabelWrap {
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  .notificationBadge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 10px;
   }
 }

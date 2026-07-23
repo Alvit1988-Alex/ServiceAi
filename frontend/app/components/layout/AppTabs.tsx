@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useDialogsStore } from "@/store/dialogs.store";
+
 import styles from "./AppTabs.module.css";
 
 type TabIconName = "dashboard" | "channels" | "training" | "dialogs" | "integrations" | "settings";
@@ -77,6 +79,7 @@ const renderIcon = (name: TabIconName) => {
 
 export default function AppTabs() {
   const pathname = usePathname();
+  const waitingOperatorCount = useDialogsStore((state) => state.waitingOperatorCount);
 
   return (
     <nav className={styles.tabs} aria-label="Основная навигация">
@@ -89,7 +92,17 @@ export default function AppTabs() {
             className={`${styles.tab} ${active ? styles.tabActive : ""}`}
             aria-current={active ? "page" : undefined}
           >
-            <span className={styles.tabLabel}>{tab.label}</span>
+            <span className={styles.tabLabelWrap}>
+              <span className={styles.tabLabel}>{tab.label}</span>
+              {tab.icon === "dialogs" && waitingOperatorCount > 0 && (
+                <span
+                  className={styles.notificationBadge}
+                  aria-label={`Ожидают оператора: ${waitingOperatorCount}`}
+                >
+                  {waitingOperatorCount > 99 ? "99+" : waitingOperatorCount}
+                </span>
+              )}
+            </span>
             <span className={styles.tabIcon} aria-hidden="true">
               {renderIcon(tab.icon)}
             </span>
