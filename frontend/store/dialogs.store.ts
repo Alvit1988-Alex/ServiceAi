@@ -51,10 +51,10 @@ interface DialogsState {
   lockDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
   unlockDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
   closeDialog: (botId: number, dialogId: number) => Promise<DialogDetail | null>;
-  applyDialogCreated: (dialog: DialogDetail | DialogShort) => void;
-  applyDialogUpdated: (dialog: DialogDetail | DialogShort) => void;
-  applyDialogLocked: (dialog: DialogDetail | DialogShort) => void;
-  applyDialogUnlocked: (dialog: DialogDetail | DialogShort) => void;
+  applyDialogCreated: (dialog: DialogDetail | DialogShort) => boolean;
+  applyDialogUpdated: (dialog: DialogDetail | DialogShort) => boolean;
+  applyDialogLocked: (dialog: DialogDetail | DialogShort) => boolean;
+  applyDialogUnlocked: (dialog: DialogDetail | DialogShort) => boolean;
   applyMessageCreated: (message: DialogMessage) => void;
 }
 
@@ -84,7 +84,11 @@ function isDialogDetail(dialog: DialogDetail | DialogShort): dialog is DialogDet
 }
 
 function contributesToWaitingOperatorCount(dialog: DialogDetail | DialogShort): boolean {
-  return dialog.status === DialogStatus.WAIT_OPERATOR && !dialog.closed;
+  return (
+    dialog.status === DialogStatus.WAIT_OPERATOR &&
+    !dialog.closed &&
+    dialog.assigned_admin_id == null
+  );
 }
 
 function findKnownWaitingState(
@@ -350,7 +354,7 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
     }
   },
   applyDialogCreated: (dialog) => {
-    get().reconcileWaitingOperatorCountForDialog(dialog);
+    const needsReconciliation = get().reconcileWaitingOperatorCountForDialog(dialog);
     const short = isDialogDetail(dialog) ? mapDetailToShort(dialog) : dialog;
     const detail = isDialogDetail(dialog) ? dialog : undefined;
 
@@ -368,9 +372,11 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
         latestDialogUpdate: dialog,
       };
     });
+
+    return needsReconciliation;
   },
   applyDialogUpdated: (dialog) => {
-    get().reconcileWaitingOperatorCountForDialog(dialog);
+    const needsReconciliation = get().reconcileWaitingOperatorCountForDialog(dialog);
     const short = isDialogDetail(dialog) ? mapDetailToShort(dialog) : dialog;
     const detail = isDialogDetail(dialog) ? dialog : undefined;
 
@@ -399,6 +405,8 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
         latestDialogUpdate: dialog,
       };
     });
+
+    return needsReconciliation;
   },
   applyDialogLocked: (dialog) => get().applyDialogUpdated(dialog),
   applyDialogUnlocked: (dialog) => get().applyDialogUpdated(dialog),

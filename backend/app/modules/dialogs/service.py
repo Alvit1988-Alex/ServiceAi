@@ -64,6 +64,7 @@ class DialogsService:
         conditions: list[Any] = [
             Dialog.status == DialogStatus.WAIT_OPERATOR,
             Dialog.closed.is_(False),
+            Dialog.assigned_admin_id.is_(None),
         ]
 
         stmt = select(func.count(func.distinct(Dialog.id))).select_from(Dialog).join(Bot, Bot.id == Dialog.bot_id)

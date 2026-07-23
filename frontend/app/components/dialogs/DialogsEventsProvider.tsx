@@ -86,9 +86,11 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
         applyMessageCreated,
       } = useDialogsStore.getState();
 
-      const applyDialogEvent = (dialog: DialogDetail | DialogShort, apply: (value: DialogDetail | DialogShort) => void) => {
-        const needsReconciliation = useDialogsStore.getState().reconcileWaitingOperatorCountForDialog(dialog);
-        apply(dialog);
+      const applyDialogEvent = (
+        dialog: DialogDetail | DialogShort,
+        apply: (value: DialogDetail | DialogShort) => boolean,
+      ) => {
+        const needsReconciliation = apply(dialog);
         if (needsReconciliation) {
           scheduleCountReconciliation();
         }

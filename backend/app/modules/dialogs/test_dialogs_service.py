@@ -533,6 +533,7 @@ def test_count_waiting_operator_dialogs_filters_status_closed_and_access(db_sess
                 Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="b", external_user_id="b", status=DialogStatus.AUTO, closed=False),
                 Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="c", external_user_id="c", status=DialogStatus.WAIT_USER, closed=False),
                 Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="d", external_user_id="d", status=DialogStatus.WAIT_OPERATOR, closed=True),
+                Dialog(bot_id=owned_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="assigned", external_user_id="assigned", status=DialogStatus.WAIT_OPERATOR, closed=False, assigned_admin_id=operator.id),
                 Dialog(bot_id=delegated_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="e", external_user_id="e", status=DialogStatus.WAIT_OPERATOR, closed=False),
                 Dialog(bot_id=foreign_bot.id, channel_type=ChannelType.WEBCHAT, external_chat_id="f", external_user_id="f", status=DialogStatus.WAIT_OPERATOR, closed=False),
             ])
@@ -551,6 +552,48 @@ def test_count_waiting_operator_dialogs_filters_status_closed_and_access(db_sess
     assert owner_count == 1
     assert operator_count == 1
     assert admin_count == 3
+
+
+def test_count_waiting_operator_dialogs_excludes_assigned_dialogs(db_sessionmaker):
+    service = DialogsService()
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            owner = User(email="assigned-owner@example.com", password_hash="x", role=UserRole.owner)
+            operator = User(email="assigned-operator@example.com", password_hash="x", role=UserRole.operator)
+            account = Account(name="Assigned Account", public_id="44444444", owner=owner)
+            bot = Bot(name="Assigned Bot", description=None, account=account)
+            session.add_all([owner, operator, account, bot])
+            await session.commit()
+            await session.refresh(owner)
+            await session.refresh(operator)
+            await session.refresh(bot)
+
+            session.add_all([
+                Dialog(
+                    bot_id=bot.id,
+                    channel_type=ChannelType.WEBCHAT,
+                    external_chat_id="unassigned",
+                    external_user_id="unassigned",
+                    status=DialogStatus.WAIT_OPERATOR,
+                    closed=False,
+                    assigned_admin_id=None,
+                ),
+                Dialog(
+                    bot_id=bot.id,
+                    channel_type=ChannelType.WEBCHAT,
+                    external_chat_id="assigned",
+                    external_user_id="assigned",
+                    status=DialogStatus.WAIT_OPERATOR,
+                    closed=False,
+                    assigned_admin_id=operator.id,
+                ),
+            ])
+            await session.commit()
+
+            return await service.count_waiting_operator_dialogs(session=session, current_user=owner)
+
+    assert run(_case()) == 1
 
 
 def test_count_waiting_operator_dialogs_returns_zero(db_sessionmaker):
