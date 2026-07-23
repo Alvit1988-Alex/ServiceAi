@@ -106,16 +106,33 @@ export function SearchResults({
             )}
 
             {!loading && !error &&
-              items.map((dialog) => (
-                <tr key={dialog.id} className={styles.row} onClick={() => onRowClick(dialog)}>
+              items.map((dialog) => {
+                const isWaitingOperator = dialog.status === DialogStatus.WAIT_OPERATOR;
+
+                return (
+                <tr
+                  key={dialog.id}
+                  className={`${styles.row} ${isWaitingOperator ? styles.rowWaitingOperator : ""}`}
+                  onClick={() => onRowClick(dialog)}
+                >
                   <td>#{dialog.id}</td>
                   <td>{getChannelLabel(dialog.channel_type)}</td>
-                  <td>{STATUS_LABELS[dialog.status]}</td>
+                  <td>
+                    {isWaitingOperator ? (
+                      <span className={styles.statusWithIndicator}>
+                        <span className={styles.waitingIndicator} aria-hidden="true" />
+                        <span>{STATUS_LABELS[dialog.status]}</span>
+                      </span>
+                    ) : (
+                      STATUS_LABELS[dialog.status]
+                    )}
+                  </td>
                   <td>{dialog.external_chat_id}</td>
                   <td>{dialog.assigned_admin_id ?? "—"}</td>
                   <td>{formatDate(dialog.last_message_at)}</td>
                 </tr>
-              ))}
+                );
+              })}
           </tbody>
         </table>
       </div>

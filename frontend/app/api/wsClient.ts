@@ -15,16 +15,24 @@ export interface DialogWsEvent {
 }
 
 type Listener = (event: DialogWsEvent) => void;
+type ConnectionListener = () => void;
 
 export class AdminWebSocketClient {
   private socket: WebSocket | null = null;
   private listeners = new Set<Listener>();
+  private connectionListeners = new Set<ConnectionListener>();
   private reconnectTimer: number | null = null;
   private token: string | null = null;
+  private shouldReconnect = false;
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  subscribeConnected(listener: ConnectionListener): () => void {
+    this.connectionListeners.add(listener);
+    return () => this.connectionListeners.delete(listener);
   }
 
   connect(token: string) {
@@ -33,13 +41,29 @@ export class AdminWebSocketClient {
       return;
     }
 
-    this.token = token;
     this.disconnect();
+    this.token = token;
+    this.shouldReconnect = true;
 
     const url = buildWsUrl(`/ws/admin?token=${token}`);
-    this.socket = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.socket = socket;
 
-    this.socket.onmessage = (event: MessageEvent) => {
+    socket.onopen = () => {
+      if (this.socket !== socket || this.token !== token) {
+        return;
+      }
+
+      this.connectionListeners.forEach((listener) => {
+        try {
+          listener();
+        } catch (error) {
+          console.error("Admin websocket connection listener failed", error);
+        }
+      });
+    };
+
+    socket.onmessage = (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data) as DialogWsEvent;
         this.listeners.forEach((listener) => listener(payload));
@@ -48,17 +72,26 @@ export class AdminWebSocketClient {
       }
     };
 
-    this.socket.onclose = () => {
-      if (this.token) {
+    socket.onclose = () => {
+      if (this.socket !== socket) {
+        return;
+      }
+
+      this.socket = null;
+
+      if (this.shouldReconnect && this.token === token) {
         this.scheduleReconnect();
       }
     };
-    this.socket.onerror = () => {
-      this.disconnect();
+    socket.onerror = () => {
+      socket.close();
     };
   }
 
   disconnect() {
+    this.shouldReconnect = false;
+    this.token = null;
+
     if (this.reconnectTimer) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

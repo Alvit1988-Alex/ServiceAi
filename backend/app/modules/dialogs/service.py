@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.ai.service import AIService
-from app.modules.bots.models import Bot
+from app.modules.accounts.models import Account, User, UserRole, account_operators
+from app.modules.bots.models import Bot, BotAdmin
 from app.modules.channels.models import ChannelType
 from app.modules.channels.schemas import NormalizedIncomingMessage
 from app.modules.channels.sender_registry import get_sender
@@ -58,6 +59,35 @@ class DialogLockError(Exception):
 class DialogsService:
     model = Dialog
 
+
+    async def count_waiting_operator_dialogs(self, session: AsyncSession, current_user: User) -> int:
+        conditions: list[Any] = [
+            Dialog.status == DialogStatus.WAIT_OPERATOR,
+            Dialog.closed.is_(False),
+            Dialog.assigned_admin_id.is_(None),
+        ]
+
+        stmt = select(func.count(func.distinct(Dialog.id))).select_from(Dialog).join(Bot, Bot.id == Dialog.bot_id)
+
+        if current_user.role != UserRole.admin:
+            stmt = stmt.join(Account, Account.id == Bot.account_id).outerjoin(
+                BotAdmin,
+                (BotAdmin.bot_id == Bot.id) & (BotAdmin.user_id == current_user.id),
+            ).outerjoin(
+                account_operators,
+                (account_operators.c.account_id == Bot.account_id)
+                & (account_operators.c.user_id == current_user.id),
+            )
+            conditions.append(
+                or_(
+                    Account.owner_id == current_user.id,
+                    BotAdmin.user_id == current_user.id,
+                    account_operators.c.user_id == current_user.id,
+                )
+            )
+
+        result = await session.execute(stmt.where(*conditions))
+        return int(result.scalar_one() or 0)
 
     async def _get_bot(self, session: AsyncSession, bot_id: int) -> Bot:
         bot = await session.scalar(select(Bot).where(Bot.id == bot_id))

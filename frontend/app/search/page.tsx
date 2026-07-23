@@ -8,6 +8,7 @@ import { ChannelType, DialogShort, DialogStatus } from "@/app/api/types";
 import { AuthGuard } from "@/app/components/auth/AuthGuard";
 import LayoutShell from "@/app/components/layout/LayoutShell";
 import { useBotsStore } from "@/store/bots.store";
+import { useDialogsStore } from "@/store/dialogs.store";
 
 import { SearchFilters } from "./components/SearchFilters/SearchFilters";
 import { SearchResults } from "./components/SearchResults/SearchResults";
@@ -25,6 +26,8 @@ interface FiltersState {
 export default function SearchPage() {
   const router = useRouter();
   const { bots, selectedBotId, loadingBots, fetchBots, selectBot } = useBotsStore();
+  const dialogUpdateRevision = useDialogsStore((state) => state.dialogUpdateRevision);
+  const latestDialogUpdate = useDialogsStore((state) => state.latestDialogUpdate);
 
   const [filters, setFilters] = useState<FiltersState>({
     query: "",
@@ -122,6 +125,41 @@ export default function SearchPage() {
   useEffect(() => {
     void handleSearch();
   }, [handleSearch]);
+
+
+  useEffect(() => {
+    if (!latestDialogUpdate || !currentBotId || latestDialogUpdate.bot_id !== currentBotId) {
+      return;
+    }
+
+    let visibleDialogChanged = false;
+    setResults((prev) => {
+      const hasDialog = prev.items.some((item) => item.id === latestDialogUpdate.id);
+      if (!hasDialog) {
+        return prev;
+      }
+
+      visibleDialogChanged = true;
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id === latestDialogUpdate.id ? { ...item, ...latestDialogUpdate } : item,
+        ),
+      };
+    });
+
+    const statusFilterChanged = Boolean(filters.status) && latestDialogUpdate.status !== filters.status;
+    if (!visibleDialogChanged && !filters.status) {
+      return;
+    }
+
+    if (statusFilterChanged) {
+      const timeout = setTimeout(() => {
+        void handleSearch();
+      }, 250);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentBotId, dialogUpdateRevision, filters.status, handleSearch, latestDialogUpdate]);
 
   const handleRowClick = (dialog: DialogShort) => {
     router.push(`/bots/${dialog.bot_id}/dialogs/${dialog.id}`);

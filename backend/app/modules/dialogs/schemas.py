@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.channels.models import ChannelType
 from app.modules.dialogs.models import DialogStatus, MessageSender
@@ -20,6 +20,10 @@ class ListResponse(BaseModel, Generic[T]):
     has_next: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DialogWaitingOperatorCountOut(BaseModel):
+    count: int = Field(ge=0)
 
 
 class DialogBase(BaseModel):

@@ -5,6 +5,7 @@ import {
   DialogMessage,
   DialogShort,
   DialogStatus,
+  DialogWaitingOperatorCount,
   ListResponse,
 } from "./types";
 
@@ -59,6 +60,17 @@ function buildQueryString(params: Record<string, unknown>): string {
 
   const queryString = searchParams.toString();
   return queryString ? `?${queryString}` : "";
+}
+
+
+export async function getWaitingOperatorDialogsCount(): Promise<DialogWaitingOperatorCount> {
+  const response = await httpClient("/dialogs/waiting-operator-count");
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response, "Не удалось загрузить счётчик диалогов"));
+  }
+
+  return (await response.json()) as DialogWaitingOperatorCount;
 }
 
 export async function listDialogs(

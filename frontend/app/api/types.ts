@@ -135,6 +135,10 @@ export interface DialogStatusBreakdown {
   wait_user: number;
 }
 
+export interface DialogWaitingOperatorCount {
+  count: number;
+}
+
 export interface DialogCounts {
   total: number;
   active: number;

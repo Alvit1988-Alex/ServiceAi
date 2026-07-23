@@ -4,8 +4,8 @@ import {
   PropsWithChildren,
   createContext,
   useContext,
+  useCallback,
   useEffect,
-  useMemo,
   useRef,
 } from "react";
 
@@ -15,6 +15,12 @@ import { useAuthStore } from "@/store/auth.store";
 import { useDialogsStore } from "@/store/dialogs.store";
 
 const DialogsWsContext = createContext<AdminWebSocketClient | null>(null);
+
+interface CountReconciliationRunState {
+  generation: number;
+  inFlight: boolean;
+  pending: boolean;
+}
 
 function isDialogPayload(
   payload: unknown,
@@ -45,6 +51,128 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     clientRef.current = new AdminWebSocketClient();
   }
   const client = clientRef.current;
+  const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const authStateRef = useRef({ isAuthenticated, accessToken });
+  const authGenerationRef = useRef(0);
+  const authKeyRef = useRef<string | null>(null);
+  const countRunStateRef = useRef<CountReconciliationRunState>({
+    generation: 0,
+    inFlight: false,
+    pending: false,
+  });
+  const authKey = isAuthenticated && accessToken ? accessToken : null;
+
+  useEffect(() => {
+    authStateRef.current = { isAuthenticated, accessToken };
+
+    if (authKeyRef.current !== authKey) {
+      authKeyRef.current = authKey;
+      authGenerationRef.current += 1;
+      countRunStateRef.current = {
+        generation: authGenerationRef.current,
+        inFlight: false,
+        pending: false,
+      };
+
+      if (reconciliationTimerRef.current) {
+        clearTimeout(reconciliationTimerRef.current);
+        reconciliationTimerRef.current = null;
+      }
+    }
+  }, [accessToken, authKey, isAuthenticated]);
+
+  const reconcileCountFromServer = useCallback(async () => {
+    const initialAuth = authStateRef.current;
+    const initialGeneration = authGenerationRef.current;
+    if (!initialAuth.isAuthenticated || !initialAuth.accessToken) {
+      return;
+    }
+
+    if (countRunStateRef.current.generation !== initialGeneration) {
+      countRunStateRef.current = {
+        generation: initialGeneration,
+        inFlight: false,
+        pending: false,
+      };
+    }
+
+    if (countRunStateRef.current.inFlight) {
+      countRunStateRef.current = { ...countRunStateRef.current, pending: true };
+      return;
+    }
+
+    countRunStateRef.current = {
+      generation: initialGeneration,
+      inFlight: true,
+      pending: false,
+    };
+
+    try {
+      while (true) {
+        const currentAuth = authStateRef.current;
+        const requestGeneration = authGenerationRef.current;
+        const requestToken = currentAuth.accessToken;
+
+        if (
+          requestGeneration !== initialGeneration ||
+          !currentAuth.isAuthenticated ||
+          !requestToken ||
+          countRunStateRef.current.generation !== initialGeneration
+        ) {
+          return;
+        }
+
+        countRunStateRef.current = { ...countRunStateRef.current, pending: false };
+        const revisionBefore = useDialogsStore.getState().dialogUpdateRevision;
+        const isCurrentRequest = () => {
+          const latestAuth = authStateRef.current;
+          return (
+            latestAuth.isAuthenticated &&
+            latestAuth.accessToken === requestToken &&
+            authGenerationRef.current === requestGeneration &&
+            countRunStateRef.current.generation === requestGeneration
+          );
+        };
+
+        const applied = await useDialogsStore.getState().fetchWaitingOperatorCount(isCurrentRequest);
+
+        if (!applied || !isCurrentRequest()) {
+          return;
+        }
+
+        const revisionAfter = useDialogsStore.getState().dialogUpdateRevision;
+        if (revisionAfter !== revisionBefore && countRunStateRef.current.generation === requestGeneration) {
+          countRunStateRef.current = { ...countRunStateRef.current, pending: true };
+        }
+
+        if (!countRunStateRef.current.pending) {
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reconcile waiting operator dialogs count", error);
+    } finally {
+      if (countRunStateRef.current.generation === initialGeneration) {
+        countRunStateRef.current = { ...countRunStateRef.current, inFlight: false };
+      }
+    }
+  }, []);
+
+  const scheduleCountReconciliation = useCallback(() => {
+    if (reconciliationTimerRef.current) {
+      clearTimeout(reconciliationTimerRef.current);
+    }
+
+    const scheduledGeneration = authGenerationRef.current;
+    reconciliationTimerRef.current = setTimeout(() => {
+      reconciliationTimerRef.current = null;
+      if (authGenerationRef.current !== scheduledGeneration) {
+        return;
+      }
+
+      void reconcileCountFromServer();
+    }, 200);
+  }, [reconcileCountFromServer]);
 
   // Подписка на события WS
   // Здесь НЕ используем useDialogsStore() – чтобы провайдер не подписывался на store.
@@ -58,28 +186,38 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
         applyMessageCreated,
       } = useDialogsStore.getState();
 
+      const applyDialogEvent = (
+        dialog: DialogDetail | DialogShort,
+        apply: (value: DialogDetail | DialogShort) => boolean,
+      ) => {
+        const needsReconciliation = apply(dialog);
+        if (needsReconciliation) {
+          scheduleCountReconciliation();
+        }
+      };
+
       switch (event.event) {
         case "dialog_created": {
           if (isDialogPayload(event.data)) {
-            applyDialogCreated(event.data);
+            applyDialogEvent(event.data, applyDialogCreated);
           }
           break;
         }
         case "dialog_updated": {
           if (isDialogPayload(event.data)) {
-            applyDialogUpdated(event.data);
+            applyDialogEvent(event.data, applyDialogUpdated);
           }
           break;
         }
         case "dialog_locked": {
           if (isDialogPayload(event.data)) {
-            applyDialogLocked(event.data);
+            applyDialogEvent(event.data, applyDialogLocked);
           }
           break;
         }
         case "dialog_unlocked": {
           if (isDialogPayload(event.data)) {
-            applyDialogUnlocked(event.data);
+            applyDialogEvent(event.data, applyDialogUnlocked);
           }
           break;
         }
@@ -94,8 +232,20 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
       }
     });
 
-    return unsubscribe;
-  }, [client]);
+    return () => {
+      unsubscribe();
+      if (reconciliationTimerRef.current) {
+        clearTimeout(reconciliationTimerRef.current);
+        reconciliationTimerRef.current = null;
+      }
+    };
+  }, [client, scheduleCountReconciliation]);
+
+  useEffect(() => {
+    return client.subscribeConnected(() => {
+      void reconcileCountFromServer();
+    });
+  }, [client, reconcileCountFromServer]);
 
   // Подключение / отключение WebSocket при изменении auth-состояния
   useEffect(() => {
@@ -105,6 +255,16 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     }
 
     client.disconnect();
+    useDialogsStore.getState().resetWaitingOperatorCount();
+    countRunStateRef.current = {
+      generation: authGenerationRef.current,
+      inFlight: false,
+      pending: false,
+    };
+    if (reconciliationTimerRef.current) {
+      clearTimeout(reconciliationTimerRef.current);
+      reconciliationTimerRef.current = null;
+    }
     return () => client.disconnect();
   }, [accessToken, client, isAuthenticated]);
 
