@@ -34,7 +34,7 @@ interface DialogsState {
   dialogWaitOperatorState: Record<number, boolean>;
   dialogUpdateRevision: number;
   latestDialogUpdate: DialogDetail | DialogShort | null;
-  fetchWaitingOperatorCount: () => Promise<void>;
+  fetchWaitingOperatorCount: (shouldApply?: () => boolean) => Promise<void>;
   resetWaitingOperatorCount: () => void;
   reconcileWaitingOperatorCountForDialog: (dialog: DialogDetail | DialogShort) => boolean;
   fetchDialogs: (
@@ -127,10 +127,18 @@ export const useDialogsStore = create<DialogsState>((set, get) => ({
   dialogWaitOperatorState: {},
   dialogUpdateRevision: 0,
   latestDialogUpdate: null,
-  fetchWaitingOperatorCount: async () => {
+  fetchWaitingOperatorCount: async (shouldApply) => {
     try {
       const response = await getWaitingOperatorDialogsCount();
-      set({ waitingOperatorCount: response.count, waitingOperatorCountLoaded: true });
+      if (shouldApply && !shouldApply()) {
+        return;
+      }
+
+      set({
+        waitingOperatorCount: response.count,
+        waitingOperatorCountLoaded: true,
+        dialogWaitOperatorState: {},
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось загрузить счётчик диалогов";
       set({ error: message });

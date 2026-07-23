@@ -47,7 +47,46 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
   }
   const client = clientRef.current;
   const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconciliationInFlightRef = useRef(false);
+  const countFetchInFlightRef = useRef(false);
+  const countReconciliationPendingRef = useRef(false);
+  const authStateRef = useRef({ isAuthenticated, accessToken });
+
+  useEffect(() => {
+    authStateRef.current = { isAuthenticated, accessToken };
+  }, [accessToken, isAuthenticated]);
+
+  const reconcileCountFromServer = useCallback(async () => {
+    const authState = authStateRef.current;
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      return;
+    }
+
+    if (countFetchInFlightRef.current) {
+      countReconciliationPendingRef.current = true;
+      return;
+    }
+
+    countFetchInFlightRef.current = true;
+    try {
+      do {
+        countReconciliationPendingRef.current = false;
+        const revisionBefore = useDialogsStore.getState().dialogUpdateRevision;
+        await useDialogsStore.getState().fetchWaitingOperatorCount(() => {
+          const currentAuth = authStateRef.current;
+          return currentAuth.isAuthenticated && currentAuth.accessToken === authState.accessToken;
+        });
+        const revisionAfter = useDialogsStore.getState().dialogUpdateRevision;
+
+        if (revisionAfter !== revisionBefore) {
+          countReconciliationPendingRef.current = true;
+        }
+      } while (countReconciliationPendingRef.current && authStateRef.current.isAuthenticated);
+    } catch (error) {
+      console.error("Failed to reconcile waiting operator dialogs count", error);
+    } finally {
+      countFetchInFlightRef.current = false;
+    }
+  }, []);
 
   const scheduleCountReconciliation = useCallback(() => {
     if (reconciliationTimerRef.current) {
@@ -56,23 +95,9 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
 
     reconciliationTimerRef.current = setTimeout(() => {
       reconciliationTimerRef.current = null;
-      if (reconciliationInFlightRef.current) {
-        scheduleCountReconciliation();
-        return;
-      }
-
-      reconciliationInFlightRef.current = true;
-      void useDialogsStore
-        .getState()
-        .fetchWaitingOperatorCount()
-        .catch((error) => {
-          console.error("Failed to reconcile waiting operator dialogs count", error);
-        })
-        .finally(() => {
-          reconciliationInFlightRef.current = false;
-        });
+      void reconcileCountFromServer();
     }, 200);
-  }, []);
+  }, [reconcileCountFromServer]);
 
   // Подписка на события WS
   // Здесь НЕ используем useDialogsStore() – чтобы провайдер не подписывался на store.
@@ -141,18 +166,23 @@ export function DialogsEventsProvider({ children }: PropsWithChildren) {
     };
   }, [client, scheduleCountReconciliation]);
 
+  useEffect(() => {
+    return client.subscribeConnected(() => {
+      void reconcileCountFromServer();
+    });
+  }, [client, reconcileCountFromServer]);
+
   // Подключение / отключение WebSocket при изменении auth-состояния
   useEffect(() => {
     if (isAuthenticated && accessToken) {
-      void useDialogsStore.getState().fetchWaitingOperatorCount().catch((error) => {
-        console.error("Failed to fetch waiting operator dialogs count", error);
-      });
       client.connect(accessToken);
       return () => client.disconnect();
     }
 
     client.disconnect();
     useDialogsStore.getState().resetWaitingOperatorCount();
+    countFetchInFlightRef.current = false;
+    countReconciliationPendingRef.current = false;
     if (reconciliationTimerRef.current) {
       clearTimeout(reconciliationTimerRef.current);
       reconciliationTimerRef.current = null;
