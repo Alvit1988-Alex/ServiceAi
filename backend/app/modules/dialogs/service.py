@@ -21,11 +21,8 @@ from app.modules.dialogs.models import Dialog, DialogMessage, DialogStatus, Mess
 from app.modules.dialogs.schemas import (
     DialogCreate,
     DialogMessageCreate,
-    DialogMessageOut,
-    DialogOut,
     DialogUpdate,
 )
-from app.modules.dialogs.websocket_manager import WebSocketManager
 from app.modules.integrations.bitrix24.service import Bitrix24Service
 from app.utils.validators import validate_pagination
 
@@ -211,6 +208,10 @@ class DialogsService:
         external_chat_id: str,
         external_user_id: str | None = None,
     ) -> tuple[Dialog, bool]:
+        locked_bot = await session.scalar(select(Bot).where(Bot.id == bot_id).with_for_update())
+        if locked_bot is None:
+            raise ValueError("Bot not found")
+
         stmt = (
             select(Dialog)
             .where(
@@ -424,16 +425,29 @@ class DialogsService:
         session: AsyncSession,
         dialog: Dialog,
         admin_id: int,
-        ai_service: AIService,
-        ws_manager: WebSocketManager,
     ) -> Dialog:
-        if dialog.closed:
-            raise ValueError("Dialog is closed")
-
         if dialog.assigned_admin_id not in (None, admin_id):
             raise DialogLockError("Dialog is locked by another operator")
 
+        if dialog.closed:
+            locked_bot = await session.scalar(select(Bot).where(Bot.id == dialog.bot_id).with_for_update())
+            if locked_bot is None:
+                raise ValueError("Bot not found")
+
+            existing_open_dialog = await session.scalar(
+                select(Dialog).where(
+                    Dialog.id != dialog.id,
+                    Dialog.bot_id == dialog.bot_id,
+                    Dialog.channel_type == dialog.channel_type,
+                    Dialog.external_chat_id == dialog.external_chat_id,
+                    Dialog.closed.is_(False),
+                )
+            )
+            if existing_open_dialog is not None:
+                raise DialogLockError("Для этого чата уже существует активный диалог")
+
         dialog.status = DialogStatus.AUTO
+        dialog.closed = False
         dialog.is_locked = False
         dialog.locked_until = None
         dialog.assigned_admin_id = None
@@ -442,96 +456,6 @@ class DialogsService:
         session.add(dialog)
         await session.commit()
         await session.refresh(dialog)
-
-        last_message = dialog.messages[-1] if dialog.messages else None
-        if last_message and last_message.sender == MessageSender.USER:
-            bot = await self._get_bot(session=session, bot_id=dialog.bot_id)
-            if bot.operator_handoff_enabled and _matches_operator_trigger(last_message.text or "", bot.operator_trigger_phrases):
-                system_message = await self._handoff_to_operator(
-                    session=session,
-                    dialog=dialog,
-                    bot_id=dialog.bot_id,
-                    channel_type=dialog.channel_type,
-                    external_chat_id=dialog.external_chat_id,
-                )
-
-                dialog_payload = DialogOut.model_validate(dialog).model_dump()
-                message_payload = DialogMessageOut.model_validate(system_message).model_dump()
-                await ws_manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=None)
-                await ws_manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=None)
-                return dialog
-
-            try:
-                answer = await ai_service.answer(bot_id=dialog.bot_id, dialog_id=dialog.id, question=last_message.text or "")
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "AI answer failed",
-                    extra={"bot_id": dialog.bot_id, "dialog_id": dialog.id},
-                )
-                answer = None
-
-            if answer is None or not answer.can_answer or not answer.answer:
-                system_message = await (
-                    self._handoff_to_operator(
-                        session=session,
-                        dialog=dialog,
-                        bot_id=dialog.bot_id,
-                        channel_type=dialog.channel_type,
-                        external_chat_id=dialog.external_chat_id,
-                    )
-                    if bot.operator_handoff_enabled
-                    else self._cannot_answer(
-                        session=session,
-                        dialog=dialog,
-                        bot_id=dialog.bot_id,
-                        channel_type=dialog.channel_type,
-                        external_chat_id=dialog.external_chat_id,
-                    )
-                )
-
-                dialog_payload = DialogOut.model_validate(dialog).model_dump()
-                message_payload = DialogMessageOut.model_validate(system_message).model_dump()
-                admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
-
-                await ws_manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
-                await ws_manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
-
-                return dialog
-
-            if answer.can_answer and answer.answer:
-                message, updated_dialog, _dialog_created = await self.add_message(
-                    session=session,
-                    bot_id=dialog.bot_id,
-                    channel_type=dialog.channel_type,
-                    external_chat_id=dialog.external_chat_id,
-                    external_user_id=dialog.external_user_id,
-                    sender=MessageSender.BOT,
-                    text=answer.answer,
-                )
-
-                updated_dialog.status = DialogStatus.AUTO
-                updated_dialog.updated_at = datetime.utcnow()
-                updated_dialog.is_locked = False
-                updated_dialog.locked_until = None
-                updated_dialog.assigned_admin_id = None
-
-                session.add(updated_dialog)
-                await session.commit()
-                await session.refresh(updated_dialog)
-                await session.refresh(message)
-
-                dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
-                message_payload = DialogMessageOut.model_validate(message).model_dump()
-                admin_targets = [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
-
-                await ws_manager.broadcast_new_message(
-                    dialog_payload=dialog_payload,
-                    message_payload=message_payload,
-                    admin_ids=admin_targets,
-                )
-
-                return updated_dialog
-
         return dialog
 
     async def add_message(
