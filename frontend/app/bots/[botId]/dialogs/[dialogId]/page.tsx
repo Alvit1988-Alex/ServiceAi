@@ -229,7 +229,7 @@ export default function DialogDetailsPage({ params }: DialogDetailsPageProps) {
 
                 <div className={styles.infoRow}>
                   <span className={styles.label}>Статус:</span>
-                  <span className={styles.status}>{STATUS_LABELS[dialog.status]}</span>
+                  <span className={styles.status}>{dialog.closed ? "Завершён" : STATUS_LABELS[dialog.status]}</span>
                 </div>
                 <div className={styles.infoRow}>
                   <span className={styles.label}>Закреплён:</span>
