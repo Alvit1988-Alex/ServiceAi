@@ -58,7 +58,7 @@ const CHANNEL_INSTRUCTIONS: Partial<Record<ChannelType, { href: string; summary:
   },
   [ChannelType.MAX]: {
     href: "/instructions/max.pdf",
-    summary: "Подключение Max и настройка отправки сообщений.",
+    summary: "Укажите токен MAX-бота. Проверка подключения и настройка webhook выполняются автоматически.",
   },
 };
 
@@ -73,12 +73,7 @@ const CHANNEL_FIELDS: Partial<Record<ChannelType, ChannelField[]>> = {
     { key: "user_id", label: "User ID" },
   ],
   [ChannelType.MAX]: [
-    { key: "send_message_url", label: "Send message URL" },
-    { key: "api_base_url", label: "API base URL" },
-    { key: "send_message_path", label: "Send message path" },
-    { key: "auth_token", label: "Auth token" },
-    { key: "token", label: "Token" },
-    { key: "secret", label: "Webhook secret" },
+    { key: "token", label: "Токен доступа", placeholder: "Введите токен MAX-бота" },
   ],
   [ChannelType.WEBCHAT]: [],
   [ChannelType.VK]: [
@@ -393,13 +388,14 @@ export default function BotChannels({ botId }: BotChannelsProps) {
     });
   };
 
-  const INTERNAL_KEYS = new Set(["secret_token", "webhook_status", "webhook_error", "secret"]);
+  const INTERNAL_KEYS = new Set(["secret_token", "webhook_secret", "webhook_status", "webhook_error", "secret", "bot_id", "bot_name"]);
   const AVITO_HIDDEN_KEYS = new Set([
     "send_message_url",
     "api_base_url",
     "send_message_path",
     "token",
   ]);
+  const MAX_HIDDEN_KEYS = new Set(["send_message_url", "api_base_url", "send_message_path", "auth_token"]);
 
   const applyChannelUpdate = (channelId: number, updatedChannel: BotChannel) => {
     syncChannelState(channelId, updatedChannel);
@@ -535,7 +531,7 @@ export default function BotChannels({ botId }: BotChannelsProps) {
           !(
             channel.channel_type === ChannelType.AVITO &&
             (key === "reply_all_items" || key === "allowed_item_ids" || AVITO_HIDDEN_KEYS.has(key))
-          ),
+          ) && !(channel.channel_type === ChannelType.MAX && MAX_HIDDEN_KEYS.has(key)),
       );
 
     return (

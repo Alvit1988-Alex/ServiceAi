@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.modules.channels.avito_webhook import subscribe as avito_subscribe
 from app.modules.channels.avito_webhook import unsubscribe as avito_unsubscribe
+from app.modules.channels.max_webhook import sync_max_webhook
 from app.modules.channels.models import BotChannel, ChannelType
 from app.modules.channels.schemas import BotChannelCreate, BotChannelUpdate
 from app.utils.encryption import decrypt_config, encrypt_config
@@ -27,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 class TelegramTokenValidationUnavailableError(Exception):
     """Raised when Telegram token validation cannot be completed due to transport/API availability issues."""
+
+
+class MaxTokenValidationUnavailableError(Exception):
+    """Raised when MAX token validation cannot be completed due to transport/API availability issues."""
+
+
+MAX_API_BASE_URL = "https://platform-api2.max.ru"
 
 
 class ChannelsService:
@@ -64,6 +72,17 @@ class ChannelsService:
                 else:
                     if bot_username:
                         prepared_config["bot_username"] = bot_username
+        if obj_in.channel_type == ChannelType.MAX:
+            token = prepared_config.get("token")
+            if token:
+                try:
+                    max_info = await self._validate_max_token(token)
+                except MaxTokenValidationUnavailableError as exc:
+                    logger.warning("MAX token validation skipped due to temporary MAX API issue", exc_info=exc)
+                    prepared_config["webhook_status"] = "pending"
+                    prepared_config["webhook_error"] = "MAX token validation is temporarily unavailable"
+                else:
+                    prepared_config.update(max_info)
         db_obj = BotChannel(
             bot_id=bot_id,
             channel_type=obj_in.channel_type,
@@ -82,6 +101,7 @@ class ChannelsService:
         )
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
+        await self._sync_and_persist_max_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
 
         if decrypted.channel_type == ChannelType.OK:
             await self._subscribe_ok_webhook(decrypted)
@@ -142,6 +162,9 @@ class ChannelsService:
         previous_active = db_obj.is_active
         previous_config = decrypt_config(db_obj.config)
         data = obj_in.model_dump(exclude_unset=True)
+        if db_obj.channel_type == ChannelType.MAX and "config" in data and data.get("config") is not None:
+            data["config"] = {**previous_config, **data["config"]}
+
         if db_obj.channel_type == ChannelType.TELEGRAM:
             config_update = data.get("config")
             next_config = config_update if config_update is not None else previous_config
@@ -165,6 +188,28 @@ class ChannelsService:
                         next_config = dict(next_config or {})
                         next_config["bot_username"] = bot_username
                         data["config"] = next_config
+        if db_obj.channel_type == ChannelType.MAX:
+            config_update = data.get("config")
+            next_config = config_update if config_update is not None else previous_config
+            token = (next_config or {}).get("token")
+            token_changed = config_update is not None and token != previous_config.get("token")
+            activating = data.get("is_active") is True and not previous_active
+            if activating and not token:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="MAX token is required")
+            if token and (token_changed or activating):
+                try:
+                    max_info = await self._validate_max_token(token)
+                except MaxTokenValidationUnavailableError as exc:
+                    logger.warning("MAX token validation skipped due to temporary MAX API issue", exc_info=exc)
+                    next_config = dict(next_config or {})
+                    next_config["webhook_status"] = "pending"
+                    next_config["webhook_error"] = "MAX token validation is temporarily unavailable"
+                    data["config"] = next_config
+                else:
+                    next_config = dict(next_config or {})
+                    next_config.update(max_info)
+                    data["config"] = next_config
+
         if "config" in data:
             prepared_config = self._prepare_config(db_obj.channel_type, data["config"])
             data["config"] = encrypt_config(prepared_config)
@@ -197,6 +242,7 @@ class ChannelsService:
         )
 
         await self._sync_and_persist_telegram_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
+        await self._sync_and_persist_max_webhook(session=session, db_obj=db_obj, decrypted=decrypted)
 
         if decrypted.channel_type == ChannelType.OK and decrypted.is_active:
             await self._subscribe_ok_webhook(decrypted)
@@ -224,6 +270,14 @@ class ChannelsService:
 
         if channel_type == ChannelType.VK and not prepared.get("secret"):
             prepared["secret"] = secrets.token_hex(16)
+
+        if channel_type == ChannelType.MAX:
+            if not prepared.get("token") and prepared.get("auth_token"):
+                prepared["token"] = prepared.get("auth_token")
+            for key in ("auth_token", "send_message_url", "api_base_url", "send_message_path", "secret"):
+                prepared.pop(key, None)
+            if not prepared.get("webhook_secret"):
+                prepared["webhook_secret"] = secrets.token_hex(32)
 
         if channel_type == ChannelType.AVITO:
             prepared.setdefault("client_id", "")
@@ -263,6 +317,12 @@ class ChannelsService:
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=error or "VK channel config is incomplete",
                 )
+
+        if channel_type == ChannelType.MAX and not (config or {}).get("token"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="MAX token is required",
+            )
 
         if channel_type == ChannelType.OK and not (config or {}).get("access_token"):
             raise HTTPException(
@@ -339,6 +399,33 @@ class ChannelsService:
 
         result = payload.get("result") or {}
         return result.get("username")
+
+
+    @classmethod
+    async def _validate_max_token(cls, token: str) -> dict[str, str]:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(f"{MAX_API_BASE_URL}/me", headers={"Authorization": token})
+        except httpx.RequestError as exc:
+            raise MaxTokenValidationUnavailableError("MAX API request failed") from exc
+
+        if response.status_code in {401, 403}:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Недействительный токен MAX")
+        if response.status_code == 429 or response.status_code >= 500:
+            raise MaxTokenValidationUnavailableError(f"MAX API temporary error: {response.status_code}")
+
+        try:
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPStatusError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось проверить токен MAX") from exc
+
+        result: dict[str, str] = {}
+        for source_key, target_key in (("user_id", "bot_id"), ("bot_id", "bot_id"), ("name", "bot_name"), ("username", "bot_name")):
+            value = payload.get(source_key)
+            if value and target_key not in result:
+                result[target_key] = str(value)
+        return result
 
     @staticmethod
     def should_reply_to_avito_message(config: dict[str, Any] | None, item_id: str | None) -> tuple[bool, str | None]:
@@ -430,6 +517,34 @@ class ChannelsService:
         updated_config = dict(decrypted.config or {})
         if status:
             updated_config["webhook_status"] = status
+        if error:
+            updated_config["webhook_error"] = error
+        else:
+            updated_config.pop("webhook_error", None)
+
+        decrypted.config = updated_config
+        db_obj.config = encrypt_config(updated_config)
+        session.add(db_obj)
+        await session.commit()
+        decrypted.config = updated_config
+
+
+    async def _sync_and_persist_max_webhook(
+        self,
+        *,
+        session: AsyncSession,
+        db_obj: BotChannel,
+        decrypted: BotChannel,
+    ) -> None:
+        if decrypted.channel_type != ChannelType.MAX:
+            return
+
+        status_value, error = await sync_max_webhook(decrypted, _get_public_api_base_url())
+        updated_config = dict(decrypted.config or {})
+        if status_value == "disabled":
+            updated_config["webhook_status"] = "pending"
+        elif status_value:
+            updated_config["webhook_status"] = status_value
         if error:
             updated_config["webhook_error"] = error
         else:
