@@ -42,8 +42,19 @@ def test_message_created_missing_sender_user_id_returns_none():
     assert normalize_max_webhook(1, 2, _message_payload(sender={})) is None
 
 
-def test_message_created_missing_recipient_ids_returns_none():
-    assert normalize_max_webhook(1, 2, _message_payload(recipient={})) is None
+def test_message_created_empty_recipient_uses_sender_user_id():
+    normalized = normalize_max_webhook(
+        1,
+        2,
+        _message_payload(
+            sender={"user_id": 123456789, "name": "User"},
+            recipient={},
+        ),
+    )
+
+    assert normalized is not None
+    assert normalized.external_user_id == "123456789"
+    assert normalized.external_chat_id == "123456789"
 
 
 def test_message_created_empty_text_returns_none():
