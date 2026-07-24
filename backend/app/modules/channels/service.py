@@ -78,7 +78,10 @@ class ChannelsService:
                 try:
                     max_info = await self._validate_max_token(token)
                 except MaxTokenValidationUnavailableError as exc:
-                    logger.warning("MAX token validation skipped due to temporary MAX API issue", exc_info=exc)
+                    logger.warning(
+                        "MAX token validation skipped due to temporary MAX API issue",
+                        extra={"bot_id": bot_id, "error_type": type(exc).__name__},
+                    )
                     prepared_config["webhook_status"] = "pending"
                     prepared_config["webhook_error"] = "MAX token validation is temporarily unavailable"
                 else:
@@ -200,7 +203,10 @@ class ChannelsService:
                 try:
                     max_info = await self._validate_max_token(token)
                 except MaxTokenValidationUnavailableError as exc:
-                    logger.warning("MAX token validation skipped due to temporary MAX API issue", exc_info=exc)
+                    logger.warning(
+                        "MAX token validation skipped due to temporary MAX API issue",
+                        extra={"bot_id": db_obj.bot_id, "channel_id": db_obj.id, "error_type": type(exc).__name__},
+                    )
                     next_config = dict(next_config or {})
                     next_config["webhook_status"] = "pending"
                     next_config["webhook_error"] = "MAX token validation is temporarily unavailable"
@@ -542,7 +548,7 @@ class ChannelsService:
         status_value, error = await sync_max_webhook(decrypted, _get_public_api_base_url())
         updated_config = dict(decrypted.config or {})
         if status_value == "disabled":
-            updated_config["webhook_status"] = "pending"
+            updated_config["webhook_status"] = "disabled"
         elif status_value:
             updated_config["webhook_status"] = status_value
         if error:

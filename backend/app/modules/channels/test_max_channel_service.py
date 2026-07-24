@@ -56,9 +56,9 @@ def test_validate_max_token_accepts_success(monkeypatch):
             return httpx.Response(200, json={"user_id": 123, "name": "Bot"})
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
-    result = asyncio.run(ChannelsService._validate_max_token("token-value"))
+    result = asyncio.run(ChannelsService._validate_max_token("credential-placeholder"))
     assert result == {"bot_id": "123", "bot_name": "Bot"}
-    assert calls[0][1] == {"Authorization": "token-value"}
+    assert calls[0][1] == {"Authorization": "credential-placeholder"}
 
 
 def test_validate_max_token_401_is_422(monkeypatch):
@@ -70,10 +70,10 @@ def test_validate_max_token_401_is_422(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(ChannelsService._validate_max_token("token-value"))
+        asyncio.run(ChannelsService._validate_max_token("credential-placeholder"))
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == "Недействительный токен MAX"
-    assert "token-value" not in exc_info.value.detail
+    assert "credential-placeholder" not in exc_info.value.detail
 
 
 def test_validate_max_token_timeout_is_controlled(monkeypatch):
@@ -85,5 +85,77 @@ def test_validate_max_token_timeout_is_controlled(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     with pytest.raises(MaxTokenValidationUnavailableError) as exc_info:
-        asyncio.run(ChannelsService._validate_max_token("token-value"))
-    assert "token-value" not in str(exc_info.value)
+        asyncio.run(ChannelsService._validate_max_token("credential-placeholder"))
+    assert "credential-placeholder" not in str(exc_info.value)
+
+
+class _Session:
+    def add(self, obj):
+        self.obj = obj
+    async def commit(self):
+        return None
+    async def refresh(self, obj):
+        return None
+
+
+class _Channel:
+    id = 7
+    bot_id = 5
+    channel_type = ChannelType.MAX
+    is_active = True
+    def __init__(self, config, is_active=True):
+        self.config = config
+        self.is_active = is_active
+
+
+def test_update_max_token_preserves_webhook_secret_and_cleans_legacy(monkeypatch):
+    from app.modules.channels import service as service_module
+    from app.modules.channels.schemas import BotChannelUpdate
+
+    async def validate(token):
+        return {}
+    async def sync(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(service_module, "decrypt_config", lambda value: value)
+    monkeypatch.setattr(service_module, "encrypt_config", lambda value: value)
+    monkeypatch.setattr(ChannelsService, "_validate_max_token", staticmethod(validate))
+    monkeypatch.setattr(ChannelsService, "_sync_and_persist_max_webhook", sync)
+
+    channel = _Channel({"token": "old", "webhook_secret": "stable", "webhook_status": "ok", "send_message_url": "legacy"})
+    updated = asyncio.run(ChannelsService().update(_Session(), channel, BotChannelUpdate(config={"token": "new"})))
+
+    assert updated.config["token"] == "new"
+    assert updated.config["webhook_secret"] == "stable"
+    assert "send_message_url" not in updated.config
+    assert "secret" not in updated.config
+
+
+def test_update_max_activation_without_token_returns_422(monkeypatch):
+    from app.modules.channels import service as service_module
+    from app.modules.channels.schemas import BotChannelUpdate
+
+    monkeypatch.setattr(service_module, "decrypt_config", lambda value: value)
+    monkeypatch.setattr(service_module, "encrypt_config", lambda value: value)
+
+    channel = _Channel({"webhook_secret": "stable"}, is_active=False)
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(ChannelsService().update(_Session(), channel, BotChannelUpdate(is_active=True)))
+    assert exc_info.value.status_code == 422
+
+
+def test_sync_and_persist_max_webhook_keeps_disabled_status(monkeypatch):
+    from app.modules.channels import service as service_module
+
+    async def sync(channel, base_url):
+        return "disabled", None
+
+    monkeypatch.setattr(service_module, "sync_max_webhook", sync)
+    monkeypatch.setattr(service_module, "_get_public_api_base_url", lambda: "https://example.com/api")
+    monkeypatch.setattr(service_module, "encrypt_config", lambda value: value)
+
+    channel = _Channel({"token": "old", "webhook_secret": "stable", "webhook_error": "old"}, is_active=False)
+    asyncio.run(ChannelsService()._sync_and_persist_max_webhook(session=_Session(), db_obj=channel, decrypted=channel))
+
+    assert channel.config["webhook_status"] == "disabled"
+    assert "webhook_error" not in channel.config

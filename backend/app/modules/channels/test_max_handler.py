@@ -29,13 +29,13 @@ def test_message_created_with_chat_id_normalized_without_headers():
     assert "headers" not in normalized.payload
 
 
-def test_message_created_uses_recipient_user_id_when_chat_id_missing():
-    payload = _message_payload(recipient={"user_id": 222})
+def test_message_created_without_chat_id_uses_sender_user_id_not_recipient_user_id():
+    payload = _message_payload(sender={"user_id": 111}, recipient={"user_id": 222})
 
     normalized = normalize_max_webhook(1, 2, payload)
 
     assert normalized is not None
-    assert normalized.external_chat_id == "222"
+    assert normalized.external_chat_id == "111"
 
 
 def test_message_created_missing_sender_user_id_returns_none():

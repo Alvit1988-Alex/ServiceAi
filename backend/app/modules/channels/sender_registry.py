@@ -665,6 +665,20 @@ class MaxSender(BaseChannelSender):
                 channel = self.channels_service.decrypt(channel)
             return channel
 
+    async def _resolve_user_id(self, bot_id: int, external_chat_id: str) -> str | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Dialog.external_user_id)
+                .where(
+                    Dialog.bot_id == bot_id,
+                    Dialog.channel_type == ChannelType.MAX,
+                    Dialog.external_chat_id == external_chat_id,
+                )
+                .order_by(Dialog.updated_at.desc())
+            )
+            value = result.scalars().first()
+            return str(value) if value is not None else None
+
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
@@ -687,9 +701,13 @@ class MaxSender(BaseChannelSender):
         if not token:
             raise ChannelSendError("MAX token is not configured")
 
+        external_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        if not external_user_id:
+            raise ChannelSendError("MAX recipient user id is not available")
+
         payload = {"text": text}
         headers = {"Authorization": token, "Content-Type": "application/json"}
-        params = {"chat_id": external_chat_id}
+        params = {"user_id": external_user_id} if external_chat_id == external_user_id else {"chat_id": external_chat_id}
         start = time.perf_counter()
 
         try:

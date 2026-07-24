@@ -40,9 +40,27 @@ def _subscription_url(item: dict[str, Any]) -> str | None:
     return str(url) if url else None
 
 
-def _subscription_id(item: dict[str, Any]) -> str | None:
-    value = item.get("id") or item.get("subscription_id")
-    return str(value) if value is not None else None
+def _sanitize_provider_message(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    sanitized = value.strip().replace("\n", " ").replace("\r", " ")
+    return sanitized[:200] or None
+
+
+def _operation_succeeded(response: httpx.Response) -> tuple[bool, str | None]:
+    response.raise_for_status()
+    try:
+        payload = response.json()
+    except ValueError:
+        return False, "MAX subscriptions API returned malformed JSON"
+
+    if isinstance(payload, dict) and "success" in payload:
+        if payload.get("success") is True:
+            return True, None
+        message = _sanitize_provider_message(payload.get("message"))
+        return False, message or "MAX subscriptions API returned unsuccessful response"
+
+    return True, None
 
 
 async def sync_max_webhook(channel: BotChannel, public_api_base_url: str | None) -> tuple[str | None, str | None]:
@@ -68,22 +86,19 @@ async def sync_max_webhook(channel: BotChannel, public_api_base_url: str | None)
             current = [item for item in subscriptions if _subscription_url(item) == webhook_url]
 
             if not channel.is_active:
-                for item in current:
-                    sub_id = _subscription_id(item)
-                    if sub_id:
-                        response = await client.delete(f"{MAX_SUBSCRIPTIONS_URL}/{sub_id}", headers=headers)
-                    else:
-                        response = await client.delete(MAX_SUBSCRIPTIONS_URL, params={"url": webhook_url}, headers=headers)
-                    if response.status_code not in {200, 202, 204, 404}:
-                        response.raise_for_status()
+                if current:
+                    response = await client.delete(MAX_SUBSCRIPTIONS_URL, params={"url": webhook_url}, headers=headers)
+                    if response.status_code != 404:
+                        ok, error = _operation_succeeded(response)
+                        if not ok:
+                            return "error", error
                 return "disabled", None
-
-            if current:
-                return "ok", None
 
             payload = {"url": webhook_url, "update_types": MAX_EVENTS, "secret": webhook_secret}
             response = await client.post(MAX_SUBSCRIPTIONS_URL, json=payload, headers=headers)
-            response.raise_for_status()
+            ok, error = _operation_succeeded(response)
+            if not ok:
+                return "error", error
             return "ok", None
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code if exc.response is not None else None

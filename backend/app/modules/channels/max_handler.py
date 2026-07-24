@@ -27,7 +27,7 @@ def _extract_bot_started_payload(payload: dict) -> tuple[object, object, object,
     user = _as_dict(payload.get("user") or payload.get("sender"))
     recipient = _as_dict(payload.get("recipient") or payload.get("chat"))
     external_user_id = user.get("user_id") or payload.get("user_id")
-    external_chat_id = recipient.get("chat_id") or recipient.get("user_id") or payload.get("chat_id") or external_user_id
+    external_chat_id = recipient.get("chat_id") or payload.get("chat_id") or external_user_id
     text = (
         payload.get("payload")
         or payload.get("start_payload")
@@ -54,7 +54,7 @@ def normalize_max_webhook(bot_id: int, channel_id: int, payload: dict) -> Normal
         body = _as_dict(message.get("body"))
 
         external_user_id = sender.get("user_id")
-        external_chat_id = recipient.get("chat_id") or recipient.get("user_id")
+        external_chat_id = recipient.get("chat_id") or external_user_id
         external_message_id = body.get("mid")
         text = body.get("text")
     elif update_type == "bot_started":
