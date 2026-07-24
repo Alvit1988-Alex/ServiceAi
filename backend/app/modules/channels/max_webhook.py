@@ -40,14 +40,25 @@ def _subscription_url(item: dict[str, Any]) -> str | None:
     return str(url) if url else None
 
 
-def _sanitize_provider_message(value: object) -> str | None:
+def _sanitize_provider_message(
+    value: object,
+    *,
+    secrets_to_redact: tuple[str, ...] = (),
+) -> str | None:
     if not isinstance(value, str):
         return None
     sanitized = value.strip().replace("\n", " ").replace("\r", " ")
+    for secret in secrets_to_redact:
+        if secret:
+            sanitized = sanitized.replace(secret, "[REDACTED]")
     return sanitized[:200] or None
 
 
-def _operation_succeeded(response: httpx.Response) -> tuple[bool, str | None]:
+def _operation_succeeded(
+    response: httpx.Response,
+    *,
+    secrets_to_redact: tuple[str, ...] = (),
+) -> tuple[bool, str | None]:
     response.raise_for_status()
     try:
         payload = response.json()
@@ -57,7 +68,7 @@ def _operation_succeeded(response: httpx.Response) -> tuple[bool, str | None]:
     if isinstance(payload, dict) and "success" in payload:
         if payload.get("success") is True:
             return True, None
-        message = _sanitize_provider_message(payload.get("message"))
+        message = _sanitize_provider_message(payload.get("message"), secrets_to_redact=secrets_to_redact)
         return False, message or "MAX subscriptions API returned unsuccessful response"
 
     return True, None
@@ -89,14 +100,14 @@ async def sync_max_webhook(channel: BotChannel, public_api_base_url: str | None)
                 if current:
                     response = await client.delete(MAX_SUBSCRIPTIONS_URL, params={"url": webhook_url}, headers=headers)
                     if response.status_code != 404:
-                        ok, error = _operation_succeeded(response)
+                        ok, error = _operation_succeeded(response, secrets_to_redact=(token, webhook_secret))
                         if not ok:
                             return "error", error
                 return "disabled", None
 
             payload = {"url": webhook_url, "update_types": MAX_EVENTS, "secret": webhook_secret}
             response = await client.post(MAX_SUBSCRIPTIONS_URL, json=payload, headers=headers)
-            ok, error = _operation_succeeded(response)
+            ok, error = _operation_succeeded(response, secrets_to_redact=(token, webhook_secret))
             if not ok:
                 return "error", error
             return "ok", None

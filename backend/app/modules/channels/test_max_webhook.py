@@ -121,14 +121,22 @@ def test_sync_post_success_false_is_error(monkeypatch):
         async def get(self, url, headers):
             return httpx.Response(200, json={"subscriptions": []}, request=httpx.Request("GET", url))
         async def post(self, url, json, headers):
-            return httpx.Response(200, json={"success": False, "message": "provider rejected"}, request=httpx.Request("POST", url))
+            return httpx.Response(
+                200,
+                json={
+                    "success": False,
+                    "message": "Rejected credential-placeholder and webhook-credential-placeholder",
+                },
+                request=httpx.Request("POST", url),
+            )
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     status, error = asyncio.run(sync_max_webhook(_channel(), "https://example.com/api"))
     assert status == "error"
-    assert error == "provider rejected"
+    assert error == "Rejected [REDACTED] and [REDACTED]"
     assert "credential-placeholder" not in error
     assert "webhook-credential-placeholder" not in error
+    assert "[REDACTED]" in error
 
 
 def test_sync_delete_success_false_is_error(monkeypatch):
@@ -139,9 +147,19 @@ def test_sync_delete_success_false_is_error(monkeypatch):
         async def get(self, url, headers):
             return httpx.Response(200, json={"subscriptions": [{"url": "https://example.com/api/bots/5/channels/webhooks/max/7"}]}, request=httpx.Request("GET", url))
         async def delete(self, url, headers, params=None):
-            return httpx.Response(200, json={"success": False, "message": "delete rejected"}, request=httpx.Request("DELETE", url))
+            return httpx.Response(
+                200,
+                json={
+                    "success": False,
+                    "message": "Delete rejected credential-placeholder and webhook-credential-placeholder",
+                },
+                request=httpx.Request("DELETE", url),
+            )
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     status, error = asyncio.run(sync_max_webhook(_channel(active=False), "https://example.com/api"))
     assert status == "error"
-    assert error == "delete rejected"
+    assert error == "Delete rejected [REDACTED] and [REDACTED]"
+    assert "credential-placeholder" not in error
+    assert "webhook-credential-placeholder" not in error
+    assert "[REDACTED]" in error

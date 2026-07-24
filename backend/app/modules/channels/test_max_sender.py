@@ -27,7 +27,10 @@ def _sender(channel, external_user_id="user-1"):
 
 
 def _channel(config=None):
-    return SimpleNamespace(id=7, config=config or {"token": "credential-placeholder"})
+    return SimpleNamespace(
+        id=7,
+        config=config if config is not None else {"token": "credential-placeholder"},
+    )
 
 
 def test_max_sender_group_chat_request_shape(monkeypatch):
@@ -128,6 +131,6 @@ def test_max_sender_missing_token_raises_without_http(monkeypatch):
             called = True
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
-    with pytest.raises(ChannelSendError):
+    with pytest.raises(ChannelSendError, match="MAX token is not configured"):
         asyncio.run(_sender(_channel(config={})).send_text(5, "chat-1", "Hello"))
     assert called is False

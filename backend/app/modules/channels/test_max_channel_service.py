@@ -53,7 +53,11 @@ def test_validate_max_token_accepts_success(monkeypatch):
             return None
         async def get(self, url, headers):
             calls.append((url, headers))
-            return httpx.Response(200, json={"user_id": 123, "name": "Bot"})
+            return httpx.Response(
+                200,
+                json={"user_id": 123, "name": "Bot"},
+                request=httpx.Request("GET", url),
+            )
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     result = asyncio.run(ChannelsService._validate_max_token("credential-placeholder"))
