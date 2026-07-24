@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 AI_FALLBACK_TEXT = "Сейчас ИИ временно недоступен. Сообщение передано оператору — мы ответим как можно скорее."
 HANDOFF_TEXT = "Передаю ваш вопрос оператору. Мы ответим как можно скорее."
 AI_CANNOT_ANSWER_TEXT = "К сожалению, сейчас я не могу ответить на этот вопрос."
+OPERATOR_MODE_TIMEOUT = timedelta(hours=1)
+
+
+def _is_operator_mode_active(dialog: Dialog, now: datetime) -> bool:
+    return (
+        dialog.status == DialogStatus.WAIT_OPERATOR
+        and dialog.operator_mode_started_at is not None
+        and now < dialog.operator_mode_started_at + OPERATOR_MODE_TIMEOUT
+    )
 
 
 def _normalize_handoff_text(value: str) -> str:
@@ -103,13 +112,17 @@ class DialogsService:
         text: str,
         status: DialogStatus,
         system: bool = False,
+        start_operator_mode: bool = False,
     ) -> DialogMessage:
+        now = datetime.utcnow()
+        if status == DialogStatus.WAIT_OPERATOR and (start_operator_mode or dialog.status != DialogStatus.WAIT_OPERATOR):
+            dialog.operator_mode_started_at = now
         dialog.status = status
-        dialog.updated_at = datetime.utcnow()
-        dialog.last_message_at = datetime.utcnow()
+        dialog.updated_at = now
+        dialog.last_message_at = now
         if status == DialogStatus.WAIT_USER:
             dialog.waiting_time_seconds = (
-                int((datetime.utcnow() - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
+                int((now - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
             dialog.unread_messages_count = 0
 
@@ -142,6 +155,7 @@ class DialogsService:
         bot_id: int,
         channel_type: ChannelType,
         external_chat_id: str,
+        start_operator_mode: bool = False,
     ) -> DialogMessage:
         return await self._save_and_send_bot_message(
             session=session,
@@ -152,6 +166,7 @@ class DialogsService:
             text=HANDOFF_TEXT,
             status=DialogStatus.WAIT_OPERATOR,
             system=True,
+            start_operator_mode=start_operator_mode,
         )
 
     async def _cannot_answer(
@@ -447,6 +462,7 @@ class DialogsService:
                 raise DialogLockError("Для этого чата уже существует активный диалог")
 
         dialog.status = DialogStatus.AUTO
+        dialog.operator_mode_started_at = None
         dialog.closed = False
         dialog.is_locked = False
         dialog.locked_until = None
@@ -487,7 +503,9 @@ class DialogsService:
             dialog.waiting_time_seconds = 0
             dialog.unread_messages_count += 1
         else:
-            dialog.status = DialogStatus.WAIT_USER
+            dialog.status = DialogStatus.WAIT_OPERATOR if sender == MessageSender.OPERATOR else DialogStatus.WAIT_USER
+            if sender == MessageSender.OPERATOR:
+                dialog.operator_mode_started_at = now
             dialog.waiting_time_seconds = (
                 int((now - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
@@ -531,9 +549,20 @@ class DialogsService:
         dialog, _ = await self.unlock_if_expired(session=session, dialog=dialog)
 
         now = datetime.utcnow()
+        original_status = dialog.status
 
         dialog.closed = False
+        legacy_operator_mode_started = (
+            dialog.status == DialogStatus.WAIT_OPERATOR and dialog.operator_mode_started_at is None
+        )
+        if legacy_operator_mode_started:
+            dialog.operator_mode_started_at = now
         preserve_auto_status = dialog.status == DialogStatus.AUTO
+        operator_mode_elapsed = (
+            dialog.status == DialogStatus.WAIT_OPERATOR
+            and dialog.operator_mode_started_at is not None
+            and now >= dialog.operator_mode_started_at + OPERATOR_MODE_TIMEOUT
+        )
         if not preserve_auto_status:
             dialog.status = DialogStatus.WAIT_OPERATOR
         dialog.updated_at = now
@@ -569,6 +598,18 @@ class DialogsService:
                 extra={"bot_id": incoming_message.bot_id, "dialog_id": dialog.id, "error": str(exc)},
             )
 
+        if _is_operator_mode_active(dialog, now):
+            return user_message, None, dialog, dialog_created
+
+        if operator_mode_elapsed and dialog.assigned_admin_id is not None:
+            dialog.is_locked = False
+            dialog.locked_until = None
+            dialog.assigned_admin_id = None
+            dialog.updated_at = datetime.utcnow()
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+
         if dialog.assigned_admin_id is not None and dialog.locked_until is not None and dialog.locked_until > now:
             return user_message, None, dialog, dialog_created
 
@@ -582,6 +623,7 @@ class DialogsService:
                 bot_id=incoming_message.bot_id,
                 channel_type=incoming_message.channel_type,
                 external_chat_id=incoming_message.external_chat_id,
+                start_operator_mode=original_status != DialogStatus.WAIT_OPERATOR,
             )
             return user_message, system_message, dialog, dialog_created
 
@@ -607,6 +649,7 @@ class DialogsService:
                     bot_id=incoming_message.bot_id,
                     channel_type=incoming_message.channel_type,
                     external_chat_id=incoming_message.external_chat_id,
+                    start_operator_mode=original_status != DialogStatus.WAIT_OPERATOR,
                 )
                 if bot.operator_handoff_enabled
                 else self._cannot_answer(
@@ -630,11 +673,12 @@ class DialogsService:
                 int((datetime.utcnow() - dialog.last_user_message_at).total_seconds()) if dialog.last_user_message_at else 0
             )
             if not preserve_auto_status:
-                dialog.status = DialogStatus.WAIT_USER
+                dialog.status = DialogStatus.WAIT_OPERATOR if operator_mode_elapsed else DialogStatus.WAIT_USER
             dialog.updated_at = datetime.utcnow()
             dialog.last_message_at = datetime.utcnow()
             dialog.waiting_time_seconds = bot_response_time_seconds
-            dialog.unread_messages_count = 0
+            if not operator_mode_elapsed:
+                dialog.unread_messages_count = 0
 
             session.add_all([dialog, bot_message])
             await session.commit()

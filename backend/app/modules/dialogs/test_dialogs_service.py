@@ -874,3 +874,464 @@ def test_count_waiting_operator_dialogs_returns_zero(db_sessionmaker):
             return await service.count_waiting_operator_dialogs(session=session, current_user=user)
 
     assert run(_case()) == 0
+
+
+def test_handoff_sets_operator_mode_and_blocks_ai_before_timeout(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, _, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            db_bot = await session.get(Bot, bot.id)
+            db_bot.operator_handoff_enabled = True
+            db_bot.operator_trigger_phrases = ["оператор"]
+            await session.commit()
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="first", confidence=1, used_chunk_ids=[]))
+            _user, _system, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "оператор"),
+                ai_service=ai,
+            )
+            started_at = dialog.operator_mode_started_at
+            ai.calls = 0
+            _user2, bot_message, dialog, _created2 = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "следующий вопрос"),
+                ai_service=ai,
+            )
+            messages = (await session.execute(select(DialogMessage).where(DialogMessage.dialog_id == dialog.id))).scalars().all()
+            return ai.calls, bot_message, dialog, started_at, messages
+
+    calls, bot_message, dialog, started_at, messages = run(_case())
+    assert started_at is not None
+    assert calls == 0
+    assert bot_message is None
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.operator_mode_started_at == started_at
+    assert dialog.unread_messages_count == 2
+    assert [message.sender for message in messages].count(MessageSender.BOT) == 1
+
+
+def test_legacy_wait_operator_without_operator_mode_date_starts_timer_and_skips_ai(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                operator_mode_started_at=None,
+                unread_messages_count=1,
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="ai", confidence=1, used_chunk_ids=[]))
+            user_message, bot_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "legacy message"),
+                ai_service=ai,
+            )
+            started_at = dialog.operator_mode_started_at
+            first_unread = dialog.unread_messages_count
+            first_assigned_admin_id = dialog.assigned_admin_id
+            ai.calls = 0
+            _user2, second_bot_message, dialog, _created2 = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "legacy second message"),
+                ai_service=ai,
+            )
+            messages = (await session.execute(select(DialogMessage).where(DialogMessage.dialog_id == dialog.id))).scalars().all()
+            return (
+                user_message,
+                bot_message,
+                started_at,
+                first_unread,
+                first_assigned_admin_id,
+                ai.calls,
+                second_bot_message,
+                dialog,
+                messages,
+            )
+
+    (
+        user_message,
+        bot_message,
+        started_at,
+        first_unread,
+        first_assigned_admin_id,
+        second_calls,
+        second_bot_message,
+        dialog,
+        messages,
+    ) = run(_case())
+    assert user_message.sender == MessageSender.USER
+    assert bot_message is None
+    assert started_at is not None
+    assert first_unread == 2
+    assert first_assigned_admin_id == operator.id
+    assert second_calls == 0
+    assert second_bot_message is None
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.assigned_admin_id == operator.id
+    assert dialog.operator_mode_started_at == started_at
+    assert dialog.unread_messages_count == 3
+    assert [message.sender for message in messages] == [MessageSender.USER, MessageSender.USER]
+
+
+def test_handoff_without_operator_answer_allows_ai_after_timeout_but_remains_waiting(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                operator_mode_started_at=datetime.utcnow() - timedelta(hours=1, minutes=1),
+                unread_messages_count=3,
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="timeout answer", confidence=1, used_chunk_ids=[]))
+            _user, bot_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "после часа"),
+                ai_service=ai,
+            )
+            owner = await session.get(User, bot.account.owner_id)
+            count = await service.count_waiting_operator_dialogs(session=session, current_user=owner)
+            return ai.calls, bot_message, dialog, count
+
+    calls, bot_message, dialog, count = run(_case())
+    assert calls == 1
+    assert bot_message.text == "timeout answer"
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.assigned_admin_id is None
+    assert dialog.is_locked is False
+    assert dialog.unread_messages_count == 4
+    assert count == 1
+    assert DummySender.sent == [(bot.id, "chat-1", "timeout answer")]
+
+
+def test_wait_user_ai_fallback_handoff_starts_operator_mode_and_blocks_next_message(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, _, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            db_bot = await session.get(Bot, bot.id)
+            db_bot.operator_handoff_enabled = True
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_USER,
+                closed=False,
+                operator_mode_started_at=None,
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            ai = DummyAIService(AIAnswer(can_answer=False, answer=None, confidence=0, used_chunk_ids=[]))
+            user_message, handoff_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "fallback question"),
+                ai_service=ai,
+            )
+            first_calls = ai.calls
+            started_at = dialog.operator_mode_started_at
+            first_unread = dialog.unread_messages_count
+            ai.calls = 0
+            second_user_message, second_bot_message, dialog, _created2 = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "next question"),
+                ai_service=ai,
+            )
+            messages = (await session.execute(select(DialogMessage).where(DialogMessage.dialog_id == dialog.id))).scalars().all()
+            return (
+                user_message,
+                handoff_message,
+                first_calls,
+                started_at,
+                first_unread,
+                second_user_message,
+                second_bot_message,
+                ai.calls,
+                dialog,
+                messages,
+            )
+
+    (
+        user_message,
+        handoff_message,
+        first_calls,
+        started_at,
+        first_unread,
+        second_user_message,
+        second_bot_message,
+        second_calls,
+        dialog,
+        messages,
+    ) = run(_case())
+    assert user_message.sender == MessageSender.USER
+    assert handoff_message.text == HANDOFF_TEXT
+    assert first_calls == 1
+    assert started_at is not None
+    assert first_unread == 1
+    assert second_user_message.sender == MessageSender.USER
+    assert second_bot_message is None
+    assert second_calls == 0
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.operator_mode_started_at == started_at
+    assert dialog.unread_messages_count == 2
+    assert [message.sender for message in messages] == [MessageSender.USER, MessageSender.BOT, MessageSender.USER]
+    assert DummySender.sent == [(bot.id, "chat-1", HANDOFF_TEXT)]
+
+
+def test_wait_user_trigger_handoff_starts_operator_mode_without_ai(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, _, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            db_bot = await session.get(Bot, bot.id)
+            db_bot.operator_handoff_enabled = True
+            db_bot.operator_trigger_phrases = ["оператор"]
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_USER,
+                closed=False,
+                operator_mode_started_at=None,
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="ai", confidence=1, used_chunk_ids=[]))
+            user_message, handoff_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "позовите оператора"),
+                ai_service=ai,
+            )
+            return user_message, handoff_message, ai.calls, dialog
+
+    user_message, handoff_message, calls, dialog = run(_case())
+    assert user_message.sender == MessageSender.USER
+    assert calls == 0
+    assert handoff_message.text == HANDOFF_TEXT
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.operator_mode_started_at is not None
+    assert dialog.unread_messages_count == 1
+    assert DummySender.sent == [(bot.id, "chat-1", HANDOFF_TEXT)]
+
+
+def test_operator_message_restarts_operator_mode_and_blocks_ai(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                operator_mode_started_at=datetime.utcnow() - timedelta(hours=2),
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            _msg, dialog, _ = await service.add_message(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                sender=MessageSender.OPERATOR,
+                text="ответ оператора",
+                operator_admin_id=operator.id,
+            )
+            first_reply_at = dialog.operator_mode_started_at
+            _msg, dialog, _ = await service.add_message(
+                session=session,
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                sender=MessageSender.OPERATOR,
+                text="второй ответ",
+                operator_admin_id=operator.id,
+            )
+            second_reply_at = dialog.operator_mode_started_at
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="ai", confidence=1, used_chunk_ids=[]))
+            _user, bot_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "вопрос"),
+                ai_service=ai,
+            )
+            return ai.calls, bot_message, dialog, first_reply_at, second_reply_at
+
+    calls, bot_message, dialog, first_reply_at, second_reply_at = run(_case())
+    assert first_reply_at is not None
+    assert second_reply_at is not None
+    assert second_reply_at >= first_reply_at
+    assert calls == 0
+    assert bot_message is None
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.assigned_admin_id == operator.id
+
+
+def test_user_messages_do_not_extend_operator_mode(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, _, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            started_at = datetime.utcnow() - timedelta(minutes=30)
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                operator_mode_started_at=started_at,
+            )
+            session.add(dialog)
+            await session.commit()
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="ai", confidence=1, used_chunk_ids=[]))
+            await service.process_incoming_message(session=session, incoming_message=_incoming(bot.id, "раз"), ai_service=ai)
+            await service.process_incoming_message(session=session, incoming_message=_incoming(bot.id, "два"), ai_service=ai)
+            dialog = await session.get(Dialog, dialog.id)
+            before_expiry = dialog.operator_mode_started_at
+            dialog.operator_mode_started_at = datetime.utcnow() - timedelta(hours=1, minutes=1)
+            await session.commit()
+            ai.calls = 0
+            _user, bot_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "три"),
+                ai_service=ai,
+            )
+            return before_expiry, started_at, ai.calls, bot_message, dialog
+
+    before_expiry, started_at, calls, bot_message, dialog = run(_case())
+    assert before_expiry == started_at
+    assert calls == 1
+    assert bot_message.text == "ai"
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+
+
+def test_switch_to_auto_clears_operator_mode_and_allows_ai_immediately(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                operator_mode_started_at=datetime.utcnow(),
+            )
+            session.add(dialog)
+            await session.commit()
+            await session.refresh(dialog)
+            await service.switch_to_auto(session=session, dialog=dialog, admin_id=operator.id)
+            ai = DummyAIService(AIAnswer(can_answer=True, answer="auto", confidence=1, used_chunk_ids=[]))
+            _user, bot_message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "сразу"),
+                ai_service=ai,
+            )
+            return ai.calls, bot_message, dialog
+
+    calls, bot_message, dialog = run(_case())
+    assert calls == 1
+    assert bot_message.text == "auto"
+    assert dialog.status == DialogStatus.AUTO
+    assert dialog.operator_mode_started_at is None
+    assert dialog.assigned_admin_id is None
+    assert dialog.is_locked is False
+
+
+def test_ai_failure_after_operator_timeout_keeps_waiting_and_unread(db_sessionmaker, monkeypatch):
+    DummySender.sent = []
+    monkeypatch.setattr("app.modules.dialogs.service.get_sender", lambda _channel: DummySender)
+    service = DialogsService()
+    bot, operator, _ = run(_create_base_entities(db_sessionmaker))
+
+    async def _case():
+        async with db_sessionmaker() as session:
+            db_bot = await session.get(Bot, bot.id)
+            db_bot.operator_handoff_enabled = True
+            dialog = Dialog(
+                bot_id=bot.id,
+                channel_type=ChannelType.WEBCHAT,
+                external_chat_id="chat-1",
+                external_user_id="user-1",
+                status=DialogStatus.WAIT_OPERATOR,
+                closed=False,
+                assigned_admin_id=operator.id,
+                is_locked=True,
+                operator_mode_started_at=datetime.utcnow() - timedelta(hours=2),
+                unread_messages_count=5,
+            )
+            session.add(dialog)
+            await session.commit()
+            ai = DummyAIService(AIAnswer(can_answer=False, answer=None, confidence=0, used_chunk_ids=[]))
+            _user, message, dialog, _created = await service.process_incoming_message(
+                session=session,
+                incoming_message=_incoming(bot.id, "не знаю"),
+                ai_service=ai,
+            )
+            return ai.calls, message, dialog
+
+    calls, message, dialog = run(_case())
+    assert calls == 1
+    assert message.text == HANDOFF_TEXT
+    assert dialog.status == DialogStatus.WAIT_OPERATOR
+    assert dialog.assigned_admin_id is None
+    assert dialog.unread_messages_count == 6
