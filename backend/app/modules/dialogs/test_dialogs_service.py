@@ -329,7 +329,7 @@ def test_bot_operator_trigger_phrase_validation():
     assert updated.operator_trigger_phrases == ["A", "B"]
 
     with pytest.raises(ValueError):
-        BotCreate(name="Bot", operator_trigger_phrases=["x"] * 101)
+        BotCreate(name="Bot", operator_trigger_phrases=[f"x-{idx}" for idx in range(101)])
     with pytest.raises(ValueError):
         BotUpdate(operator_trigger_phrases=["x" * 201])
     with pytest.raises(ValueError):
