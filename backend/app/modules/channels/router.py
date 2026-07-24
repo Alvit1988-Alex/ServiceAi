@@ -305,7 +305,7 @@ def _validate_ok_message_payload(payload: dict) -> None:
 
 
 async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> None:
-    dialog_payload = DialogOut.model_validate(dialog).model_dump()
+    dialog_payload = DialogOut.model_validate(dialog).model_dump(mode="json")
     admin_targets = [dialog.assigned_admin_id] if dialog.assigned_admin_id is not None else None
 
     if dialog_created:
@@ -317,7 +317,7 @@ async def _broadcast_message_events(messages, dialog, dialog_created: bool) -> N
         )
 
     for message in messages:
-        message_payload = DialogMessageOut.model_validate(message).model_dump()
+        message_payload = DialogMessageOut.model_validate(message).model_dump(mode="json")
         await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)
         await manager.broadcast_to_admins({"event": "dialog_updated", "data": dialog_payload}, admin_ids=admin_targets)
 

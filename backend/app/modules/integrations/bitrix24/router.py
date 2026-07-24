@@ -461,8 +461,8 @@ async def bitrix_events(
         text=text,
     )
 
-    dialog_payload = DialogOut.model_validate(updated_dialog).model_dump()
-    message_payload = DialogMessageOut.model_validate(message).model_dump()
+    dialog_payload = DialogOut.model_validate(updated_dialog).model_dump(mode="json")
+    message_payload = DialogMessageOut.model_validate(message).model_dump(mode="json")
     admin_targets = [updated_dialog.assigned_admin_id] if updated_dialog.assigned_admin_id is not None else None
 
     await manager.broadcast_to_admins({"event": "message_created", "data": message_payload}, admin_ids=admin_targets)

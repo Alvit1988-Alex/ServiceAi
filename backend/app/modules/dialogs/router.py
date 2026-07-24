@@ -231,7 +231,7 @@ async def close_dialog(
     dialog = await service.close_dialog(session=session, dialog=dialog)
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
+    dialog_payload = _build_dialog_detail(dialog).model_dump(mode="json") if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -264,7 +264,7 @@ async def lock_dialog(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
+    dialog_payload = _build_dialog_detail(dialog).model_dump(mode="json") if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -297,7 +297,7 @@ async def unlock_dialog(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
+    dialog_payload = _build_dialog_detail(dialog).model_dump(mode="json") if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -332,7 +332,7 @@ async def switch_dialog_to_auto(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     dialog = await service.get(session=session, bot_id=accessible_bot.id, dialog_id=dialog_id, include_messages=True)
-    dialog_payload = _build_dialog_detail(dialog).model_dump() if dialog else {}
+    dialog_payload = _build_dialog_detail(dialog).model_dump(mode="json") if dialog else {}
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
@@ -514,8 +514,8 @@ async def _create_operator_message(
             )
 
     dialog_detail = await service.get(session=session, bot_id=None, dialog_id=dialog_id, include_messages=True)
-    message_payload = DialogMessageOut.model_validate(message).model_dump()
-    dialog_payload = _build_dialog_detail(dialog_detail).model_dump()
+    message_payload = DialogMessageOut.model_validate(message).model_dump(mode="json")
+    dialog_payload = _build_dialog_detail(dialog_detail).model_dump(mode="json")
 
     admin_targets = _resolve_admin_targets(dialog_payload)
 
