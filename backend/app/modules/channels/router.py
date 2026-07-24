@@ -43,6 +43,7 @@ router = APIRouter(prefix="/bots/{bot_id}/channels", tags=["channels"])
 webhooks_router = APIRouter(tags=["channels"])
 logger = logging.getLogger(__name__)
 AVITO_SIGNATURE_HEADER = "X-Avito-Signature"
+MAX_SECRET_HEADER = "X-Max-Bot-Api-Secret"
 
 
 def _ensure_channel_available(channel) -> None:
@@ -59,6 +60,12 @@ def _validate_required_secret(expected: str | None, provided: str | None, detail
     if not expected:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="VK webhook secret not configured")
     _validate_secret(expected, provided, detail)
+
+
+def _validate_max_secret(expected: str | None, provided: str | None) -> None:
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="MAX webhook secret not configured")
+    _validate_secret(expected, provided, "Invalid MAX webhook secret")
 
 
 async def _get_telegram_channel_for_bot(session: AsyncSession, bot_id: int) -> BotChannel:
@@ -1017,20 +1024,18 @@ async def max_webhook(
         _ensure_channel_available(channel)
         channel = channels_service.decrypt(channel)
 
-        expected_secret = channel.config.get("secret") or channel.config.get("token")
-        provided_secret = _extract_provided_secret(request=request, payload=payload)
-        _validate_secret(expected_secret, provided_secret, "Invalid Max webhook secret")
+        expected_secret = channel.config.get("webhook_secret")
+        provided_secret = request.headers.get(MAX_SECRET_HEADER)
+        _validate_max_secret(expected_secret, provided_secret)
 
-        normalized = normalize_max_webhook(
-            bot_id=bot_id, channel_id=channel_id, payload=payload, headers=dict(request.headers)
-        )
-
-        await _process_and_broadcast(
-            normalized=normalized,
-            dialogs_service=dialogs_service,
-            ai_service=ai_service,
-            session=session,
-        )
+        normalized = normalize_max_webhook(bot_id=bot_id, channel_id=channel_id, payload=payload)
+        if normalized is not None:
+            await _process_and_broadcast(
+                normalized=normalized,
+                dialogs_service=dialogs_service,
+                ai_service=ai_service,
+                session=session,
+            )
     except Exception as exc:
         latency_ms = int((time.perf_counter() - start) * 1000)
         await _log_incoming_event(

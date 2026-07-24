@@ -19,6 +19,13 @@ from app.modules.dialogs.websocket_manager import manager
 logger = logging.getLogger(__name__)
 
 
+class ChannelSendError(Exception):
+    """Raised when a channel sender cannot deliver an outgoing message."""
+
+
+MAX_MESSAGES_URL = "https://platform-api2.max.ru/messages"
+
+
 class BaseChannelSender(ABC):
     """Base contract for sending messages through a channel."""
 
@@ -669,15 +676,15 @@ class MaxSender(BaseChannelSender):
                 )
                 .order_by(Dialog.updated_at.desc())
             )
-            return result.scalars().first()
+            value = result.scalars().first()
+            return str(value) if value is not None else None
 
     async def send_text(
         self, bot_id: int, external_chat_id: str, text: str, attachments=None
     ) -> None:
         channel = await self._get_channel(bot_id)
         if not channel:
-            logger.warning("No Max channel configured for bot", extra={"bot_id": bot_id})
-            return
+            raise ChannelSendError("MAX channel is not configured")
         if attachments:
             logger.warning(
                 "Max attachments are not supported yet; ignoring",
@@ -690,70 +697,44 @@ class MaxSender(BaseChannelSender):
             )
 
         config = channel.config or {}
-        token = config.get("auth_token") or config.get("token")
-        send_message_url = config.get("send_message_url")
-        if not send_message_url:
-            api_base_url = config.get("api_base_url")
-            send_message_path = config.get("send_message_path")
-            if api_base_url and send_message_path:
-                send_message_url = f"{api_base_url.rstrip('/')}/{send_message_path.lstrip('/')}"
+        token = config.get("token")
+        if not token:
+            raise ChannelSendError("MAX token is not configured")
 
-        if not token or not send_message_url:
-            logger.error(
-                "Max channel config missing API url or token",
-                extra={"bot_id": bot_id, "channel_id": channel.id},
-            )
-            return
+        external_user_id = await self._resolve_user_id(bot_id, external_chat_id)
+        if not external_user_id:
+            raise ChannelSendError("MAX recipient user id is not available")
 
-        resolved_user_id = await self._resolve_user_id(bot_id, external_chat_id)
-        payload = {"chat_id": external_chat_id, "message": {"text": text}}
-        if resolved_user_id:
-            payload["user_id"] = resolved_user_id
-
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {"text": text}
+        headers = {"Authorization": token, "Content-Type": "application/json"}
+        params = {"user_id": external_user_id} if external_chat_id == external_user_id else {"chat_id": external_chat_id}
+        start = time.perf_counter()
 
         try:
-            start = time.perf_counter()
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.post(send_message_url, json=payload, headers=headers)
-                if not response.is_success:
-                    logger.error(
-                        "Max API returned unsuccessful response",
-                        extra={
-                            "bot_id": bot_id,
-                            "channel_id": channel.id,
-                            "chat_id": external_chat_id,
-                            "status": response.status_code,
-                            "response": response.text,
-                        },
-                    )
-                    latency_ms = int((time.perf_counter() - start) * 1000)
-                    await get_diagnostics_service().log_integration(
-                        account_id=None,
-                        bot_id=bot_id,
-                        channel_type=ChannelType.MAX.value,
-                        direction="out",
-                        operation="send_message",
-                        status="fail",
-                        error_message="Max API returned unsuccessful response",
-                        latency_ms=latency_ms,
-                        http_status=response.status_code,
-                        endpoint="send_message",
-                    )
-                else:
-                    latency_ms = int((time.perf_counter() - start) * 1000)
-                    await get_diagnostics_service().log_integration(
-                        account_id=None,
-                        bot_id=bot_id,
-                        channel_type=ChannelType.MAX.value,
-                        direction="out",
-                        operation="send_message",
-                        status="ok",
-                        latency_ms=latency_ms,
-                        http_status=response.status_code,
-                        endpoint="send_message",
-                    )
-        except httpx.HTTPError as exc:
+                response = await client.post(MAX_MESSAGES_URL, params=params, json=payload, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            status_code = exc.response.status_code if exc.response is not None else None
+            logger.error(
+                "Max API returned unsuccessful response",
+                extra={"bot_id": bot_id, "channel_id": channel.id, "chat_id": external_chat_id, "status": status_code},
+            )
+            await get_diagnostics_service().log_integration(
+                account_id=None,
+                bot_id=bot_id,
+                channel_type=ChannelType.MAX.value,
+                direction="out",
+                operation="send_message",
+                status="fail",
+                error_message=f"MAX API error: HTTP {status_code}",
+                latency_ms=latency_ms,
+                http_status=status_code,
+                endpoint="send_message",
+            )
+            raise ChannelSendError("MAX message send failed") from exc
+        except httpx.RequestError as exc:
             latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Failed to send Max message",
@@ -767,11 +748,25 @@ class MaxSender(BaseChannelSender):
                 direction="out",
                 operation="send_message",
                 status="fail",
-                error_message=str(exc),
+                error_message="MAX API request failed",
                 latency_ms=latency_ms,
                 endpoint="send_message",
             )
+            raise ChannelSendError("MAX message send failed") from exc
 
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        await get_diagnostics_service().log_integration(
+            account_id=None,
+            bot_id=bot_id,
+            channel_type=ChannelType.MAX.value,
+            direction="out",
+            operation="send_message",
+            status="ok",
+            error_message=None,
+            latency_ms=latency_ms,
+            http_status=response.status_code,
+            endpoint="send_message",
+        )
 
 class WebchatSender(BaseChannelSender):
     def __init__(self) -> None:
@@ -830,9 +825,9 @@ class WebchatSender(BaseChannelSender):
             )
 
 
-from app.modules.channels.avito_sender import AvitoSender
-from app.modules.channels.vk_sender import VkSender
-from app.modules.channels.ok_sender import OkSender
+from app.modules.channels.avito_sender import AvitoSender  # noqa: E402
+from app.modules.channels.vk_sender import VkSender  # noqa: E402
+from app.modules.channels.ok_sender import OkSender  # noqa: E402
 
 
 register_sender(ChannelType.TELEGRAM, TelegramSender)
