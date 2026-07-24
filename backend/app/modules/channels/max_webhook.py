@@ -48,9 +48,13 @@ def _sanitize_provider_message(
     if not isinstance(value, str):
         return None
     sanitized = value.strip().replace("\n", " ").replace("\r", " ")
-    for secret in secrets_to_redact:
-        if secret:
-            sanitized = sanitized.replace(secret, "[REDACTED]")
+    redacted_values = sorted(
+        {secret for secret in secrets_to_redact if secret},
+        key=len,
+        reverse=True,
+    )
+    for secret in redacted_values:
+        sanitized = sanitized.replace(secret, "[REDACTED]")
     return sanitized[:200] or None
 
 
@@ -60,6 +64,8 @@ def _operation_succeeded(
     secrets_to_redact: tuple[str, ...] = (),
 ) -> tuple[bool, str | None]:
     response.raise_for_status()
+    if response.status_code == 204:
+        return True, None
     try:
         payload = response.json()
     except ValueError:

@@ -163,3 +163,55 @@ def test_sync_delete_success_false_is_error(monkeypatch):
     assert "credential-placeholder" not in error
     assert "webhook-credential-placeholder" not in error
     assert "[REDACTED]" in error
+
+
+def test_sync_success_false_redacts_overlapping_credentials(monkeypatch):
+    channel = _channel()
+    channel.config = {"token": "credential", "webhook_secret": "credential-secret"}
+
+    class Client:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def get(self, url, headers):
+            return httpx.Response(200, json={"subscriptions": []}, request=httpx.Request("GET", url))
+        async def post(self, url, json, headers):
+            return httpx.Response(
+                200,
+                json={"success": False, "message": "Rejected credential-secret and credential"},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    status, error = asyncio.run(sync_max_webhook(channel, "https://example.com/api"))
+
+    assert status == "error"
+    assert "credential-secret" not in error
+    assert "credential" not in error
+    assert "[REDACTED]-secret" not in error
+    assert "[REDACTED]" in error
+
+
+def test_sync_disabled_delete_204_no_content_is_success(monkeypatch):
+    calls = []
+
+    class Client:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def get(self, url, headers):
+            return httpx.Response(
+                200,
+                json={"subscriptions": [{"url": "https://example.com/api/bots/5/channels/webhooks/max/7"}]},
+                request=httpx.Request("GET", url),
+            )
+        async def delete(self, url, headers, params=None):
+            calls.append((url, params))
+            return httpx.Response(204, request=httpx.Request("DELETE", url))
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    status, error = asyncio.run(sync_max_webhook(_channel(active=False), "https://example.com/api"))
+
+    assert status == "disabled"
+    assert error is None
+    assert calls == [(MAX_SUBSCRIPTIONS_URL, {"url": "https://example.com/api/bots/5/channels/webhooks/max/7"})]
